@@ -193,8 +193,10 @@ export default function AppContainer() {
   const [schedules, setSchedules] = useState([]);
   const [orgBudget, setOrgBudget] = useState(150000);
 
-  // ── Online simulation ──
+  // ── Online & Presence ──
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [presenceMap, setPresenceMap] = useState({});
+  const [showPresenceModal, setShowPresenceModal] = useState(false);
 
   // ── WebRTC Refs & Streams ──
   const streamsRef = useRef({});
@@ -314,7 +316,10 @@ export default function AppContainer() {
         supabase.from('presence').select('*').then(({ data }) => {
           if (data) {
             const now = Date.now();
-            setOnlineUsers(data.filter(p => now - p.last_seen < 15000).map(p => p.user_id));
+            const pMap = {};
+            data.forEach(p => { pMap[p.user_id] = Number(p.last_seen); });
+            setPresenceMap(pMap);
+            setOnlineUsers(data.filter(p => now - Number(p.last_seen) < 15000).map(p => p.user_id));
           }
         });
       })
@@ -332,14 +337,17 @@ export default function AppContainer() {
       const { data } = await supabase.from('presence').select('*');
       if (data) {
         const now = Date.now();
-        setOnlineUsers(data.filter(p => now - p.last_seen < 15000).map(p => p.user_id));
+        const pMap = {};
+        data.forEach(p => { pMap[p.user_id] = Number(p.last_seen); });
+        setPresenceMap(pMap);
+        setOnlineUsers(data.filter(p => now - Number(p.last_seen) < 15000).map(p => p.user_id));
       }
     };
 
     updatePresence();
     const interval = setInterval(updatePresence, 8000);
     return () => clearInterval(interval);
-  }, [mounted, isLoggedIn, currentUser]);
+  }, [mounted, isLoggedIn, currentUser, activeOrg]);
 
   // Parse invite query parameters
   useEffect(() => {
@@ -451,9 +459,15 @@ export default function AppContainer() {
       skills: [], last_seen: now()
     };
     try {
-      await supabase.from('organizations').insert(newOrg);
-      await supabase.from('profiles').insert(newProfile);
-    } catch(err) { console.error('SignUp DB error', err); }
+      const { error: orgErr } = await supabase.from('organizations').insert(newOrg);
+      if (orgErr) throw orgErr;
+      const { error: profErr } = await supabase.from('profiles').insert(newProfile);
+      if (profErr) throw profErr;
+    } catch(err) { 
+      console.error('SignUp DB error', err); 
+      alert('Database connection failed! Have you run the SQL schema? Error: ' + err.message);
+      return;
+    }
     setOrganizations(p => [...p, newOrg]);
     setProfiles(p => [...p, newProfile]);
     setCurrentUser(newProfile);
@@ -482,12 +496,18 @@ export default function AppContainer() {
     const org = organizations.find(o => o.id === inviteOrgId) || { id: inviteOrgId, name: inviteOrgName, type: 'software_house' };
     try {
       if (!organizations.some(o => o.id === org.id)) {
-        await supabase.from('organizations').insert(org);
+        const { error: oErr } = await supabase.from('organizations').insert(org);
+        if (oErr) throw oErr;
         setOrganizations(prev => [...prev, org]);
       }
-      await supabase.from('profiles').insert(newProfile);
+      const { error: pErr } = await supabase.from('profiles').insert(newProfile);
+      if (pErr) throw pErr;
       setProfiles(p => [...p, newProfile]);
-    } catch(err) { console.error('InviteRegister DB error', err); }
+    } catch(err) { 
+      console.error('InviteRegister DB error', err); 
+      alert('Database connection failed! Have you run the SQL schema? Error: ' + err.message);
+      return;
+    }
     setCurrentUser(newProfile);
     setActiveOrg(org);
     setIsLoggedIn(true);
@@ -1108,6 +1128,54 @@ export default function AppContainer() {
         </div>
       )}
 
+      {/* ── Presence Modal ── */}
+      {showPresenceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm glass-panel p-6 rounded-3xl border border-purple-500/20 shadow-2xl relative">
+            <button onClick={() => setShowPresenceModal(false)} className="absolute top-4 right-4 text-purple-400 hover:text-white"><X size={18}/></button>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-full bg-emerald-950/40 flex items-center justify-center border border-emerald-500/20 text-emerald-400">
+                <Activity size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">Online Presence</h3>
+                <p className="text-[10px] text-purple-300">{orgUsers.length} total members in workspace</p>
+              </div>
+            </div>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 custom-scroll">
+              {orgUsers.map(u => {
+                const isOnline = onlineUsers.includes(u.id);
+                const lastSeenTime = presenceMap[u.id];
+                return (
+                  <div key={u.id} className="flex items-center justify-between p-3 bg-purple-950/10 border border-purple-500/5 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-700 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shadow-lg relative">
+                        {u.full_name[0]?.toUpperCase()}
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-black ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-gray-500'}`} />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white">{u.full_name} {u.id === currentUser.id && '(You)'}</div>
+                        <div className="text-[10px] text-purple-400">{u.role}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {isOnline ? (
+                        <span className="text-[10px] font-bold text-emerald-400">Online Now</span>
+                      ) : (
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] text-gray-400">Offline</span>
+                          <span className="text-[9px] text-purple-500">{lastSeenTime ? new Date(lastSeenTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Never seen'}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── ADMIN USER EDIT MODAL ── */}
       {editingUser && (
         <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4">
@@ -1567,10 +1635,10 @@ export default function AppContainer() {
                 {notifications[0].text}
               </div>
             )}
-            <div className="flex items-center gap-1.5 text-[10px] text-emerald-300 font-semibold bg-emerald-950/30 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
+            <button onClick={() => setShowPresenceModal(true)} className="flex items-center gap-1.5 text-[10px] text-emerald-300 font-semibold bg-emerald-950/30 border border-emerald-500/20 px-2.5 py-1 rounded-lg hover:bg-emerald-950/50 transition-colors">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>{orgUsers.filter(u => onlineUsers.includes(u.id)).length} Online</span>
-            </div>
+            </button>
           </div>
         </header>
 
