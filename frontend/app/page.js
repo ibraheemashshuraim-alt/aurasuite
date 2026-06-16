@@ -1432,7 +1432,7 @@ export default function AppContainer() {
                 <Video className="text-white" size={32} />
               </div>
               <h2 className="text-xl font-bold text-white leading-tight">Pre-Meeting Check</h2>
-              <p className="text-xs text-purple-300 mt-1">"{preMeetingMeet.title}"</p>
+              <p className="text-xs text-purple-300 mt-1">&quot;{preMeetingMeet.title}&quot;</p>
             </div>
             
             <div className="space-y-4 mb-8">
@@ -1900,7 +1900,7 @@ export default function AppContainer() {
         <header className="h-14 glass-panel border-b border-[#9333ea]/15 px-6 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 bg-purple-900/40 border border-purple-500/30 rounded-full text-[10px] text-purple-300 font-bold uppercase">
-              {activeOrg.type.replace('_', ' ')}
+              {activeOrg?.type ? activeOrg.type.replace('_', ' ') : 'SOFTWARE HOUSE'}
             </span>
             <ChevronRight size={13} className="text-purple-600" />
             <span className="text-xs text-purple-200 capitalize font-medium">{activeTab}</span>
