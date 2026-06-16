@@ -513,22 +513,46 @@ export default function AppContainer() {
     if (!newPermanentPassword || newPermanentPassword.length < 6) {
       alert('Password must be at least 6 characters.'); return;
     }
-    const { error } = await supabase.from('digital_cards').update({
+
+    // Update card: set permanent password, clear pending status
+    const { error: cardErr } = await supabase.from('digital_cards').update({
       permanent_password: newPermanentPassword,
-      is_first_login: false
+      is_first_login: false,
+      is_pending: false
     }).eq('id', tempDigitalCard.id);
-    
-    if (error) { alert('Failed to update password'); return; }
-    
-    const user = profiles.find(u => u.id === tempDigitalCard.profile_id);
+    if (cardErr) { alert('Failed to update password: ' + cardErr.message); return; }
+
+    // If worker was pending, create their profile now (first time joining)
+    let user = profiles.find(u => u.id === tempDigitalCard.profile_id);
+    if (!user && tempDigitalCard.is_pending) {
+      const newProfileId = tempDigitalCard.profile_id || genId('user');
+      const newProfile = {
+        id: newProfileId,
+        organization_id: tempDigitalCard.organization_id,
+        email: tempDigitalCard.email,
+        full_name: tempDigitalCard.full_name || tempDigitalCard.username,
+        role: tempDigitalCard.role || 'worker',
+        category: tempDigitalCard.category || null,
+        domain: tempDigitalCard.domain || '',
+        skills: [],
+        last_seen: now()
+      };
+      const { error: profErr } = await supabase.from('profiles').insert(newProfile);
+      if (profErr) { alert('Failed to create profile: ' + profErr.message); return; }
+      setProfiles(prev => [...prev, newProfile]);
+      user = newProfile;
+    }
+
     if (user) {
       const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
       setCurrentUser(user);
       setActiveOrg(org);
       setIsLoggedIn(true);
-      setShowQuiz(true); // Trigger mandatory AI Quiz Onboarding
+      setShowQuiz(true);
       setForcePasswordChange(false);
-      addNotification(`Password set successfully!`, 'success');
+      addNotification(`Welcome ${user.full_name}! Password set successfully.`, 'success');
+    } else {
+      alert('Profile not found. Contact your admin.');
     }
   };
 
@@ -2074,40 +2098,32 @@ export default function AppContainer() {
                   const cardNumber = `AS-2026-${Math.floor(1000 + Math.random() * 9000)}`;
                   const tempUsername = genInviteName.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 100);
                   const tempPassword = Math.random().toString(36).slice(-8);
-                  
                   const newProfileId = genId('user');
-                  
-                  // 1. Create Profile
-                  const newProfile = {
-                    id: newProfileId,
-                    organization_id: activeOrg.id,
-                    email: inviteEmail,
-                    full_name: genInviteName,
-                    role: genInviteRole,
-                    category: genInviteCategory || null,
-                    domain: genInviteDomain || '',
-                    skills: [],
-                    last_seen: now()
-                  };
-                  
-                  // 2. Create Digital Card
+
+                  // Build the invite link that the worker will use
+                  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
+                  const inviteLink = `${baseUrl}/?card=${cardNumber}&username=${tempUsername}`;
+
+                  // Create Digital Card ONLY (pending=true) — profile created after worker logs in
                   const newCard = {
                     card_number: cardNumber,
                     username: tempUsername,
                     temp_password: tempPassword,
                     profile_id: newProfileId,
                     organization_id: activeOrg.id,
-                    email: inviteEmail
+                    email: inviteEmail,
+                    full_name: genInviteName,
+                    role: genInviteRole,
+                    category: genInviteCategory || null,
+                    domain: genInviteDomain || '',
+                    is_pending: true
                   };
                   
                   try {
-                    const { error: pErr } = await supabase.from('profiles').insert(newProfile);
-                    if (pErr) throw pErr;
-                    
                     const { error: cErr } = await supabase.from('digital_cards').insert(newCard);
                     if (cErr) throw cErr;
                     
-                    // 3. Send Email using our new API
+                    // Send Email with invite link
                     const res = await fetch('/api/send-invite', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
@@ -2117,21 +2133,14 @@ export default function AppContainer() {
                         cardNumber,
                         username: tempUsername,
                         tempPassword,
-                        orgName: activeOrg.name
+                        orgName: activeOrg.name,
+                        inviteLink
                       })
                     });
                     
                     const emailData = await res.json();
-                    
-                    setProfiles(prev => [...prev, newProfile]);
-                    addNotification(`Digital Card generated & emailed to ${genInviteName}!`, 'success');
-                    
-                    if (!process.env.NEXT_PUBLIC_RESEND_API_KEY && !emailData.success) {
-                       setGeneratedLink(`CARD CREATED BUT EMAIL FAILED (Check Resend API Key). Card: ${cardNumber}, User: ${tempUsername}, Pass: ${tempPassword}`);
-                    } else {
-                       setGeneratedLink(`Card sent successfully! (Fallback copy - Card: ${cardNumber}, User: ${tempUsername}, Pass: ${tempPassword})`);
-                    }
-                    
+                    addNotification(`Invite sent to ${genInviteName}! They will appear in the team once they complete onboarding.`, 'success');
+                    setGeneratedLink(inviteLink);
                     setGenInviteName('');
                     setInviteEmail('');
                     setGenInviteDomain('');
