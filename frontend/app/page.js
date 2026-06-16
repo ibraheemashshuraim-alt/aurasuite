@@ -8,7 +8,7 @@ import {
   VideoOff, Monitor, ChevronRight, Check, Copy, LogOut,
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
-  AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe
+  AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
