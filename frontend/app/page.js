@@ -1933,7 +1933,7 @@ export default function AppContainer() {
                     <span className="text-xs font-bold text-white">Meeting Invite</span>
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
                   </div>
-                  <p className="text-xs text-purple-200 mt-0.5">"{meet.title}" by {meet.host_name} · ID: <span className="font-mono text-purple-300">{meet.meeting_id}</span></p>
+                  <p className="text-xs text-purple-200 mt-0.5">&quot;{meet.title}&quot; by {meet.host_name} · ID: <span className="font-mono text-purple-300">{meet.meeting_id}</span></p>
                 </div>
               </div>
               <div className="flex gap-2 relative">
@@ -1955,7 +1955,7 @@ export default function AppContainer() {
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
                 <div>
-                  <span className="text-xs font-bold text-white">Your Active Meeting: "{meet.title}"</span>
+                  <span className="text-xs font-bold text-white">Your Active Meeting: &quot;{meet.title}&quot;</span>
                   <p className="text-[10px] text-purple-300 mt-0.5">ID: {meet.meeting_id} · Passcode: {meet.passcode}</p>
                 </div>
               </div>
