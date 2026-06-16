@@ -110,6 +110,7 @@ export default function AppContainer() {
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authEmail, setAuthEmail] = useState('');
+  const [loginMode, setLoginMode] = useState('admin'); // 'admin' | 'worker'
   
   const addNotification = (text, type = 'info') =>
     setNotifications(prev => [{ id: Date.now(), text, type }, ...prev.slice(0, 9)]);
@@ -454,7 +455,11 @@ export default function AppContainer() {
   // ─────────────────── Auth ───────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (authCardNumber) {
+    if (loginMode === 'worker') {
+      if (!authCardNumber || !authUsername || !authPassword) {
+        alert('Please fill all fields');
+        return;
+      }
       // Digital Card Login
       const { data: cards, error } = await supabase.from('digital_cards')
         .select('*')
@@ -488,9 +493,13 @@ export default function AppContainer() {
         alert('User profile not found. Contact Admin.');
       }
     } else {
-      // Legacy Email Login fallback
+      // Admin Email Login fallback
+      if (!authEmail) {
+        alert('Please enter your email');
+        return;
+      }
       const user = profiles.find(u => u.email.toLowerCase() === authEmail.toLowerCase());
-      if (!user) { alert('Email not registered! Please register first.'); return; }
+      if (!user) { alert('Email not registered! Please register your portal first.'); return; }
       const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
       setCurrentUser(user);
       setActiveOrg(org);
@@ -1090,36 +1099,54 @@ export default function AppContainer() {
             </form>
           ) : authTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="text-[10px] text-purple-400 uppercase font-bold block mb-1.5 flex items-center gap-1"><CreditCard size={12}/> Digital Access Card Login</label>
+              <div className="flex bg-[#11081c] p-1 rounded-xl mb-4 border border-purple-500/20">
+                <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='admin'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Admin Login</button>
+                <button type="button" onClick={() => setLoginMode('worker')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='worker'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Digital Card</button>
               </div>
-              <div>
-                <label className="text-xs font-semibold text-purple-300 block mb-1">Card Number</label>
-                <input type="text" placeholder="AS-2026-XXXX" value={authCardNumber} onChange={e => setAuthCardNumber(e.target.value)} required
-                  className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors uppercase" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-purple-300 block mb-1">Username</label>
-                <input type="text" value={authUsername} onChange={e => setAuthUsername(e.target.value)} required
-                  className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-purple-300 block mb-1">Password</label>
-                <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required
-                  className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
-              </div>
+
+              {loginMode === 'admin' ? (
+                <>
+                  <div>
+                    <label className="text-[10px] text-purple-400 uppercase font-bold block mb-1.5 flex items-center gap-1"><Shield size={12}/> Admin Portal Access</label>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-purple-300 block mb-1">Email Address</label>
+                    <input type="email" placeholder="admin@domain.com" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required
+                      className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-purple-300 block mb-1">Password</label>
+                    <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)}
+                      className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-[10px] text-emerald-400 uppercase font-bold block mb-1.5 flex items-center gap-1"><CreditCard size={12}/> Digital Access Card Login</label>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-purple-300 block mb-1">Card Number</label>
+                    <input type="text" placeholder="AS-2026-XXXX" value={authCardNumber} onChange={e => setAuthCardNumber(e.target.value)} required
+                      className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors uppercase" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-purple-300 block mb-1">Username</label>
+                    <input type="text" value={authUsername} onChange={e => setAuthUsername(e.target.value)} required
+                      className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-purple-300 block mb-1">Password</label>
+                    <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required
+                      className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
+                  </div>
+                </>
+              )}
+
               <button type="submit" className="w-full py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn mt-4 flex items-center justify-center gap-2">
-                <Unlock size={14} /> Validate Credentials
+                {loginMode === 'admin' ? <Lock size={14} /> : <Unlock size={14} />} 
+                {loginMode === 'admin' ? 'Login as Admin' : 'Validate Credentials'}
               </button>
-              
-              <div className="pt-4 border-t border-purple-500/20 mt-4">
-                <p className="text-[10px] text-white/50 text-center mb-2">Legacy Email Login</p>
-                <div className="flex gap-2">
-                  <input type="email" placeholder="Legacy Email" value={authEmail} onChange={e => setAuthEmail(e.target.value)}
-                    className="flex-1 bg-[#11081c] border border-purple-500/25 rounded-lg p-2 text-[10px] text-white focus:outline-none" />
-                  <button type="submit" onClick={() => setAuthCardNumber('')} className="px-3 py-2 bg-purple-500/20 text-purple-300 rounded-lg text-[10px] hover:bg-purple-500/40">Legacy</button>
-                </div>
-              </div>
               
               <button type="button" onClick={() => {
                 if (confirm('⚠️ This will delete ALL data and accounts. Continue?')) {
