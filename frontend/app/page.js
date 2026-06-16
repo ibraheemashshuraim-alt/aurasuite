@@ -105,8 +105,19 @@ export default function AppContainer() {
   // ── Auth ──
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authTab, setAuthTab] = useState('login');
-  const [authEmail, setAuthEmail] = useState('');
+  const [authCardNumber, setAuthCardNumber] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  
+  // First time login & Quiz
+  const [forcePasswordChange, setForcePasswordChange] = useState(false);
+  const [newPermanentPassword, setNewPermanentPassword] = useState('');
+  const [tempDigitalCard, setTempDigitalCard] = useState(null);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizQuestions, setQuizQuestions] = useState([]);
+  const [quizAnswers, setQuizAnswers] = useState({});
+  const [quizStep, setQuizStep] = useState(0);
+
   const [signUpName, setSignUpName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
@@ -226,6 +237,10 @@ export default function AppContainer() {
   const [genInviteCategory, setGenInviteCategory] = useState('B');
   const [genInviteDomain, setGenInviteDomain] = useState('');
   const [generatedLink, setGeneratedLink] = useState('');
+  
+  // ── Pre-Meeting Checklist ──
+  const [preMeetingMeet, setPreMeetingMeet] = useState(null);
+  const [preMeetingChecklist, setPreMeetingChecklist] = useState({ mic: false, cam: false, net: false });
 
   // ─────────────────── Supabase Data Load ───────────────────
   useEffect(() => {
@@ -435,15 +450,75 @@ export default function AppContainer() {
   const addNotification = (text, type = 'info') =>
     setNotifications(prev => [{ id: Date.now(), text, type }, ...prev.slice(0, 9)]);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    const user = profiles.find(u => u.email.toLowerCase() === authEmail.toLowerCase());
-    if (!user) { alert('Email not registered! Please register first.'); return; }
-    const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
-    setCurrentUser(user);
-    setActiveOrg(org);
-    setIsLoggedIn(true);
-    addNotification(`Welcome back, ${user.full_name}!`, 'success');
+    if (authCardNumber) {
+      // Digital Card Login
+      const { data: cards, error } = await supabase.from('digital_cards')
+        .select('*')
+        .eq('card_number', authCardNumber.trim())
+        .eq('username', authUsername.trim());
+      
+      if (error || !cards || cards.length === 0) {
+        alert('Invalid Card Number or Username');
+        return;
+      }
+      const card = cards[0];
+      if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
+        alert('Invalid Password');
+        return;
+      }
+      if (card.is_first_login) {
+        setTempDigitalCard(card);
+        setForcePasswordChange(true);
+        return;
+      }
+      
+      // Proceed to login
+      const user = profiles.find(u => u.id === card.profile_id);
+      if (user) {
+        const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
+        setCurrentUser(user);
+        setActiveOrg(org);
+        setIsLoggedIn(true);
+        addNotification(`Welcome back, ${user.full_name}!`, 'success');
+      } else {
+        alert('User profile not found. Contact Admin.');
+      }
+    } else {
+      // Legacy Email Login fallback
+      const user = profiles.find(u => u.email.toLowerCase() === authEmail.toLowerCase());
+      if (!user) { alert('Email not registered! Please register first.'); return; }
+      const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
+      setCurrentUser(user);
+      setActiveOrg(org);
+      setIsLoggedIn(true);
+      addNotification(`Welcome back, ${user.full_name}!`, 'success');
+    }
+  };
+
+  const handleSetPermanentPassword = async (e) => {
+    e.preventDefault();
+    if (!newPermanentPassword || newPermanentPassword.length < 6) {
+      alert('Password must be at least 6 characters.'); return;
+    }
+    const { error } = await supabase.from('digital_cards').update({
+      permanent_password: newPermanentPassword,
+      is_first_login: false
+    }).eq('id', tempDigitalCard.id);
+    
+    if (error) { alert('Failed to update password'); return; }
+    
+    const user = profiles.find(u => u.id === tempDigitalCard.profile_id);
+    if (user) {
+      const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
+      setCurrentUser(user);
+      setActiveOrg(org);
+      setIsLoggedIn(true);
+      setShowQuiz(true); // Trigger mandatory AI Quiz Onboarding
+      setForcePasswordChange(false);
+      addNotification(`Password set successfully!`, 'success');
+    }
   };
 
   const handleSignUp = async (e) => {
@@ -992,24 +1067,54 @@ export default function AppContainer() {
             ))}
           </div>
 
-          {authTab === 'login' ? (
+          {forcePasswordChange ? (
+            <form onSubmit={handleSetPermanentPassword} className="space-y-4">
+              <div>
+                <label className="text-[10px] text-yellow-400 uppercase font-bold block mb-1.5 flex items-center gap-1"><Shield size={12}/> First-Time Security Setup</label>
+                <p className="text-xs text-white/70">Please set a permanent password for your digital access card to continue.</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-purple-300 block mb-1">New Permanent Password</label>
+                <input type="password" value={newPermanentPassword} onChange={e => setNewPermanentPassword(e.target.value)} required minLength={6}
+                  className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
+              </div>
+              <button type="submit" className="w-full py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn mt-4 flex items-center justify-center gap-2">
+                <Lock size={14} /> Set Password & Enter Dashboard
+              </button>
+            </form>
+          ) : authTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
-                <label className="text-[10px] text-purple-400 uppercase font-bold block mb-1.5">Sign In</label>
+                <label className="text-[10px] text-purple-400 uppercase font-bold block mb-1.5 flex items-center gap-1"><CreditCard size={12}/> Digital Access Card Login</label>
               </div>
-              {[
-                { label: 'Email', type: 'email', val: authEmail, set: setAuthEmail },
-                { label: 'Password', type: 'password', val: authPassword, set: setAuthPassword }
-              ].map(f => (
-                <div key={f.label}>
-                  <label className="text-xs font-semibold text-purple-300 block mb-1">{f.label}</label>
-                  <input type={f.type} value={f.val} onChange={e => f.set(e.target.value)} required
-                    className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
-                </div>
-              ))}
+              <div>
+                <label className="text-xs font-semibold text-purple-300 block mb-1">Card Number</label>
+                <input type="text" placeholder="AS-2026-XXXX" value={authCardNumber} onChange={e => setAuthCardNumber(e.target.value)} required
+                  className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors uppercase" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-purple-300 block mb-1">Username</label>
+                <input type="text" value={authUsername} onChange={e => setAuthUsername(e.target.value)} required
+                  className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-purple-300 block mb-1">Password</label>
+                <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required
+                  className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
+              </div>
               <button type="submit" className="w-full py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn mt-4 flex items-center justify-center gap-2">
-                <LogOut size={14} /> Enter Workspace
+                <Unlock size={14} /> Validate Credentials
               </button>
+              
+              <div className="pt-4 border-t border-purple-500/20 mt-4">
+                <p className="text-[10px] text-white/50 text-center mb-2">Legacy Email Login</p>
+                <div className="flex gap-2">
+                  <input type="email" placeholder="Legacy Email" value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                    className="flex-1 bg-[#11081c] border border-purple-500/25 rounded-lg p-2 text-[10px] text-white focus:outline-none" />
+                  <button type="submit" onClick={() => setAuthCardNumber('')} className="px-3 py-2 bg-purple-500/20 text-purple-300 rounded-lg text-[10px] hover:bg-purple-500/40">Legacy</button>
+                </div>
+              </div>
+              
               <button type="button" onClick={() => {
                 if (confirm('⚠️ This will delete ALL data and accounts. Continue?')) {
                   localStorage.clear();
@@ -1057,6 +1162,102 @@ export default function AppContainer() {
                 Register & Enter Portal
               </button>
             </form>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════ AI QUIZ (ONBOARDING) ══════════════════
+  if (showQuiz) {
+    const handleQuizStart = () => {
+      setQuizQuestions([
+        { id: 1, question: 'What is your primary domain of expertise?', options: ['Software Development', 'Design/Creative', 'Management', 'Operations'] },
+        { id: 2, question: 'Which programming languages are you most comfortable with?', options: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'Not Applicable'] },
+        { id: 3, question: 'How many years of experience do you have?', options: ['0-2 Years', '3-5 Years', '5-10 Years', '10+ Years'] }
+      ]);
+      setQuizStep(1);
+    };
+
+    const handleQuizSubmit = async () => {
+      setQuizLoading(true);
+      // Simulate AI Processing
+      setTimeout(async () => {
+        // Tag user category
+        const score = Object.keys(quizAnswers).length;
+        let newCategory = 'C';
+        if (score >= 3 && quizAnswers[3] === '10+ Years') newCategory = 'A';
+        else if (score >= 3 && quizAnswers[3] === '5-10 Years') newCategory = 'B';
+        else newCategory = 'C';
+
+        await supabase.from('profiles').update({ category: newCategory }).eq('id', currentUser.id);
+        
+        setCurrentUser(prev => ({ ...prev, category: newCategory }));
+        setQuizLoading(false);
+        setQuizStep(2); // result step
+      }, 2000);
+    };
+
+    return (
+      <div className="min-h-screen bg-[#0a0514] flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-screen pointer-events-none"></div>
+        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-purple-900/20 blur-[120px] rounded-full pointer-events-none"></div>
+        
+        <div className="w-full max-w-lg glass-panel-glow border border-purple-500/30 rounded-3xl p-8 relative z-10">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center shadow-lg shadow-purple-500/30 mx-auto mb-4">
+              <BrainCircuit className="text-white" size={32} />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">AI Skills Assessment</h2>
+            <p className="text-xs text-purple-300">Let AuraSuite AI tailor your workspace experience.</p>
+          </div>
+
+          {quizStep === 0 && (
+            <div className="text-center space-y-6">
+              <p className="text-sm text-white/80">Welcome to AuraSuite! As part of our onboarding, our AI needs to assess your skill level to properly tag your profile and assign you to relevant tasks.</p>
+              <button onClick={handleQuizStart} className="px-6 py-3 rounded-xl accent-gradient text-sm font-bold text-white glow-btn inline-flex items-center gap-2">
+                Begin Assessment <ArrowRight size={16}/>
+              </button>
+            </div>
+          )}
+
+          {quizStep === 1 && (
+            <div className="space-y-6">
+              {quizQuestions.map((q, idx) => (
+                <div key={q.id} className="space-y-2">
+                  <p className="text-xs font-bold text-purple-200">{idx + 1}. {q.question}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {q.options.map(opt => (
+                      <button key={opt} onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt }))}
+                        className={`p-2 rounded-lg text-[10px] font-bold border transition-all ${quizAnswers[q.id] === opt ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div className="pt-4 flex justify-end">
+                <button onClick={handleQuizSubmit} disabled={quizLoading || Object.keys(quizAnswers).length < quizQuestions.length}
+                  className={`px-6 py-3 rounded-xl text-sm font-bold text-white flex items-center gap-2 transition-all ${quizLoading || Object.keys(quizAnswers).length < quizQuestions.length ? 'bg-purple-900/50 cursor-not-allowed opacity-50' : 'accent-gradient glow-btn'}`}>
+                  {quizLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> AI Analyzing...</> : 'Complete Assessment'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {quizStep === 2 && (
+            <div className="text-center space-y-6">
+              <div className="w-20 h-20 rounded-full bg-green-500/20 border border-green-500 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.3)]">
+                <Check className="text-green-400" size={40} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Assessment Complete</h3>
+                <p className="text-sm text-purple-200 mt-2">You have been assigned to <strong className="text-purple-400 border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 rounded">Tier {currentUser.category || 'C'}</strong></p>
+              </div>
+              <button onClick={() => setShowQuiz(false)} className="w-full py-3 rounded-xl accent-gradient text-sm font-bold text-white glow-btn">
+                Enter AuraSuite Dashboard
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1220,6 +1421,59 @@ export default function AppContainer() {
           </div>
         </div>
       )}
+
+      {/* ── PRE-MEETING CHECKLIST MODAL ── */}
+      {preMeetingMeet && (
+        <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm glass-panel-glow border border-purple-500/30 rounded-3xl p-8 relative">
+            <div className="absolute inset-0 bg-purple-900/10 rounded-3xl animate-pulse pointer-events-none"></div>
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center shadow-[0_0_20px_rgba(147,51,234,0.4)] mx-auto mb-4">
+                <Video className="text-white" size={32} />
+              </div>
+              <h2 className="text-xl font-bold text-white leading-tight">Pre-Meeting Check</h2>
+              <p className="text-xs text-purple-300 mt-1">"{preMeetingMeet.title}"</p>
+            </div>
+            
+            <div className="space-y-4 mb-8">
+              {[
+                { id: 'mic', label: 'Microphone Works', icon: <Mic size={16}/> },
+                { id: 'cam', label: 'Camera Ready', icon: <Video size={16}/> },
+                { id: 'net', label: 'Stable Internet', icon: <Globe size={16}/> }
+              ].map(item => (
+                <label key={item.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${preMeetingChecklist[item.id] ? 'bg-purple-900/40 border-purple-400 shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-[#11081c] border-purple-500/20 hover:border-purple-500/50'}`}>
+                  <input type="checkbox" className="hidden"
+                    checked={preMeetingChecklist[item.id]}
+                    onChange={e => setPreMeetingChecklist(prev => ({ ...prev, [item.id]: e.target.checked }))} />
+                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border ${preMeetingChecklist[item.id] ? 'bg-purple-500 border-purple-400 text-white' : 'border-purple-500/50 text-transparent'}`}>
+                    <Check size={12} />
+                  </div>
+                  <div className={`text-sm font-bold flex items-center gap-2 ${preMeetingChecklist[item.id] ? 'text-white' : 'text-purple-300'}`}>
+                    {item.icon} {item.label}
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setPreMeetingMeet(null)}
+                className="py-3 px-4 rounded-xl bg-[#11081c] border border-purple-500/20 text-xs font-bold text-purple-300 hover:text-white transition-all">
+                Cancel
+              </button>
+              <button onClick={() => {
+                const allChecked = preMeetingChecklist.mic && preMeetingChecklist.cam && preMeetingChecklist.net;
+                if (!allChecked) { alert('Please complete the checklist to join.'); return; }
+                handleJoinMeeting(preMeetingMeet);
+                setPreMeetingMeet(null);
+              }}
+                className={`flex-1 py-3 rounded-xl text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${preMeetingChecklist.mic && preMeetingChecklist.cam && preMeetingChecklist.net ? 'accent-gradient glow-btn' : 'bg-purple-900/50 cursor-not-allowed opacity-50'}`}>
+                Join Live <ArrowRight size={16}/>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* ── ZOOM MEETING OVERLAY ── */}
       {isInMeeting && currentMeetingSession && (
@@ -1587,6 +1841,28 @@ export default function AppContainer() {
           </div>
         </div>
 
+        {/* Academy & Factory Toggles */}
+        {currentUser?.role === 'admin' && (
+          <div className="mb-5">
+            <label className="text-[9px] uppercase tracking-wider text-purple-500 font-bold block mb-2">Workspace Mode</label>
+            <div className="flex bg-[#120a1f] p-1 rounded-xl border border-purple-500/20">
+              {['software_house', 'academy', 'factory'].map(mode => (
+                <button key={mode} 
+                  onClick={async () => {
+                    const { error } = await supabase.from('organizations').update({ type: mode }).eq('id', activeOrg.id);
+                    if (!error) {
+                      setActiveOrg(prev => ({ ...prev, type: mode }));
+                      addNotification(`Workspace mode changed to ${mode.replace('_', ' ')}`, 'success');
+                    }
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all ${activeOrg?.type === mode ? 'bg-purple-600 text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
+                  {mode.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Online users */}
         <div className="mb-5">
           <label className="text-[9px] uppercase tracking-wider text-purple-500 font-bold block mb-2">Online Now</label>
@@ -1665,7 +1941,7 @@ export default function AppContainer() {
                   className="p-2 bg-[#120a1f] border border-purple-500/25 text-purple-300 hover:text-white rounded-xl text-xs">
                   {copiedMeetId === meet.id ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                 </button>
-                <button onClick={() => handleJoinMeeting(meet)}
+                <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ mic: false, cam: false, net: false }); }}
                   className="px-4 py-1.5 accent-gradient text-white rounded-xl text-xs font-bold glow-btn">
                   Join Now
                 </button>
@@ -1692,7 +1968,7 @@ export default function AppContainer() {
                   className="p-2 bg-[#120a1f] border border-purple-500/25 text-purple-300 rounded-xl">
                   {copiedMeetId === meet.id ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                 </button>
-                <button onClick={() => handleJoinMeeting(meet)}
+                <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ mic: false, cam: false, net: false }); }}
                   className="px-4 py-1.5 accent-gradient text-white rounded-xl text-xs font-bold glow-btn">
                   Join
                 </button>
@@ -1751,33 +2027,93 @@ export default function AppContainer() {
                 )}
               </div>
 
-              {/* Team Member Invite Link Generator Card */}
+              {/* Team Member Digital Card Generator */}
               <div className="glass-panel p-5 rounded-2xl border border-purple-500/10 space-y-4">
                 <div className="flex items-center gap-2">
-                  <Users size={16} className="text-purple-400" />
-                  <h3 className="text-sm font-bold text-white">Create Team Member & Generate Invite Link</h3>
+                  <CreditCard size={16} className="text-purple-400" />
+                  <h3 className="text-sm font-bold text-white">Generate Digital Access Card</h3>
                 </div>
                 
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!genInviteName) { alert('Please enter member name'); return; }
-                  const baseUrl = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://localhost:3000';
-                  const query = new URLSearchParams({
-                    inviteToken: genId('inv'),
-                    orgId: activeOrg.id,
-                    orgName: activeOrg.name,
+                  if (!genInviteName || !inviteEmail) { alert('Please enter name and email'); return; }
+                  
+                  const cardNumber = `AS-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+                  const tempUsername = genInviteName.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 100);
+                  const tempPassword = Math.random().toString(36).slice(-8);
+                  
+                  const newProfileId = genId('user');
+                  
+                  // 1. Create Profile
+                  const newProfile = {
+                    id: newProfileId,
+                    organization_id: activeOrg.id,
+                    email: inviteEmail,
+                    full_name: genInviteName,
                     role: genInviteRole,
-                    name: genInviteName,
-                    category: genInviteCategory,
-                    domain: genInviteDomain
-                  });
-                  const link = `${baseUrl}/?${query.toString()}`;
-                  setGeneratedLink(link);
-                  addNotification(`Invite link generated for ${genInviteName}!`, 'success');
+                    category: genInviteCategory || null,
+                    domain: genInviteDomain || '',
+                    skills: [],
+                    last_seen: now()
+                  };
+                  
+                  // 2. Create Digital Card
+                  const newCard = {
+                    card_number: cardNumber,
+                    username: tempUsername,
+                    temp_password: tempPassword,
+                    profile_id: newProfileId,
+                    organization_id: activeOrg.id,
+                    email: inviteEmail
+                  };
+                  
+                  try {
+                    const { error: pErr } = await supabase.from('profiles').insert(newProfile);
+                    if (pErr) throw pErr;
+                    
+                    const { error: cErr } = await supabase.from('digital_cards').insert(newCard);
+                    if (cErr) throw cErr;
+                    
+                    // 3. Send Email using our new API
+                    const res = await fetch('/api/send-invite', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        to: inviteEmail,
+                        name: genInviteName,
+                        cardNumber,
+                        username: tempUsername,
+                        tempPassword,
+                        orgName: activeOrg.name
+                      })
+                    });
+                    
+                    const emailData = await res.json();
+                    
+                    setProfiles(prev => [...prev, newProfile]);
+                    addNotification(`Digital Card generated & emailed to ${genInviteName}!`, 'success');
+                    
+                    if (!process.env.NEXT_PUBLIC_RESEND_API_KEY && !emailData.success) {
+                       setGeneratedLink(`CARD CREATED BUT EMAIL FAILED (Check Resend API Key). Card: ${cardNumber}, User: ${tempUsername}, Pass: ${tempPassword}`);
+                    } else {
+                       setGeneratedLink(`Card sent successfully! (Fallback copy - Card: ${cardNumber}, User: ${tempUsername}, Pass: ${tempPassword})`);
+                    }
+                    
+                    setGenInviteName('');
+                    setInviteEmail('');
+                    setGenInviteDomain('');
+                  } catch (err) {
+                    alert('Error creating card: ' + err.message);
+                  }
                 }} className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">Full Name</label>
                     <input type="text" placeholder="e.g. Zainab Ali" value={genInviteName} onChange={e => setGenInviteName(e.target.value)} required
+                      className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">Email Address</label>
+                    <input type="email" placeholder="zainab@example.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} required
                       className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none" />
                   </div>
                   <div>
@@ -1790,68 +2126,22 @@ export default function AppContainer() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">AI Tier (Category)</label>
-                    <select value={genInviteCategory} onChange={e => setGenInviteCategory(e.target.value)}
-                      className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none">
-                      <option value="">Unset</option>
-                      <option value="A">A – Senior / Lead</option>
-                      <option value="B">B – Mid Level</option>
-                      <option value="C">C – Junior</option>
-                    </select>
-                  </div>
-                  <div>
                     <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">Domain / Specialty</label>
                     <input type="text" placeholder="e.g. Front-end Developer" value={genInviteDomain} onChange={e => setGenInviteDomain(e.target.value)}
                       className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none" />
                   </div>
-                  <div className="md:col-span-4 flex justify-between items-center gap-3 pt-2">
-                    <button type="button" onClick={() => {
-                      if (!genInviteName) { alert('Please enter member name'); return; }
-                      const newId = genId('user');
-                      const newProfile = {
-                        id: newId,
-                        organization_id: activeOrg.id,
-                        email: `${genInviteName.toLowerCase().replace(/\s+/g, '')}@${activeOrg.name.toLowerCase().replace(/\s+/g, '')}.com`,
-                        full_name: genInviteName,
-                        role: genInviteRole,
-                        category: genInviteCategory || null,
-                        domain: genInviteDomain || '',
-                        skills: [],
-                        lastSeen: now()
-                      };
-                      setProfiles(prev => {
-                        const next = [...prev, newProfile];
-                        localStorage.setItem('as_profiles', JSON.stringify(next));
-                        return next;
-                      });
-                      addNotification(`Directly added ${genInviteName}! Email: ${newProfile.email} (Password: password)`, 'success');
-                      setGenInviteName('');
-                      setGenInviteDomain('');
-                    }} className="px-4 py-2 bg-purple-900/50 hover:bg-purple-900/80 border border-purple-500/30 text-purple-200 rounded-xl text-xs font-bold transition-all">
-                      Add Directly (Quick Add)
-                    </button>
-                    
-                    <button type="submit" className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
-                      Generate Invite Link
+                  <div className="md:col-span-4 flex justify-end items-center pt-2">
+                    <button type="submit" className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn flex items-center gap-2">
+                      <Send size={14} /> Send Digital Access Card
                     </button>
                   </div>
                 </form>
                 
                 {generatedLink && (
                   <div className="p-3.5 bg-[#140b20] border border-purple-500/30 rounded-xl space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-purple-300 uppercase">Shareable Invite Link</span>
-                      <button onClick={() => {
-                        navigator.clipboard.writeText(generatedLink);
-                        addNotification('Invite link copied!', 'success');
-                      }} className="text-[10px] text-purple-400 hover:text-white flex items-center gap-1 font-bold">
-                        <Copy size={11} /> Copy Link
-                      </button>
-                    </div>
-                    <div className="text-xs text-white bg-[#0a0510] p-2.5 rounded-lg border border-purple-500/10 select-all font-mono break-all leading-relaxed">
+                    <div className="text-xs text-white bg-[#0a0510] p-2.5 rounded-lg border border-purple-500/10 font-mono break-all leading-relaxed">
                       {generatedLink}
                     </div>
-                    <p className="text-[10px] text-purple-400">Send this link to the team member. When they open it, they will be prompted to set their email and password to join your organization.</p>
                   </div>
                 )}
               </div>
@@ -2109,7 +2399,7 @@ export default function AppContainer() {
                               {copiedMeetId === meet.id ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                             </button>
                             {(isMine || invited || currentUser.role === 'admin') && (
-                              <button onClick={() => handleJoinMeeting(meet)}
+                              <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ mic: false, cam: false, net: false }); }}
                                 className="px-4 py-1.5 accent-gradient text-white rounded-xl text-xs font-bold glow-btn">
                                 Join
                               </button>
