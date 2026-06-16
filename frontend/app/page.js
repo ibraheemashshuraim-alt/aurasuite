@@ -8,7 +8,8 @@ import {
   VideoOff, Monitor, ChevronRight, Check, Copy, LogOut,
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
-  AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight
+  AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
+  BrainCircuit
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -108,7 +109,11 @@ export default function AppContainer() {
   const [authCardNumber, setAuthCardNumber] = useState('');
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
   
+  const addNotification = (text, type = 'info') =>
+    setNotifications(prev => [{ id: Date.now(), text, type }, ...prev.slice(0, 9)]);
+
   // First time login & Quiz
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const [newPermanentPassword, setNewPermanentPassword] = useState('');
@@ -117,6 +122,7 @@ export default function AppContainer() {
   const [quizQuestions, setQuizQuestions] = useState([]);
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizStep, setQuizStep] = useState(0);
+  const [quizLoading, setQuizLoading] = useState(false);
 
   const [signUpName, setSignUpName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
@@ -445,11 +451,7 @@ export default function AppContainer() {
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [groupMessages, dmThreads, activeDmUser]);
-
   // ─────────────────── Auth ───────────────────
-  const addNotification = (text, type = 'info') =>
-    setNotifications(prev => [{ id: Date.now(), text, type }, ...prev.slice(0, 9)]);
-
   const handleLogin = async (e) => {
     e.preventDefault();
     if (authCardNumber) {
@@ -999,7 +1001,7 @@ export default function AppContainer() {
                 <Users className="text-white" size={24} />
               </div>
               <h1 className="font-bold text-2xl text-white tracking-wide">Join Team Workspace</h1>
-              <p className="text-xs text-purple-400 font-medium mt-1">Invited to join "{inviteOrgName}"</p>
+              <p className="text-xs text-purple-400 font-medium mt-1">Invited to join &quot;{inviteOrgName}&quot;</p>
             </div>
 
             <form onSubmit={handleInviteRegister} className="space-y-4">
@@ -1037,7 +1039,7 @@ export default function AppContainer() {
                   Cancel
                 </button>
                 <button type="submit" className="flex-1 py-2.5 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
-                  Join & Enter
+                  Join &amp; Enter
                 </button>
               </div>
             </form>
@@ -1071,7 +1073,11 @@ export default function AppContainer() {
             <form onSubmit={handleSetPermanentPassword} className="space-y-4">
               <div>
                 <label className="text-[10px] text-yellow-400 uppercase font-bold block mb-1.5 flex items-center gap-1"><Shield size={12}/> First-Time Security Setup</label>
-                <p className="text-xs text-white/70">Please set a permanent password for your digital access card to continue.</p>
+                <h3 className="text-xl font-bold text-white mb-2">Almost there, {currentUser.full_name}!</h3>
+                <p className="text-sm text-purple-200">
+                  You are logging in with a <span className="text-emerald-400 font-bold">Digital Access Card</span>.<br/>
+                  Please create a secure password to finalize your account setup. This will be required for future logins.
+                </p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-purple-300 block mb-1">New Permanent Password</label>
@@ -1079,7 +1085,7 @@ export default function AppContainer() {
                   className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
               </div>
               <button type="submit" className="w-full py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn mt-4 flex items-center justify-center gap-2">
-                <Lock size={14} /> Set Password & Enter Dashboard
+                <Lock size={14} /> Set Password &amp; Enter Dashboard
               </button>
             </form>
           ) : authTab === 'login' ? (
@@ -1159,7 +1165,7 @@ export default function AppContainer() {
                 </div>
               </div>
               <button type="submit" className="w-full py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn mt-2">
-                Register & Enter Portal
+                Register &amp; Enter Portal
               </button>
             </form>
           )}
@@ -1275,7 +1281,7 @@ export default function AppContainer() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white">Invite Members to Meeting</h3>
-                <p className="text-[10px] text-purple-300 mt-0.5">"{meetingInviteModal.title}" · ID: {meetingInviteModal.meeting_id}</p>
+                <p className="text-[10px] text-purple-300 mt-0.5">&quot;{meetingInviteModal.title}&quot; · ID: {meetingInviteModal.meeting_id}</p>
               </div>
               <button onClick={() => setMeetingInviteModal(null)} className="p-1.5 hover:bg-purple-900/40 rounded-lg text-purple-400">
                 <X size={16} />
