@@ -68,9 +68,9 @@ export async function POST(request) {
 
     // Send the email
     const info = await transporter.sendMail({
-      from: \`"AuraSuite Admin" <\${process.env.EMAIL_USER}>\`,
+      from: `"AuraSuite Admin" <${process.env.EMAIL_USER}>`,
       to: to,
-      subject: \`Your Digital Access Card for \${orgName || 'AuraSuite'}\`,
+      subject: `Your Digital Access Card for ${orgName || 'AuraSuite'}`,
       html: htmlContent,
     });
 
