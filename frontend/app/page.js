@@ -522,25 +522,18 @@ export default function AppContainer() {
     }).eq('id', tempDigitalCard.id);
     if (cardErr) { alert('Failed to update password: ' + cardErr.message); return; }
 
-    // If worker was pending, create their profile now (first time joining)
+    // If worker was pending, their profile exists but has role 'pending_worker'. Let's update it.
     let user = profiles.find(u => u.id === tempDigitalCard.profile_id);
-    if (!user && tempDigitalCard.is_pending) {
-      const newProfileId = tempDigitalCard.profile_id || genId('user');
-      const newProfile = {
-        id: newProfileId,
-        organization_id: tempDigitalCard.organization_id,
-        email: tempDigitalCard.email,
-        full_name: tempDigitalCard.full_name || tempDigitalCard.username,
-        role: tempDigitalCard.role || 'worker',
-        category: tempDigitalCard.category || null,
-        domain: tempDigitalCard.domain || '',
-        skills: [],
-        last_seen: now()
-      };
-      const { error: profErr } = await supabase.from('profiles').insert(newProfile);
-      if (profErr) { alert('Failed to create profile: ' + profErr.message); return; }
-      setProfiles(prev => [...prev, newProfile]);
-      user = newProfile;
+    if (user && user.role === 'pending_worker') {
+      const realRole = tempDigitalCard.role || 'worker';
+      const { error: profUpdateErr } = await supabase.from('profiles').update({
+        role: realRole
+      }).eq('id', user.id);
+      
+      if (!profUpdateErr) {
+        user = { ...user, role: realRole };
+        setProfiles(prev => prev.map(p => p.id === user.id ? user : p));
+      }
     }
 
     if (user) {
@@ -2104,7 +2097,20 @@ export default function AppContainer() {
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
                   const inviteLink = `${baseUrl}/?card=${cardNumber}&username=${tempUsername}`;
 
-                  // Create Digital Card ONLY (pending=true) — profile created after worker logs in
+                  // 1. Create Profile (as 'pending_worker' to hide from UI until they login)
+                  const newProfile = {
+                    id: newProfileId,
+                    organization_id: activeOrg.id,
+                    email: inviteEmail,
+                    full_name: genInviteName,
+                    role: 'pending_worker',
+                    category: genInviteCategory || null,
+                    domain: genInviteDomain || '',
+                    skills: [],
+                    last_seen: now()
+                  };
+
+                  // 2. Create Digital Card with actual real role (pending=true)
                   const newCard = {
                     card_number: cardNumber,
                     username: tempUsername,
@@ -2113,13 +2119,16 @@ export default function AppContainer() {
                     organization_id: activeOrg.id,
                     email: inviteEmail,
                     full_name: genInviteName,
-                    role: genInviteRole,
+                    role: genInviteRole, // store real role here
                     category: genInviteCategory || null,
                     domain: genInviteDomain || '',
                     is_pending: true
                   };
                   
                   try {
+                    const { error: pErr } = await supabase.from('profiles').insert(newProfile);
+                    if (pErr) throw pErr;
+
                     const { error: cErr } = await supabase.from('digital_cards').insert(newCard);
                     if (cErr) throw cErr;
                     
