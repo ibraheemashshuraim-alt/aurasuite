@@ -1003,7 +1003,7 @@ export default function AppContainer() {
   };
 
   // ─────────────────── Derived ───────────────────
-  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id);
+  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'pending_worker');
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
