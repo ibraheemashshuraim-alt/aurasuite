@@ -375,17 +375,21 @@ export default function AppContainer() {
   useEffect(() => {
     if (mounted && typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const token = params.get('inviteToken');
-      // Auto-fill card login from portal link (?card=AS-xxx&username=xxx)
-      const cardParam = params.get('card');
-      const usernameParam = params.get('username');
-      if (cardParam && usernameParam) {
-        setAuthCardNumber(cardParam);
-        setAuthUsername(usernameParam);
-        setLoginMode('worker');
+      // Auto-fill card login from base64 token (?t=...)
+      const loginTokenParam = params.get('t');
+      if (loginTokenParam) {
+        try {
+          const decoded = JSON.parse(atob(loginTokenParam));
+          if (decoded.card && decoded.username) {
+            setAuthCardNumber(decoded.card);
+            setAuthUsername(decoded.username);
+            setLoginMode('worker');
+          }
+        } catch(e) { /* ignore invalid token */ }
       }
-      if (token) {
-        setInviteToken(token);
+      const inviteToken = params.get('inviteToken');
+      if (inviteToken) {
+        setInviteToken(inviteToken);
         setInviteOrgId(params.get('orgId') || '');
         setInviteOrgName(params.get('orgName') || 'Workspace');
         setInviteRole(params.get('role') || 'worker');
@@ -2115,9 +2119,10 @@ export default function AppContainer() {
                   const tempPassword = Math.random().toString(36).slice(-8);
                   const newProfileId = genId('user');
 
-                  // Build the invite link that the worker will use
+                  // Build the invite link using a single base64 token (no & in URL = no encoding issues)
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
-                  const inviteLink = `${baseUrl}/?card=${cardNumber}&username=${tempUsername}`;
+                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername }));
+                  const inviteLink = `${baseUrl}/?t=${loginToken}`;
 
                   // 1. Create Profile (as 'pending_worker' to hide from UI until they login)
                   const newProfile = {

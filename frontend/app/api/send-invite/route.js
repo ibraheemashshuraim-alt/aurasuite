@@ -4,8 +4,6 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { to, name, cardNumber, username, tempPassword, orgName, inviteLink } = body;
-    // Fix: properly encode & in HTML href to avoid &amp; breaking the link
-    const safeLink = inviteLink ? inviteLink.replace(/&/g, '&amp;') : '';
 
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.warn('EMAIL_USER or EMAIL_PASS not set in environment variables');
@@ -49,7 +47,7 @@ export async function POST(request) {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${safeLink}" style="background-color: #9333ea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Access Your Portal</a>
+          <a href="${inviteLink}" style="background-color: #9333ea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Access Your Portal</a>
         </div>
         
         <div style="background-color: #1a1025; padding: 15px; border-radius: 8px; font-size: 12px; color: #d8b4fe;">
