@@ -2088,6 +2088,11 @@ export default function AppContainer() {
                   e.preventDefault();
                   if (!genInviteName || !inviteEmail) { alert('Please enter name and email'); return; }
                   
+                  if (profiles.some(p => p.email.toLowerCase() === inviteEmail.toLowerCase())) {
+                    alert('This email is already registered in the system! \\n\\nIf you are just testing the email feature, please use a different email, or use a Gmail alias like:\\nyourname+test1@gmail.com');
+                    return;
+                  }
+                  
                   const cardNumber = `AS-2026-${Math.floor(1000 + Math.random() * 9000)}`;
                   const tempUsername = genInviteName.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 100);
                   const tempPassword = Math.random().toString(36).slice(-8);
