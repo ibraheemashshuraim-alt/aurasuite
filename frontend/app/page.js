@@ -376,6 +376,14 @@ export default function AppContainer() {
     if (mounted && typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const token = params.get('inviteToken');
+      // Auto-fill card login from portal link (?card=AS-xxx&username=xxx)
+      const cardParam = params.get('card');
+      const usernameParam = params.get('username');
+      if (cardParam && usernameParam) {
+        setAuthCardNumber(cardParam);
+        setAuthUsername(usernameParam);
+        setLoginMode('worker');
+      }
       if (token) {
         setInviteToken(token);
         setInviteOrgId(params.get('orgId') || '');
@@ -2088,9 +2096,18 @@ export default function AppContainer() {
                   e.preventDefault();
                   if (!genInviteName || !inviteEmail) { alert('Please enter name and email'); return; }
                   
-                  if (profiles.some(p => p.email.toLowerCase() === inviteEmail.toLowerCase())) {
-                    alert('This email is already registered in the system! \\n\\nIf you are just testing the email feature, please use a different email, or use a Gmail alias like:\\nyourname+test1@gmail.com');
-                    return;
+                  // Check if this email exists - if it's a pending_worker, allow re-invite by deleting old records
+                  const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
+                  if (existingProfile) {
+                    if (existingProfile.role === 'pending_worker') {
+                      // Delete old pending profile and card so we can re-invite
+                      await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
+                      await supabase.from('profiles').delete().eq('id', existingProfile.id);
+                      setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
+                    } else {
+                      alert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
+                      return;
+                    }
                   }
                   
                   const cardNumber = `AS-2026-${Math.floor(1000 + Math.random() * 9000)}`;
