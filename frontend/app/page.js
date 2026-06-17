@@ -2153,6 +2153,10 @@ export default function AppContainer() {
                     });
                     
                     const emailData = await res.json();
+                    if (!emailData.success) {
+                      throw new Error('Email failed to send: ' + (emailData.error || emailData.message || 'Unknown error'));
+                    }
+                    
                     addNotification(`Invite sent to ${genInviteName}! They will appear in the team once they complete onboarding.`, 'success');
                     setGeneratedLink(inviteLink);
                     setGenInviteName('');
