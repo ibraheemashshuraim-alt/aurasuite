@@ -100,6 +100,61 @@ function ParticipantTile({ part, stream, isHost, isMe, isMain }) {
   );
 }
 
+// ─── Digital Card Visual ────────────────────────────────────────
+function DigitalCardVisual({ cardData }) {
+  if (!cardData) return null;
+  const { role, full_name, card_number, domain } = cardData;
+  
+  let bgClass = "bg-gradient-to-br from-purple-900 to-indigo-900 border-purple-500/30";
+  let icon = <Briefcase size={20} className="text-purple-300" />;
+  let roleTitle = "Team Member";
+
+  if (role === 'client') {
+    bgClass = "bg-gradient-to-br from-[#2a1b10] to-[#1a1410] border-yellow-500/30";
+    icon = <Star size={20} className="text-yellow-400" />;
+    roleTitle = "Valued Client";
+  } else if (role === 'admin') {
+    bgClass = "bg-gradient-to-br from-red-950 to-rose-950 border-red-500/30";
+    icon = <Shield size={20} className="text-red-400" />;
+    roleTitle = "Administrator";
+  } else if (role === 'student') {
+    bgClass = "bg-gradient-to-br from-emerald-950 to-teal-950 border-emerald-500/30";
+    icon = <BookOpen size={20} className="text-emerald-400" />;
+    roleTitle = "Academy Student";
+  } else if (role === 'teacher') {
+    bgClass = "bg-gradient-to-br from-blue-950 to-cyan-950 border-blue-500/30";
+    icon = <Award size={20} className="text-blue-400" />;
+    roleTitle = "Academy Instructor";
+  } else if (role === 'manager') {
+    bgClass = "bg-gradient-to-br from-slate-800 to-gray-900 border-gray-500/30";
+    icon = <Factory size={20} className="text-gray-300" />;
+    roleTitle = "Factory Manager";
+  }
+
+  return (
+    <div className={`relative w-full max-w-sm mx-auto rounded-xl border p-5 overflow-hidden shadow-2xl ${bgClass}`}>
+      <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
+      <div className="relative flex justify-between items-start mb-6">
+        <div>
+          <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider mb-1">AuraSuite Access Card</div>
+          <div className="text-lg font-bold text-white leading-tight">{full_name}</div>
+          <div className="text-xs text-white/70 mt-0.5">{roleTitle} {domain && `• ${domain}`}</div>
+        </div>
+        <div className="p-2.5 bg-black/30 rounded-xl border border-white/10 shadow-inner">
+          {icon}
+        </div>
+      </div>
+      <div className="relative flex justify-between items-end mt-4">
+        <div>
+          <div className="text-[8px] uppercase font-bold text-white/40 mb-0.5">Card Number</div>
+          <div className="font-mono text-sm text-white/90 tracking-widest">{card_number}</div>
+        </div>
+        <div className="text-[10px] font-bold text-white/30 tracking-widest">VALIDATED</div>
+      </div>
+    </div>
+  );
+}
+
 export default function AppContainer() {
   const [mounted, setMounted] = useState(false);
 
@@ -244,6 +299,7 @@ export default function AppContainer() {
   const [genInviteCategory, setGenInviteCategory] = useState('B');
   const [genInviteDomain, setGenInviteDomain] = useState('');
   const [generatedLink, setGeneratedLink] = useState('');
+  const [generatedCardData, setGeneratedCardData] = useState(null);
   
   // ── Pre-Meeting Checklist ──
   const [preMeetingMeet, setPreMeetingMeet] = useState(null);
@@ -293,8 +349,32 @@ export default function AppContainer() {
         console.error('Supabase load error', err);
       }
     };
-    loadAll();
+    loadAll().then(() => {
+      // Auto Login from localStorage
+      const savedSession = localStorage.getItem('aura_session');
+      if (savedSession) {
+        try {
+          const { userId } = JSON.parse(savedSession);
+          supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser}) => {
+            if (savedUser) {
+              supabase.from('organizations').select('*').eq('id', savedUser.organization_id).single().then(({data: savedOrg}) => {
+                setCurrentUser(savedUser);
+                setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
+                setIsLoggedIn(true);
+              });
+            }
+          });
+        } catch(e) {}
+      }
+    });
   }, []);
+
+  // ── Session persistence ──
+  useEffect(() => {
+    if (currentUser && activeOrg) {
+      localStorage.setItem('aura_session', JSON.stringify({ userId: currentUser.id, orgId: activeOrg.id }));
+    }
+  }, [currentUser, activeOrg]);
 
   // ─────────────────── Supabase Realtime Subscriptions ───────────────────
   useEffect(() => {
@@ -553,7 +633,11 @@ export default function AppContainer() {
       setCurrentUser(user);
       setActiveOrg(org);
       setIsLoggedIn(true);
-      setShowQuiz(true);
+      if (user.role === 'worker' || user.role === 'student') {
+        setShowQuiz(true);
+      } else {
+        setShowQuiz(false);
+      }
       setForcePasswordChange(false);
       addNotification(`Welcome ${user.full_name}! Password set successfully.`, 'success');
     } else {
@@ -635,6 +719,7 @@ export default function AppContainer() {
     if (currentUser) {
       await supabase.from('presence').delete().eq('user_id', currentUser.id);
     }
+    localStorage.removeItem('aura_session');
     setIsLoggedIn(false);
     setCurrentUser(null);
     setActiveOrg(null);
@@ -1109,11 +1194,11 @@ export default function AppContainer() {
 
           {forcePasswordChange ? (
             <form onSubmit={handleSetPermanentPassword} className="space-y-4">
-              <div>
+              <div className="mb-4">
                 <label className="text-[10px] text-yellow-400 uppercase font-bold block mb-1.5 flex items-center gap-1"><Shield size={12}/> First-Time Security Setup</label>
-                <h3 className="text-xl font-bold text-white mb-2">Almost there, {tempDigitalCard?.full_name}!</h3>
-                <p className="text-sm text-purple-200">
-                  You are logging in with a <span className="text-emerald-400 font-bold">Digital Access Card</span>.<br/>
+                <h3 className="text-xl font-bold text-white mb-4">Almost there!</h3>
+                <DigitalCardVisual cardData={tempDigitalCard} />
+                <p className="text-sm text-purple-200 mt-4 text-center">
                   Please create a secure password to finalize your account setup. This will be required for future logins.
                 </p>
               </div>
@@ -1233,11 +1318,19 @@ export default function AppContainer() {
   // ══════════════════ AI QUIZ (ONBOARDING) ══════════════════
   if (showQuiz) {
     const handleQuizStart = () => {
-      setQuizQuestions([
-        { id: 1, question: 'What is your primary domain of expertise?', options: ['Software Development', 'Design/Creative', 'Management', 'Operations'] },
-        { id: 2, question: 'Which programming languages are you most comfortable with?', options: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'Not Applicable'] },
-        { id: 3, question: 'How many years of experience do you have?', options: ['0-2 Years', '3-5 Years', '5-10 Years', '10+ Years'] }
-      ]);
+      if (currentUser?.role === 'student') {
+        setQuizQuestions([
+          { id: 1, question: 'What is your current education level?', options: ['High School', 'Undergraduate', 'Postgraduate', 'Other'] },
+          { id: 2, question: 'Which field are you most interested in?', options: ['Computer Science', 'Business/Management', 'Arts/Design', 'Engineering'] },
+          { id: 3, question: 'How much time can you dedicate weekly?', options: ['< 5 Hours', '5-10 Hours', '10-20 Hours', '20+ Hours'] }
+        ]);
+      } else {
+        setQuizQuestions([
+          { id: 1, question: 'What is your primary domain of expertise?', options: ['Software Development', 'Design/Creative', 'Management', 'Operations'] },
+          { id: 2, question: 'Which programming languages are you most comfortable with?', options: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'Not Applicable'] },
+          { id: 3, question: 'How many years of experience do you have?', options: ['0-2 Years', '3-5 Years', '5-10 Years', '10+ Years'] }
+        ]);
+      }
       setQuizStep(1);
     };
 
@@ -1245,16 +1338,31 @@ export default function AppContainer() {
       setQuizLoading(true);
       // Simulate AI Processing
       setTimeout(async () => {
-        // Tag user category
-        const score = Object.keys(quizAnswers).length;
         let newCategory = 'C';
-        if (score >= 3 && quizAnswers[3] === '10+ Years') newCategory = 'A';
-        else if (score >= 3 && quizAnswers[3] === '5-10 Years') newCategory = 'B';
-        else newCategory = 'C';
+        let newDomain = currentUser?.domain || '';
 
-        await supabase.from('profiles').update({ category: newCategory }).eq('id', currentUser.id);
+        if (currentUser?.role === 'student') {
+          if (quizAnswers[3] === '20+ Hours') newCategory = 'A';
+          else if (quizAnswers[3] === '10-20 Hours') newCategory = 'B';
+          newDomain = quizAnswers[2] || 'Student';
+        } else {
+          const score = Object.keys(quizAnswers).length;
+          if (score >= 3 && quizAnswers[3] === '10+ Years') newCategory = 'A';
+          else if (score >= 3 && quizAnswers[3] === '5-10 Years') newCategory = 'B';
+          
+          if (quizAnswers[1] === 'Software Development') {
+             if (quizAnswers[2] === 'JavaScript/TypeScript') newDomain = 'Frontend/Fullstack Dev';
+             else if (quizAnswers[2] === 'Python') newDomain = 'Backend/AI Dev';
+             else newDomain = 'Software Engineer';
+          } else if (quizAnswers[1]) {
+             newDomain = quizAnswers[1];
+          }
+        }
+
+        await supabase.from('profiles').update({ category: newCategory, domain: newDomain }).eq('id', currentUser.id);
         
-        setCurrentUser(prev => ({ ...prev, category: newCategory }));
+        setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain }));
+        setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain } : p));
         setQuizLoading(false);
         setQuizStep(2); // result step
       }, 2000);
@@ -1879,11 +1987,15 @@ export default function AppContainer() {
               { id: 'dashboard', icon: <LayoutDashboard size={15} />, label: 'Dashboard' },
               { id: 'admin', icon: <Shield size={15} />, label: 'Admin Control', adminOnly: true },
               { id: 'meetings', icon: <Video size={15} />, label: 'Meetings' },
-              { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat' },
-              { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules' },
-              { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials' },
+              { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat', hideForClient: true },
+              { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules', hideForClient: true },
+              { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials', hideForClient: true },
               { id: 'settings', icon: <Settings size={15} />, label: 'Settings' },
-            ].filter(item => !item.adminOnly || currentUser.role === 'admin').map(item => (
+            ].filter(item => {
+              if (item.adminOnly && currentUser.role !== 'admin' && currentUser.role !== 'manager') return false;
+              if (item.hideForClient && currentUser.role === 'client') return false;
+              return true;
+            }).map(item => (
               <button key={item.id} onClick={() => setActiveTab(item.id)}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === item.id ? 'bg-purple-900/40 border border-purple-500/30 text-white' : 'text-purple-300 hover:bg-[#191325] hover:text-white'}`}>
                 <span className="text-purple-400">{item.icon}</span>
@@ -2181,6 +2293,7 @@ export default function AppContainer() {
                     
                     addNotification(`Invite sent to ${genInviteName}! They will appear in the team once they complete onboarding.`, 'success');
                     setGeneratedLink(inviteLink);
+                    setGeneratedCardData(newCard);
                     setGenInviteName('');
                     setInviteEmail('');
                     setGenInviteDomain('');
@@ -2202,9 +2315,24 @@ export default function AppContainer() {
                     <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">Assigned Role</label>
                     <select value={genInviteRole} onChange={e => setGenInviteRole(e.target.value)}
                       className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none">
-                      <option value="worker">Worker / Staff</option>
-                      <option value="client">Client</option>
-                      <option value="admin">Sub-Admin</option>
+                      {activeOrg?.type === 'academy' ? (
+                        <>
+                          <option value="student">Student</option>
+                          <option value="teacher">Teacher</option>
+                          <option value="admin">Admin</option>
+                        </>
+                      ) : activeOrg?.type === 'factory' ? (
+                        <>
+                          <option value="worker">Factory Worker</option>
+                          <option value="manager">Manager</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="worker">Worker / Staff</option>
+                          <option value="client">Client</option>
+                          <option value="admin">Sub-Admin</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div>
@@ -2219,10 +2347,11 @@ export default function AppContainer() {
                   </div>
                 </form>
                 
-                {generatedLink && (
-                  <div className="p-3.5 bg-[#140b20] border border-purple-500/30 rounded-xl space-y-2">
-                    <div className="text-xs text-white bg-[#0a0510] p-2.5 rounded-lg border border-purple-500/10 font-mono break-all leading-relaxed">
-                      {generatedLink}
+                {generatedLink && generatedCardData && (
+                  <div className="p-3.5 bg-[#140b20] border border-purple-500/30 rounded-xl space-y-4">
+                    <DigitalCardVisual cardData={generatedCardData} />
+                    <div className="text-xs text-white bg-[#0a0510] p-2.5 rounded-lg border border-purple-500/10 font-mono break-all leading-relaxed text-center">
+                      Email Sent Successfully! ✅
                     </div>
                   </div>
                 )}
@@ -2681,6 +2810,63 @@ export default function AppContainer() {
                       <div className="text-[10px] text-purple-600 mt-0.5">{s.sub}</div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* CLIENT VIEW */}
+              {currentUser.role === 'client' && (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="glass-panel p-5 rounded-2xl border border-yellow-500/20">
+                      <div className="flex items-center gap-2 mb-2"><Star size={16} className="text-yellow-400" /><h3 className="font-bold text-white text-sm">Project Status</h3></div>
+                      <div className="text-3xl font-bold text-yellow-400 mt-2">Active</div>
+                      <p className="text-xs text-yellow-200/50 mt-1">Your project is on track.</p>
+                    </div>
+                    <div className="glass-panel p-5 rounded-2xl border border-blue-500/20">
+                      <div className="flex items-center gap-2 mb-2"><CreditCard size={16} className="text-blue-400" /><h3 className="font-bold text-white text-sm">Outstanding Balance</h3></div>
+                      <div className="text-3xl font-bold text-blue-400 mt-2">PKR 0</div>
+                      <p className="text-xs text-blue-200/50 mt-1">All invoices paid.</p>
+                    </div>
+                    <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20">
+                      <div className="flex items-center gap-2 mb-2"><Clock size={16} className="text-emerald-400" /><h3 className="font-bold text-white text-sm">Completed Tasks</h3></div>
+                      <div className="text-3xl font-bold text-emerald-400 mt-2">{tasks.filter(t => t.status === 'done').length}</div>
+                      <p className="text-xs text-emerald-200/50 mt-1">Tasks delivered successfully.</p>
+                    </div>
+                  </div>
+                  
+                  <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
+                    <h3 className="text-sm font-bold text-white mb-4">Recent Updates</h3>
+                    {tasks.filter(t => t.status === 'done').slice(0, 5).map(t => (
+                      <div key={t.id} className="flex justify-between items-center py-2 border-b border-purple-500/10 last:border-0">
+                        <span className="text-xs text-white">{t.title}</span>
+                        <span className="text-[10px] text-emerald-400 font-bold px-2 py-1 bg-emerald-900/20 rounded-md">Completed</span>
+                      </div>
+                    ))}
+                    {tasks.filter(t => t.status === 'done').length === 0 && <div className="text-xs text-white/50">No updates yet.</div>}
+                  </div>
+                </div>
+              )}
+
+              {/* FACTORY MANAGER VIEW */}
+              {currentUser.role === 'manager' && (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="glass-panel p-5 rounded-2xl border border-purple-500/20">
+                      <div className="flex items-center gap-2 mb-2"><Factory size={16} className="text-purple-400" /><h3 className="font-bold text-white text-sm">Active Lines</h3></div>
+                      <div className="text-3xl font-bold text-purple-400 mt-2">4 / 5</div>
+                      <p className="text-xs text-purple-200/50 mt-1">Production lines operational.</p>
+                    </div>
+                    <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20">
+                      <div className="flex items-center gap-2 mb-2"><Users size={16} className="text-emerald-400" /><h3 className="font-bold text-white text-sm">Shift Workers</h3></div>
+                      <div className="text-3xl font-bold text-emerald-400 mt-2">{orgUsers.filter(u => onlineUsers.includes(u.id)).length}</div>
+                      <p className="text-xs text-emerald-200/50 mt-1">Workers clocked in today.</p>
+                    </div>
+                    <div className="glass-panel p-5 rounded-2xl border border-blue-500/20">
+                      <div className="flex items-center gap-2 mb-2"><TrendingUp size={16} className="text-blue-400" /><h3 className="font-bold text-white text-sm">Daily Output</h3></div>
+                      <div className="text-3xl font-bold text-blue-400 mt-2">92%</div>
+                      <p className="text-xs text-blue-200/50 mt-1">Efficiency target reached.</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
