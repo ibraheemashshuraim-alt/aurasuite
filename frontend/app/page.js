@@ -1111,7 +1111,7 @@ export default function AppContainer() {
             <form onSubmit={handleSetPermanentPassword} className="space-y-4">
               <div>
                 <label className="text-[10px] text-yellow-400 uppercase font-bold block mb-1.5 flex items-center gap-1"><Shield size={12}/> First-Time Security Setup</label>
-                <h3 className="text-xl font-bold text-white mb-2">Almost there, {currentUser.full_name}!</h3>
+                <h3 className="text-xl font-bold text-white mb-2">Almost there, {tempDigitalCard?.full_name}!</h3>
                 <p className="text-sm text-purple-200">
                   You are logging in with a <span className="text-emerald-400 font-bold">Digital Access Card</span>.<br/>
                   Please create a secure password to finalize your account setup. This will be required for future logins.
