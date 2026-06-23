@@ -114,10 +114,14 @@ function DigitalCardVisual({ cardData }) {
     bgClass = "bg-gradient-to-br from-[#2a1b10] to-[#1a1410] border-yellow-500/30";
     icon = <Star size={20} className="text-yellow-400" />;
     roleTitle = "Valued Client";
-  } else if (role === 'admin') {
+  } else if (role === 'admin' || role === 'super_admin') {
     bgClass = "bg-gradient-to-br from-red-950 to-rose-950 border-red-500/30";
     icon = <Shield size={20} className="text-red-400" />;
-    roleTitle = "Administrator";
+    roleTitle = "Super Administrator";
+  } else if (role === 'sub_admin') {
+    bgClass = "bg-gradient-to-br from-orange-950 to-amber-950 border-orange-500/30";
+    icon = <UserCheck size={20} className="text-orange-400" />;
+    roleTitle = "Sub-Admin";
   } else if (role === 'student') {
     bgClass = "bg-gradient-to-br from-emerald-950 to-teal-950 border-emerald-500/30";
     icon = <BookOpen size={20} className="text-emerald-400" />;
@@ -352,6 +356,14 @@ export default function AppContainer() {
       }
     };
     loadAll().then(() => {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('t') || params.get('inviteToken')) {
+        // If they are clicking an invite link, skip auto-login so they can register their new profile
+        localStorage.removeItem('aura_session');
+        setIsCheckingSession(false);
+        return;
+      }
+      
       // Auto Login from localStorage
       const savedSession = localStorage.getItem('aura_session');
       if (savedSession) {
@@ -927,7 +939,7 @@ export default function AppContainer() {
 
   const handleEndMeeting = async () => {
     cleanupWebRTC();
-    const isHost = currentUser.id === currentMeetingSession?.host_id || currentUser.role === 'admin';
+    const isHost = currentUser.id === currentMeetingSession?.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role);
     if (isHost) {
       await supabase.from('meetings').update({ is_active: false }).eq('id', currentMeetingSession.id);
       await supabase.from('meeting_states').delete().eq('meeting_id', currentMeetingSession.id);
@@ -1696,7 +1708,7 @@ export default function AppContainer() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {(currentUser.id === currentMeetingSession.host_id || currentUser.role === 'admin') && (
+              {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                 <button onClick={() => { setMeetingInviteModal(currentMeetingSession); setSelectedInvitees([]); }}
                   className="px-3 py-2 bg-purple-900/50 hover:bg-purple-800/60 border border-purple-500/30 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5">
                   <Send size={12} /> Invite Members
@@ -1704,7 +1716,7 @@ export default function AppContainer() {
               )}
               <button onClick={handleEndMeeting}
                 className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-all">
-                {currentUser.id === currentMeetingSession.host_id || currentUser.role === 'admin' ? 'End for All' : 'Leave'}
+                {currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) ? 'End for All' : 'Leave'}
               </button>
             </div>
           </header>
@@ -1818,7 +1830,7 @@ export default function AppContainer() {
                         </div>
                       </div>
                       {/* Host controls for individual participants */}
-                      {(currentUser.id === currentMeetingSession.host_id || currentUser.role === 'admin') && part.id !== currentUser.id && (
+                      {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && part.id !== currentUser.id && (
                         <div className="hidden group-hover:flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-purple-500/10 justify-end">
                            <button onClick={() => handleHostMuteParticipant(part.id)} className="text-[9px] px-2 py-1 bg-purple-950/40 text-purple-300 rounded font-bold hover:bg-purple-900/50">Force Mute</button>
                            <button onClick={() => {
@@ -1841,7 +1853,7 @@ export default function AppContainer() {
             )}
 
             {/* Host Tools Sidebar */}
-            {showHostTools && (currentUser.id === currentMeetingSession.host_id || currentUser.role === 'admin') && (
+            {showHostTools && (currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
               <div className="w-72 flex flex-col bg-[#0b0713] border-l border-purple-500/15 shrink-0 shadow-2xl relative z-10 animate-in slide-in-from-right-8 duration-200">
                 <div className="px-4 py-3 border-b border-purple-500/10 flex items-center justify-between shrink-0">
                   <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5"><Shield size={12}/> Host Tools</span>
@@ -1993,7 +2005,7 @@ export default function AppContainer() {
                 <MessageSquare size={16} />
                 <span className="text-[9px] font-bold">Chat</span>
               </button>
-              {(currentUser.id === currentMeetingSession.host_id || currentUser.role === 'admin') && (
+              {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                 <button onClick={() => { setShowHostTools(!showHostTools); setShowMeetingChat(false); setShowMeetingParticipants(false); }}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${showHostTools ? 'text-yellow-400 bg-yellow-900/20' : 'text-yellow-600 hover:bg-yellow-900/10 hover:text-yellow-500'}`}>
                   <Shield size={16} />
@@ -2188,7 +2200,7 @@ export default function AppContainer() {
           ))}
 
           {/* ═══════ ADMIN PANEL ═══════ */}
-          {activeTab === 'admin' && currentUser.role === 'admin' && (
+          {activeTab === 'admin' && ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) && (
             <div className="space-y-6">
 
               {/* Stats Row */}
@@ -2319,7 +2331,8 @@ export default function AppContainer() {
                         username: tempUsername,
                         tempPassword,
                         orgName: activeOrg.name,
-                        inviteLink
+                        inviteLink,
+                        role: genInviteRole
                       })
                     });
                     
@@ -2367,7 +2380,8 @@ export default function AppContainer() {
                         <>
                           <option value="worker">Worker / Staff</option>
                           <option value="client">Client</option>
-                          <option value="admin">Sub-Admin</option>
+                          <option value="sub_admin">Sub-Admin</option>
+                          <option value="super_admin">Super Admin</option>
                         </>
                       )}
                     </select>
@@ -2428,7 +2442,7 @@ export default function AppContainer() {
                           </td>
                           <td className="px-4 py-3">
                             <span className={`px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase border ${
-                              user.role === 'admin' ? 'bg-purple-950/50 border-purple-500/30 text-purple-300' :
+                              ['admin', 'super_admin'].includes(user.role) ? 'bg-purple-950/50 border-purple-500/30 text-purple-300' :
                               user.role === 'worker' ? 'bg-indigo-950/40 border-indigo-500/20 text-indigo-300' :
                               'bg-yellow-950/30 border-yellow-500/20 text-yellow-300'
                             }`}>{user.role}</span>
@@ -2652,7 +2666,7 @@ export default function AppContainer() {
                               className="p-2 bg-[#120a1f] border border-purple-500/25 text-purple-300 hover:text-white rounded-xl">
                               {copiedMeetId === meet.id ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                             </button>
-                            {(isMine || invited || currentUser.role === 'admin') && (
+                            {(isMine || invited || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                               <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ mic: false, cam: false, net: false }); }}
                                 className="px-4 py-1.5 accent-gradient text-white rounded-xl text-xs font-bold glow-btn">
                                 Join
@@ -2836,7 +2850,7 @@ export default function AppContainer() {
           {activeTab === 'dashboard' && (
             <div className="space-y-5">
               {/* ADMIN QUICK VIEW */}
-              {currentUser.role === 'admin' && (
+              {['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) && (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
                     { label: 'Total Members', value: orgUsers.length, icon: <Users size={16} />, sub: `${orgUsers.filter(u => u.role === 'worker').length} workers, ${orgUsers.filter(u => u.role === 'client').length} clients` },
@@ -3055,7 +3069,7 @@ export default function AppContainer() {
                 <Calendar size={16} className="text-purple-400" />
                 <h3 className="text-sm font-bold text-white">Schedule & Deadlines</h3>
               </div>
-              {currentUser.role === 'admin' && (
+              {['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) && (
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const title = e.target.title.value;
@@ -3076,7 +3090,7 @@ export default function AppContainer() {
                       <div className="text-xs font-bold text-white">{ev.title}</div>
                       <div className="text-[10px] text-purple-400 mt-0.5">{new Date(ev.time).toLocaleString()}</div>
                     </div>
-                    {currentUser.role === 'admin' && (
+                    {['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) && (
                       <button onClick={() => setSchedules(prev => prev.filter(s => s.id !== ev.id))} className="text-red-400 hover:text-red-300 text-xs p-1">Delete</button>
                     )}
                   </div>
@@ -3101,7 +3115,7 @@ export default function AppContainer() {
                 ))}
               </div>
 
-              {currentUser.role === 'admin' && (
+              {['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) && (
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const val = parseInt(e.target.budget.value);

@@ -3,7 +3,7 @@ import nodemailer from 'nodemailer';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { to, name, cardNumber, username, tempPassword, orgName, inviteLink } = body;
+    const { to, name, cardNumber, username, tempPassword, orgName, inviteLink, role } = body;
 
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.warn('EMAIL_USER or EMAIL_PASS not set in environment variables - SKIPPING EMAIL');
@@ -19,38 +19,53 @@ export async function POST(request) {
       },
     });
 
+    let theme = { bg: '#0f0b18', border: '#3b0764', accent: '#c084fc', accentDark: '#a855f7', boxBg: '#1a1025', boxBorder: '#581c87', buttonBg: '#9333ea', textMuted: '#e9d5ff', textSoft: '#d8b4fe', roleText: 'Team Member' };
+    if (role === 'client') {
+      theme = { bg: '#1a1410', border: '#713f12', accent: '#facc15', accentDark: '#eab308', boxBg: '#2a1b10', boxBorder: '#854d0e', buttonBg: '#ca8a04', textMuted: '#fef08a', textSoft: '#fde047', roleText: 'Valued Client' };
+    } else if (role === 'admin' || role === 'super_admin') {
+      theme = { bg: '#1c0505', border: '#881337', accent: '#fb7185', accentDark: '#f43f5e', boxBg: '#3f0f18', boxBorder: '#be123c', buttonBg: '#e11d48', textMuted: '#fecdd3', textSoft: '#fda4af', roleText: 'Super Administrator' };
+    } else if (role === 'sub_admin') {
+      theme = { bg: '#1c0f05', border: '#7c2d12', accent: '#fb923c', accentDark: '#f97316', boxBg: '#381a0b', boxBorder: '#9a3412', buttonBg: '#ea580c', textMuted: '#fed7aa', textSoft: '#fdba74', roleText: 'Sub-Admin' };
+    } else if (role === 'student') {
+      theme = { bg: '#021812', border: '#064e3b', accent: '#34d399', accentDark: '#10b981', boxBg: '#022c22', boxBorder: '#047857', buttonBg: '#059669', textMuted: '#a7f3d0', textSoft: '#6ee7b7', roleText: 'Academy Student' };
+    } else if (role === 'teacher') {
+      theme = { bg: '#081426', border: '#1e3a8a', accent: '#60a5fa', accentDark: '#3b82f6', boxBg: '#111827', boxBorder: '#1d4ed8', buttonBg: '#2563eb', textMuted: '#bfdbfe', textSoft: '#93c5fd', roleText: 'Academy Instructor' };
+    } else if (role === 'manager') {
+      theme = { bg: '#0f1115', border: '#334155', accent: '#94a3b8', accentDark: '#64748b', boxBg: '#1e293b', boxBorder: '#475569', buttonBg: '#475569', textMuted: '#e2e8f0', textSoft: '#cbd5e1', roleText: 'Factory Manager' };
+    }
+
     const htmlContent = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f0b18; padding: 30px; border-radius: 12px; color: #ffffff; border: 1px solid #3b0764;">
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: ${theme.bg}; padding: 30px; border-radius: 12px; color: #ffffff; border: 1px solid ${theme.border};">
         <div style="text-align: center; margin-bottom: 20px;">
-          <h2 style="color: #c084fc; margin: 0;">AuraSuite Access Granted</h2>
-          <p style="color: #a855f7; font-size: 14px;">Welcome to ${orgName || 'your organization'}!</p>
+          <h2 style="color: ${theme.accent}; margin: 0;">AuraSuite Access Granted</h2>
+          <p style="color: ${theme.accentDark}; font-size: 14px;">Welcome to ${orgName || 'your organization'}!</p>
         </div>
         
-        <div style="background-color: #1a1025; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #581c87;">
-          <p style="margin-top: 0;">Hello <strong>${name}</strong>,</p>
-          <p style="color: #e9d5ff;">Your digital access card has been generated. You can use these credentials to log in to the portal.</p>
+        <div style="background-color: ${theme.boxBg}; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid ${theme.boxBorder};">
+          <p style="margin-top: 0; color: #ffffff;">Hello <strong>${name}</strong>,</p>
+          <p style="color: ${theme.textMuted};">Your digital access card for the role of <strong>${theme.roleText}</strong> has been generated. You can use these credentials to log in to the portal.</p>
           
           <table style="width: 100%; margin-top: 15px; border-collapse: collapse;">
             <tr>
-              <td style="padding: 8px 0; color: #c084fc; width: 120px;">Card Number:</td>
-              <td style="padding: 8px 0; font-weight: bold;">${cardNumber}</td>
+              <td style="padding: 8px 0; color: ${theme.accent}; width: 120px;">Card Number:</td>
+              <td style="padding: 8px 0; font-weight: bold; color: #ffffff;">${cardNumber}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 0; color: #c084fc;">Username:</td>
-              <td style="padding: 8px 0; font-weight: bold;">${username}</td>
+              <td style="padding: 8px 0; color: ${theme.accent};">Username:</td>
+              <td style="padding: 8px 0; font-weight: bold; color: #ffffff;">${username}</td>
             </tr>
             <tr>
-              <td style="padding: 8px 0; color: #c084fc;">Temp Password:</td>
+              <td style="padding: 8px 0; color: ${theme.accent};">Temp Password:</td>
               <td style="padding: 8px 0; font-weight: bold; color: #facc15;">${tempPassword}</td>
             </tr>
           </table>
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${inviteLink}" style="background-color: #9333ea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Access Your Portal</a>
+          <a href="${inviteLink}" style="background-color: ${theme.buttonBg}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Access Your Portal</a>
         </div>
         
-        <div style="background-color: #1a1025; padding: 15px; border-radius: 8px; font-size: 12px; color: #d8b4fe;">
+        <div style="background-color: ${theme.boxBg}; padding: 15px; border-radius: 8px; font-size: 12px; color: ${theme.textSoft};">
           <strong>Next Steps:</strong>
           <ol style="margin-top: 5px; margin-bottom: 0; padding-left: 20px;">
             <li>Click the 'Access Your Portal' button above.</li>
@@ -60,7 +75,7 @@ export async function POST(request) {
           </ol>
         </div>
         
-        <p style="text-align: center; color: #6b21a8; font-size: 12px; margin-top: 25px;">
+        <p style="text-align: center; color: ${theme.accentDark}; font-size: 12px; margin-top: 25px; opacity: 0.8;">
           This is an automated message from AuraSuite Security System.
         </p>
       </div>
