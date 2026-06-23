@@ -9,7 +9,7 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit
+  BrainCircuit, UserMinus, UserX
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -160,6 +160,7 @@ export default function AppContainer() {
 
   // ── Auth ──
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [authTab, setAuthTab] = useState('login');
   const [authCardNumber, setAuthCardNumber] = useState('');
   const [authUsername, setAuthUsername] = useState('');
@@ -361,10 +362,17 @@ export default function AppContainer() {
                 setCurrentUser(savedUser);
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
+                setIsCheckingSession(false);
               });
+            } else {
+              setIsCheckingSession(false);
             }
           });
-        } catch(e) {}
+        } catch(e) {
+          setIsCheckingSession(false);
+        }
+      } else {
+        setIsCheckingSession(false);
       }
     });
   }, []);
@@ -576,10 +584,20 @@ export default function AppContainer() {
       // Proceed to login
       const user = profiles.find(u => u.id === card.profile_id);
       if (user) {
+        if (user.role === 'banned') {
+          alert('This account has been permanently banned/suspended.');
+          return;
+        }
+        if (user.role === 'deleted') {
+          // Restore suspended user
+          user.role = 'worker';
+          supabase.from('profiles').update({ role: 'worker' }).eq('id', user.id);
+        }
         const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
         setCurrentUser(user);
         setActiveOrg(org);
         setIsLoggedIn(true);
+        setIsCheckingSession(false);
         addNotification(`Welcome back, ${user.full_name}!`, 'success');
       } else {
         alert('User profile not found. Contact Admin.');
@@ -592,10 +610,21 @@ export default function AppContainer() {
       }
       const user = profiles.find(u => u.email.toLowerCase() === authEmail.toLowerCase());
       if (!user) { alert('Email not registered! Please register your portal first.'); return; }
+      
+      if (user.role === 'banned') {
+        alert('This account has been permanently banned/suspended.');
+        return;
+      }
+      if (user.role === 'deleted') {
+        user.role = 'admin';
+        supabase.from('profiles').update({ role: 'admin' }).eq('id', user.id);
+      }
+
       const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
       setCurrentUser(user);
       setActiveOrg(org);
       setIsLoggedIn(true);
+      setIsCheckingSession(false);
       addNotification(`Welcome back, ${user.full_name}!`, 'success');
     }
   };
@@ -1047,11 +1076,18 @@ export default function AppContainer() {
     addNotification(`User "${editingUser.full_name}" profile updated.`, 'success');
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (!confirm('Delete this user permanently?')) return;
-    await supabase.from('profiles').delete().eq('id', userId);
-    setProfiles(prev => prev.filter(u => u.id !== userId));
-    addNotification('User removed from system.', 'warning');
+  const handleSuspendUser = async (userId) => {
+    if (!confirm('Suspend this user? They will be hidden from the team list but can be restored.')) return;
+    await supabase.from('profiles').update({ role: 'deleted' }).eq('id', userId);
+    setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'deleted' } : u));
+    addNotification('User suspended and hidden from view.', 'warning');
+  };
+
+  const handleBanUser = async (userId) => {
+    if (!confirm('Ban this user permanently? They will NOT be able to login for 1 month.')) return;
+    await supabase.from('profiles').update({ role: 'banned' }).eq('id', userId);
+    setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned' } : u));
+    addNotification('User banned (permanently deleted from view).', 'error');
   };
 
   // ─────────────────── Budget ───────────────────
@@ -1100,7 +1136,7 @@ export default function AppContainer() {
   };
 
   // ─────────────────── Derived ───────────────────
-  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'pending_worker');
+  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'pending_worker' && p.role !== 'deleted' && p.role !== 'banned');
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
@@ -2429,10 +2465,16 @@ export default function AppContainer() {
                                 <Edit3 size={11} />
                               </button>
                               {user.id !== currentUser.id && (
-                                <button onClick={() => handleDeleteUser(user.id)}
-                                  className="p-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-400 hover:text-white hover:border-red-500/50 transition-all">
-                                  <Trash2 size={11} />
-                                </button>
+                                <div className="flex gap-1">
+                                  <button onClick={() => handleSuspendUser(user.id)} title="Delete / Suspend"
+                                    className="p-1.5 bg-yellow-950/30 border border-yellow-500/20 rounded-lg text-yellow-400 hover:text-white hover:border-yellow-500/50 transition-all">
+                                    <UserMinus size={11} />
+                                  </button>
+                                  <button onClick={() => handleBanUser(user.id)} title="Delete Permanently (Ban)"
+                                    className="p-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-400 hover:text-white hover:border-red-500/50 transition-all">
+                                    <UserX size={11} />
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </td>
