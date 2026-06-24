@@ -182,6 +182,7 @@ export default function AppContainer() {
   const [passwordChangeNew, setPasswordChangeNew] = useState('');
   const [isInviteFlow, setIsInviteFlow] = useState(false);
   const [authOrgType, setAuthOrgType] = useState('');
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [tempDigitalCard, setTempDigitalCard] = useState(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState([]);
@@ -570,6 +571,18 @@ export default function AppContainer() {
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [groupMessages, dmThreads, activeDmUser]);
+
+  // Auto-hide generated card after 15 seconds
+  useEffect(() => {
+    if (generatedLink && generatedCardData) {
+      const timer = setTimeout(() => {
+        setGeneratedLink('');
+        setGeneratedCardData(null);
+      }, 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [generatedLink, generatedCardData]);
+
   // ─────────────────── Auth ───────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -616,6 +629,7 @@ export default function AppContainer() {
         setActiveOrg(org);
         setIsLoggedIn(true);
         setIsCheckingSession(false);
+        if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
         addNotification(`Welcome back, ${user.full_name}!`, 'success');
       } else {
         alert('User profile not found. Contact Admin.');
@@ -643,6 +657,7 @@ export default function AppContainer() {
       setActiveOrg(org);
       setIsLoggedIn(true);
       setIsCheckingSession(false);
+      if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
       addNotification(`Welcome back, ${user.full_name}!`, 'success');
     }
   };
@@ -680,6 +695,7 @@ export default function AppContainer() {
       setCurrentUser(user);
       setActiveOrg(org);
       setIsLoggedIn(true);
+      if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
       if (user.role === 'worker' || user.role === 'student') {
         setShowQuiz(true);
       } else {
@@ -714,6 +730,7 @@ export default function AppContainer() {
       setCurrentUser(user);
       setActiveOrg(org);
       setIsLoggedIn(true);
+      if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
       if (user.role === 'worker' || user.role === 'student') setShowQuiz(true);
       else setShowQuiz(false);
       setForcePasswordChange(false);
@@ -1032,10 +1049,26 @@ export default function AppContainer() {
       if (existing) return prev.map(i => i.meetingId === meetingInviteModal.id ? { ...i, invitees: newInvitees } : i);
       return [...prev, { meetingId: meetingInviteModal.id, invitees: newInvitees }];
     });
-    const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
-      text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode}`,
-      msg_time: now(), type: 'meeting_invite', meeting_id: meetingInviteModal.id };
-    await supabase.from('group_messages').insert(inviteMsg);
+    
+    if (selectedInvitees.includes('__all__')) {
+      const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
+        text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode}`,
+        msg_time: now(), type: 'meeting_invite', meeting_id: meetingInviteModal.id };
+      await supabase.from('group_messages').insert(inviteMsg);
+    } else {
+      const dmMessages = selectedInvitees.map(inviteeId => {
+        const key = [currentUser.id, inviteeId].sort().join('_');
+        return {
+           id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, to_id: inviteeId,
+           organization_id: activeOrg.id, text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode}`,
+           msg_time: now(), type: 'meeting_invite', meeting_id: meetingInviteModal.id
+        };
+      });
+      if (dmMessages.length > 0) {
+        await supabase.from('dm_messages').insert(dmMessages);
+      }
+    }
+    
     addNotification(`Invited ${selectedInvitees.length} member(s) to the meeting.`, 'success');
     setMeetingInviteModal(null); setSelectedInvitees([]);
   };
@@ -2102,11 +2135,11 @@ export default function AppContainer() {
             {[
               { id: 'dashboard', icon: <LayoutDashboard size={15} />, label: 'Dashboard' },
               { id: 'admin', icon: <Shield size={15} />, label: 'Admin Control', adminOnly: true },
+              { id: 'users', icon: <Users size={15} />, label: 'Users', adminOnly: true },
               { id: 'meetings', icon: <Video size={15} />, label: 'Meetings' },
               { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat', hideForClient: true },
               { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules', hideForClient: true },
               { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials', hideForClient: true },
-              { id: 'settings', icon: <Settings size={15} />, label: 'Settings' },
             ].filter(item => {
               if (item.adminOnly && currentUser.role !== 'admin' && currentUser.role !== 'manager') return false;
               if (item.hideForClient && currentUser.role === 'client') return false;
@@ -2131,55 +2164,25 @@ export default function AppContainer() {
           </div>
         </div>
 
-        {/* Academy & Factory Toggles */}
-        {currentUser?.role === 'admin' && (
-          <div className="mb-5">
-            <label className="text-[9px] uppercase tracking-wider text-purple-500 font-bold block mb-2">Workspace Mode</label>
-            <div className="flex bg-[#120a1f] p-1 rounded-xl border border-purple-500/20">
-              {['software_house', 'academy', 'factory'].map(mode => (
-                <button key={mode} 
-                  onClick={async () => {
-                    const { error } = await supabase.from('organizations').update({ type: mode }).eq('id', activeOrg.id);
-                    if (!error) {
-                      setActiveOrg(prev => ({ ...prev, type: mode }));
-                      addNotification(`Workspace mode changed to ${mode.replace('_', ' ')}`, 'success');
-                    }
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all ${activeOrg?.type === mode ? 'bg-purple-600 text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
-                  {mode.replace('_', ' ')}
-                </button>
-              ))}
+        <div className="mt-auto pt-4 border-t border-[#9333ea]/15 relative">
+          {showProfileMenu && (
+            <div className="absolute bottom-full mb-2 left-0 w-full bg-[#140b20] border border-purple-500/20 rounded-xl shadow-2xl overflow-hidden z-50">
+              <button onClick={() => { setActiveTab('settings'); setShowProfileMenu(false); }} className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-bold text-white hover:bg-purple-900/30 transition-colors border-b border-purple-500/10">
+                <Settings size={14} className="text-purple-400" /> Settings
+              </button>
+              <button onClick={() => { handleLogout(); setShowProfileMenu(false); }} className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-bold text-red-400 hover:bg-red-950/30 transition-colors">
+                <LogOut size={14} /> Logout
+              </button>
             </div>
-          </div>
-        )}
-
-        {/* Online users */}
-        <div className="mb-5">
-          <label className="text-[9px] uppercase tracking-wider text-purple-500 font-bold block mb-2">Online Now</label>
-          <div className="space-y-1">
-            {orgUsers.slice(0, 4).map(u => (
-              <div key={u.id} className="flex items-center gap-2">
-                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${onlineUsers.includes(u.id) ? 'bg-emerald-500' : 'bg-purple-800'}`} />
-                <span className="text-[10px] text-purple-300 truncate">{u.full_name}</span>
-                <span className="text-[9px] text-purple-600 ml-auto shrink-0">{u.role}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-auto pt-4 border-t border-[#9333ea]/15 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-full bg-purple-700/50 flex items-center justify-center text-sm font-bold border border-purple-500/30 text-white">
+          )}
+          <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-full flex items-center gap-2.5 hover:bg-purple-900/20 p-2 rounded-xl transition-colors">
+            <div className="w-9 h-9 rounded-full bg-purple-700/50 flex items-center justify-center text-sm font-bold border border-purple-500/30 text-white shrink-0">
               {currentUser.full_name[0].toUpperCase()}
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 text-left">
               <div className="text-xs font-semibold text-white truncate">{currentUser.full_name}</div>
               <div className="text-[9px] text-purple-400 uppercase font-bold mt-0.5">{currentUser.role} {currentUser.category ? `· Cat. ${currentUser.category}` : ''}</div>
             </div>
-          </div>
-          <button onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 py-2 bg-red-950/30 border border-red-500/20 hover:bg-red-950/50 rounded-xl text-xs text-red-300 font-bold transition-all">
-            <LogOut size={13} /> Logout
           </button>
         </div>
       </aside>
@@ -2466,7 +2469,10 @@ export default function AppContainer() {
                 </form>
                 
                 {generatedLink && generatedCardData && (
-                  <div className="p-3.5 bg-[#140b20] border border-purple-500/30 rounded-xl space-y-4">
+                  <div className="relative p-3.5 bg-[#140b20] border border-purple-500/30 rounded-xl space-y-4">
+                    <button onClick={() => { setGeneratedLink(''); setGeneratedCardData(null); }} className="absolute top-2 right-2 w-6 h-6 rounded-full bg-purple-900/50 flex items-center justify-center text-purple-300 hover:text-white hover:bg-purple-800/60 transition-colors z-10">
+                      <X size={12} />
+                    </button>
                     <DigitalCardVisual cardData={generatedCardData} />
                     <div className="text-xs text-white bg-[#0a0510] p-2.5 rounded-lg border border-purple-500/10 font-mono break-all leading-relaxed text-center">
                       Email Sent Successfully! ✅
@@ -2474,7 +2480,11 @@ export default function AppContainer() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
 
+          {activeTab === 'users' && ['admin', 'super_admin'].includes(currentUser.role) && (
+            <div className="max-w-7xl mx-auto space-y-6">
               {/* User Management Table */}
               <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-purple-500/10">
@@ -2771,31 +2781,49 @@ export default function AppContainer() {
                     <div className="px-4 py-2">
                       <span className="text-[9px] text-purple-500 uppercase font-bold tracking-wider">Direct Messages</span>
                     </div>
-                    {orgMembers.map(user => {
+                    {orgMembers.filter(u => u.role !== 'deleted' && u.role !== 'pending_worker').map(user => {
                       const key = getDmKey(user.id);
                       const msgs = dmThreads[key] || [];
                       return (
-                        <button key={user.id}
-                          onClick={() => { setActiveChat('dm'); setActiveDmUser(user); }}
-                          className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-all ${activeDmUser?.id === user.id ? 'bg-purple-900/30 border-r-2 border-purple-500' : 'hover:bg-purple-950/20'}`}>
-                          <div className="relative shrink-0">
-                            <div className="w-7 h-7 rounded-full bg-purple-700/40 flex items-center justify-center text-xs font-bold text-white border border-purple-500/20">
-                              {user.full_name[0]}
+                        <div key={user.id} className="group relative">
+                          <button
+                            onClick={() => { setActiveChat('dm'); setActiveDmUser(user); }}
+                            className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-all ${activeDmUser?.id === user.id ? 'bg-purple-900/30 border-r-2 border-purple-500' : 'hover:bg-purple-950/20'}`}>
+                            <div className="relative shrink-0">
+                              <div className="w-7 h-7 rounded-full bg-purple-700/40 flex items-center justify-center text-xs font-bold text-white border border-purple-500/20">
+                                {user.full_name[0]}
+                              </div>
+                              {onlineUsers.includes(user.id) && (
+                                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-[#0c0818]" />
+                              )}
                             </div>
-                            {onlineUsers.includes(user.id) && (
-                              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-[#0c0818]" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-semibold text-white truncate">{user.full_name}</div>
+                              <div className="text-[9px] text-purple-400 truncate">{user.role}</div>
+                            </div>
+                            {msgs.length > 0 && (
+                              <span className="w-4 h-4 rounded-full bg-purple-600 text-[9px] text-white flex items-center justify-center font-bold shrink-0">
+                                {Math.min(msgs.length, 9)}
+                              </span>
                             )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs font-semibold text-white truncate">{user.full_name}</div>
-                            <div className="text-[9px] text-purple-400 truncate">{user.role}</div>
-                          </div>
-                          {msgs.length > 0 && (
-                            <span className="w-4 h-4 rounded-full bg-purple-600 text-[9px] text-white flex items-center justify-center font-bold shrink-0">
-                              {Math.min(msgs.length, 9)}
-                            </span>
+                          </button>
+                          {['admin', 'super_admin'].includes(currentUser?.role) && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (confirm(`Delete all chats with ${user.full_name}?`)) {
+                                  const k = getDmKey(user.id);
+                                  supabase.from('dm_messages').delete().eq('thread_key', k).then(() => {
+                                    setDmThreads(prev => { const n = {...prev}; delete n[k]; return n; });
+                                    if (activeDmUser?.id === user.id) setActiveDmUser(null);
+                                  });
+                                }
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-md bg-red-900/50 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-900/70 transition-all">
+                              <Trash2 size={10} />
+                            </button>
                           )}
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
