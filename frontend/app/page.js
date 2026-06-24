@@ -179,6 +179,9 @@ export default function AppContainer() {
   // First time login & Quiz
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const [newPermanentPassword, setNewPermanentPassword] = useState('');
+  const [passwordChangeNew, setPasswordChangeNew] = useState('');
+  const [isInviteFlow, setIsInviteFlow] = useState(false);
+  const [authOrgType, setAuthOrgType] = useState('');
   const [tempDigitalCard, setTempDigitalCard] = useState(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizQuestions, setQuizQuestions] = useState([]);
@@ -485,6 +488,8 @@ export default function AppContainer() {
             setAuthCardNumber(decoded.card);
             setAuthUsername(decoded.username);
             setLoginMode('worker');
+            setIsInviteFlow(true);
+            if (decoded.orgType) setAuthOrgType(decoded.orgType);
           }
         } catch(e) { /* ignore invalid token */ }
       }
@@ -681,10 +686,58 @@ export default function AppContainer() {
         setShowQuiz(false);
       }
       setForcePasswordChange(false);
+      setTempDigitalCard(null);
       addNotification(`Welcome ${user.full_name}! Password set successfully.`, 'success');
     } else {
       alert('Profile not found. Contact your admin.');
     }
+  };
+
+  const handleSkipPasswordChange = async () => {
+    const { error: cardErr } = await supabase.from('digital_cards').update({
+      permanent_password: tempDigitalCard.temp_password,
+      is_first_login: false,
+      is_pending: false
+    }).eq('id', tempDigitalCard.id);
+    if (cardErr) { alert('Failed to update: ' + cardErr.message); return; }
+
+    let user = profiles.find(u => u.id === tempDigitalCard.profile_id);
+    if (user && user.role === 'pending_worker') {
+      const realRole = tempDigitalCard.role || 'worker';
+      await supabase.from('profiles').update({ role: realRole }).eq('id', user.id);
+      user = { ...user, role: realRole };
+      setProfiles(prev => prev.map(p => p.id === user.id ? user : p));
+    }
+
+    if (user) {
+      const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
+      setCurrentUser(user);
+      setActiveOrg(org);
+      setIsLoggedIn(true);
+      if (user.role === 'worker' || user.role === 'student') setShowQuiz(true);
+      else setShowQuiz(false);
+      setForcePasswordChange(false);
+      setTempDigitalCard(null);
+      addNotification(`Welcome ${user.full_name}!`, 'success');
+    }
+  };
+
+  const handleChangePasswordSettings = async () => {
+    if (!passwordChangeNew || passwordChangeNew.length < 6) {
+      alert('Password must be at least 6 characters.'); return;
+    }
+    
+    // Check if user has a digital card
+    const { data: cards } = await supabase.from('digital_cards').select('*').eq('profile_id', currentUser.id);
+    if (cards && cards.length > 0) {
+      const { error } = await supabase.from('digital_cards').update({ permanent_password: passwordChangeNew }).eq('id', cards[0].id);
+      if (error) { alert('Failed: ' + error.message); return; }
+    } else {
+      // Admin might just want to change it conceptually, but we don't use passwords for admin in this demo unless they have a digital card.
+      // We'll update temp_password in profiles if we had one.
+    }
+    setPasswordChangeNew('');
+    addNotification('Password updated successfully!', 'success');
   };
 
   const handleSignUp = async (e) => {
@@ -1229,17 +1282,24 @@ export default function AppContainer() {
               <Zap className="text-white" size={24} />
             </div>
             <h1 className="font-bold text-2xl text-white tracking-wide">AuraSuite</h1>
-            <p className="text-xs text-purple-400 font-medium mt-1">Enterprise SaaS Management Portal</p>
+            <p className="text-xs text-purple-400 font-medium mt-1">
+              {authOrgType === 'software_house' ? 'Welcome to our Software House' : 
+               authOrgType === 'factory' ? 'Welcome to our Factory' : 
+               authOrgType === 'academy' ? 'Welcome to our Academy' : 
+               'Enterprise SaaS Management Portal'}
+            </p>
           </div>
 
-          <div className="flex bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6">
-            {['login', 'signup'].map(tab => (
-              <button key={tab} onClick={() => setAuthTab(tab)}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authTab === tab ? 'bg-[#9333ea] text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
-                {tab === 'login' ? 'Sign In' : 'Register Portal'}
-              </button>
-            ))}
-          </div>
+          {!isInviteFlow && (
+            <div className="flex bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6">
+              {['login', 'signup'].map(tab => (
+                <button key={tab} onClick={() => setAuthTab(tab)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authTab === tab ? 'bg-[#9333ea] text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
+                  {tab === 'login' ? 'Sign In' : 'Register Portal'}
+                </button>
+              ))}
+            </div>
+          )}
 
           {forcePasswordChange ? (
             <form onSubmit={handleSetPermanentPassword} className="space-y-4">
@@ -1256,16 +1316,23 @@ export default function AppContainer() {
                 <input type="password" value={newPermanentPassword} onChange={e => setNewPermanentPassword(e.target.value)} required minLength={6}
                   className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
               </div>
-              <button type="submit" className="w-full py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn mt-4 flex items-center justify-center gap-2">
-                <Lock size={14} /> Set Password &amp; Enter Dashboard
-              </button>
+              <div className="flex gap-2 mt-4">
+                <button type="button" onClick={handleSkipPasswordChange} className="flex-1 py-3 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs font-bold text-purple-300 hover:bg-purple-900/40">
+                  Skip for Now
+                </button>
+                <button type="submit" className="flex-1 py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn flex items-center justify-center gap-2">
+                  <Lock size={14} /> Set &amp; Enter
+                </button>
+              </div>
             </form>
           ) : authTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
-              <div className="flex bg-[#11081c] p-1 rounded-xl mb-4 border border-purple-500/20">
-                <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='admin'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Admin Login</button>
-                <button type="button" onClick={() => setLoginMode('worker')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='worker'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Digital Card</button>
-              </div>
+              {!isInviteFlow && (
+                <div className="flex bg-[#11081c] p-1 rounded-xl mb-4 border border-purple-500/20">
+                  <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='admin'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Admin Login</button>
+                  <button type="button" onClick={() => setLoginMode('worker')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='worker'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Digital Card</button>
+                </div>
+              )}
 
               {loginMode === 'admin' ? (
                 <>
@@ -2282,7 +2349,7 @@ export default function AppContainer() {
 
                   // Build the invite link using a single base64 token (no & in URL = no encoding issues)
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
-                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername }));
+                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername, orgType: activeOrg.type || 'software_house' }));
                   const inviteLink = `${baseUrl}/?t=${loginToken}`;
 
                   // 1. Create Profile (as 'pending_worker' to hide from UI until they login)
@@ -3172,6 +3239,18 @@ export default function AppContainer() {
                   className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
                   Save Settings
                 </button>
+                
+                <div className="mt-8 pt-6 border-t border-purple-500/10">
+                  <h4 className="text-sm font-bold text-white mb-4">Security Settings</h4>
+                  <div className="space-y-3">
+                    <label className="text-xs text-purple-300 block mb-1">Update Password</label>
+                    <input type="password" placeholder="New Password" value={passwordChangeNew} onChange={e => setPasswordChangeNew(e.target.value)}
+                      className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2 text-xs text-white focus:outline-none" />
+                    <button onClick={handleChangePasswordSettings} className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
+                      Update Password
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
