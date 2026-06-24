@@ -359,11 +359,19 @@ export default function AppContainer() {
         console.error('Supabase load error', err);
       }
     };
-    loadAll().then(() => {
+    loadAll().then(({ orgs: orgsData, profs: profsData }) => {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('t') || params.get('inviteToken')) {
-        // If they are clicking an invite link, skip auto-login so they can register their new profile
-        localStorage.removeItem('aura_session');
+      const hasInviteToken = params.get('t');
+      const hasOldInvite = params.get('inviteToken');
+
+      if (hasInviteToken) {
+        // Decode token but DO NOT clear existing session
+        // The invite login page will handle this separately
+        setIsCheckingSession(false);
+        return;
+      }
+
+      if (hasOldInvite) {
         setIsCheckingSession(false);
         return;
       }
@@ -382,10 +390,12 @@ export default function AppContainer() {
                 setIsCheckingSession(false);
               });
             } else {
+              localStorage.removeItem('aura_session');
               setIsCheckingSession(false);
             }
           });
         } catch(e) {
+          localStorage.removeItem('aura_session');
           setIsCheckingSession(false);
         }
       } else {
@@ -408,7 +418,17 @@ export default function AppContainer() {
     const channel = supabase
       .channel('aurasuite-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-        supabase.from('profiles').select('*').then(({ data }) => { if (data) setProfiles(data); });
+        supabase.from('profiles').select('*').then(({ data }) => {
+          if (data) {
+            setProfiles(data);
+            // Keep currentUser in sync with latest db data — do NOT swap to different user
+            setCurrentUser(prev => {
+              if (!prev) return prev;
+              const updated = data.find(p => p.id === prev.id);
+              return updated || prev;
+            });
+          }
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         supabase.from('tasks').select('*').then(({ data }) => { if (data) setTasks(data); });
@@ -483,6 +503,12 @@ export default function AppContainer() {
       // Auto-fill card login from base64 token (?t=...)
       const loginTokenParam = params.get('t');
       if (loginTokenParam) {
+        // If already logged in, just clear URL and stay in dashboard
+        const savedSession = localStorage.getItem('aura_session');
+        if (savedSession && isLoggedIn) {
+          if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        }
         try {
           const decoded = JSON.parse(atob(loginTokenParam));
           if (decoded.card && decoded.username) {
@@ -506,7 +532,8 @@ export default function AppContainer() {
         setAuthTab('invite_register');
       }
     }
-  }, [mounted]);
+  }, [mounted, isLoggedIn]);
+
 
   // Sync live meeting state changes across tabs
   useEffect(() => {
@@ -1240,9 +1267,15 @@ export default function AppContainer() {
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
   // ─────────────────── Render ───────────────────
-  if (!mounted) return (
+  // Show loading until: (1) component mounted AND (2) session check done
+  if (!mounted || isCheckingSession) return (
     <div className="min-h-screen bg-luxury-bg flex items-center justify-center">
-      <div className="text-purple-400 font-bold text-sm tracking-widest animate-pulse">LOADING AURASUITE...</div>
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-16 h-16 rounded-3xl accent-gradient flex items-center justify-center shadow-[0_0_30px_rgba(147,51,234,0.4)] animate-pulse">
+          <Zap className="text-white" size={28} />
+        </div>
+        <div className="text-purple-400 font-bold text-sm tracking-widest animate-pulse">LOADING AURASUITE...</div>
+      </div>
     </div>
   );
 
