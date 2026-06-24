@@ -359,7 +359,7 @@ export default function AppContainer() {
         console.error('Supabase load error', err);
       }
     };
-    loadAll().then(({ orgs: orgsData, profs: profsData }) => {
+    loadAll().then(() => {
       const params = new URLSearchParams(window.location.search);
       const hasInviteToken = params.get('t');
       const hasOldInvite = params.get('inviteToken');
