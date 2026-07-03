@@ -365,6 +365,13 @@ export default function AppContainer() {
       const hasInviteToken = params.get('t');
       const hasOldInvite = params.get('inviteToken');
 
+      if (hasInviteToken || hasOldInvite) {
+        // Fresh click from an invite link: we prioritize the invite over existing sessions.
+        localStorage.removeItem('aura_session');
+        setIsCheckingSession(false);
+        return;
+      }
+
       // Auto Login from localStorage
       const savedSession = localStorage.getItem('aura_session');
       if (savedSession) {
@@ -377,9 +384,6 @@ export default function AppContainer() {
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
                 setIsCheckingSession(false);
-                if (hasInviteToken || hasOldInvite) {
-                  if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-                }
               });
             } else {
               localStorage.removeItem('aura_session');
@@ -498,15 +502,12 @@ export default function AppContainer() {
       // If no invite/token params, nothing to do
       if (!loginTokenParam && !inviteToken) return;
 
-      // ALWAYS check localStorage first (synchronous) — existing session takes priority
-      const savedSession = localStorage.getItem('aura_session');
-      if (savedSession) {
-        // Already have a session — clear the URL params and stay in dashboard
-        if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-        return;
+      // Clear the URL so subsequent refreshes don't re-trigger this
+      if (window.history.replaceState) {
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
 
-      // No existing session — process the invite token
+      // Process the invite token
       if (loginTokenParam) {
         try {
           const decoded = JSON.parse(atob(loginTokenParam));
