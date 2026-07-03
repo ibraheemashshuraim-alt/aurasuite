@@ -495,15 +495,14 @@ export default function AppContainer() {
       // If no invite/token params, nothing to do
       if (!loginTokenParam && !inviteToken) return;
 
-      // ALWAYS check localStorage first (synchronous) — existing session takes priority
-      const savedSession = localStorage.getItem('aura_session');
-      if (savedSession) {
-        // Already have a session — clear the URL params and stay in dashboard
-        if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-        return;
-      }
+      // If there's an invite token in the URL, it ALWAYS takes priority.
+      // Clear any existing session so the correct portal opens (not super admin).
+      localStorage.removeItem('aura_session');
+      setIsLoggedIn(false);
+      setCurrentUser(null);
+      setActiveOrg(null);
 
-      // No existing session — process the invite token
+      // Process the invite token
       if (loginTokenParam) {
         try {
           const decoded = JSON.parse(atob(loginTokenParam));
