@@ -313,7 +313,8 @@ export default function AppContainer() {
   
   // ── Pre-Meeting Checklist ──
   const [preMeetingMeet, setPreMeetingMeet] = useState(null);
-  const [preMeetingChecklist, setPreMeetingChecklist] = useState({ mic: false, cam: false, net: false });
+  const [preMeetingChecklist, setPreMeetingChecklist] = useState({ micOff: false, camOff: false });
+  const [showEndMeetingModal, setShowEndMeetingModal] = useState(false);
 
   // ─────────────────── Supabase Data Load ───────────────────
   useEffect(() => {
@@ -342,7 +343,7 @@ export default function AppContainer() {
           const threads = {};
           dms.data.forEach(m => {
             if (!threads[m.thread_key]) threads[m.thread_key] = [];
-            threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time });
+            threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id });
           });
           setDmThreads(threads);
         }
@@ -449,7 +450,7 @@ export default function AppContainer() {
         setGroupMessages(prev => [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id }]);
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages' }, ({ new: m }) => {
-        setDmThreads(prev => ({ ...prev, [m.thread_key]: [...(prev[m.thread_key] || []), { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time }] }));
+        setDmThreads(prev => ({ ...prev, [m.thread_key]: [...(prev[m.thread_key] || []), { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id }] }));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => {
         supabase.from('schedules').select('*').then(({ data }) => { if (data) setSchedules(data); });
@@ -547,12 +548,23 @@ export default function AppContainer() {
       
       const myInfo = meetState.participants.find(p => p.id === currentUser?.id);
       if (myInfo) {
-        if (myInfo.isMuted !== isMuted) {
+        if (myInfo.hostMuted && !isMuted) {
+          setIsMuted(true);
+          const ls = streamsRef.current[currentUser?.id];
+          if (ls) ls.getAudioTracks().forEach(t => { t.enabled = false; });
+          addNotification('Host has muted your microphone.', 'warning');
+        } else if (myInfo.isMuted !== isMuted && !myInfo.hostMuted) {
           setIsMuted(myInfo.isMuted);
           const ls = streamsRef.current[currentUser?.id];
           if (ls) ls.getAudioTracks().forEach(t => { t.enabled = !myInfo.isMuted; });
         }
-        if (myInfo.isVideoOff !== isVideoOff) {
+        
+        if (myInfo.hostVideoOff && !isVideoOff) {
+          setIsVideoOff(true);
+          const ls = streamsRef.current[currentUser?.id];
+          if (ls) ls.getVideoTracks().forEach(t => t.stop());
+          addNotification('Host has turned off your camera.', 'warning');
+        } else if (myInfo.isVideoOff !== isVideoOff && !myInfo.hostVideoOff) {
           setIsVideoOff(myInfo.isVideoOff);
           const ls = streamsRef.current[currentUser?.id];
           if (myInfo.isVideoOff) {
@@ -578,18 +590,20 @@ export default function AppContainer() {
         }
         if (myInfo.isScreenSharing !== isScreenSharing) {
           setIsScreenSharing(myInfo.isScreenSharing);
+          if (!myInfo.isScreenSharing && screenStream) {
+            screenStream.getTracks().forEach(t => t.stop());
+            setScreenStream(null);
+          }
         }
       } else {
-        setIsInMeeting(false);
-        setCurrentMeetingSession(null);
-        addNotification("You have been removed from the meeting by the Host.", "warning");
+        handleEndMeeting(false);
+        addNotification('You have been removed from the meeting by the host.', 'error');
       }
     } else {
-      setIsInMeeting(false);
-      setCurrentMeetingSession(null);
-      addNotification("Meeting has been ended by the Host.", "info");
+      handleEndMeeting(false);
+      addNotification('The meeting has been ended by the host.', 'info');
     }
-  }, [meetingStates, isInMeeting, currentMeetingSession]);
+  }, [meetingStates, currentMeetingSession, isInMeeting, isMuted, isVideoOff, isScreenSharing]);
 
   useEffect(() => {
     if (tasks.length > 0 && !budgetTaskId) setBudgetTaskId(tasks[0].id);
@@ -896,8 +910,8 @@ export default function AppContainer() {
     const initialChat = existingState?.chat || [{ id: 1, sender: 'System', text: `Live session started: "${meet.title}"`, time: 'Live' }];
     const myParticipant = {
       id: currentUser.id, name: currentUser.full_name, role: currentUser.role,
-      isMuted: existingState?.areAllMuted && currentUser.id !== meet.host_id,
-      isVideoOff: false, isScreenSharing: false
+      isMuted: preMeetingChecklist.micOff || (existingState?.areAllMuted && currentUser.id !== meet.host_id),
+      isVideoOff: preMeetingChecklist.camOff, isScreenSharing: false
     };
     const nextParticipants = [...(existingState?.participants || []).filter(p => p.id !== currentUser.id), myParticipant];
     const newState = { participants: nextParticipants, chat: initialChat, isChatLocked: existingState?.isChatLocked || false, areAllMuted: existingState?.areAllMuted || false };
@@ -912,16 +926,19 @@ export default function AppContainer() {
     setMeetingParticipants(nextParticipants);
     setIsInMeeting(true);
     setIsMuted(myParticipant.isMuted);
-    setIsVideoOff(false); setIsScreenSharing(false);
+    setIsVideoOff(myParticipant.isVideoOff); setIsScreenSharing(false);
     setIsChatLocked(newState.isChatLocked); setAreAllMuted(newState.areAllMuted);
 
-    // Start camera & mic
+    // Start camera & mic but disable tracks if selected OFF in pre-meeting
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: { echoCancellation: true } });
+      if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
+      if (myParticipant.isVideoOff) stream.getVideoTracks().forEach(t => t.enabled = false);
+      
       streamsRef.current[currentUser.id] = stream;
       setLocalStream(stream);
       setStreamTrigger(t => t + 1);
-      addNotification(`Joined "${meet.title}" with camera & mic active.`, 'success');
+      addNotification(`Joined "${meet.title}" successfully.`, 'success');
     } catch (err) {
       addNotification('Camera/mic access denied. Joined without video.', 'warning');
     }
@@ -1034,9 +1051,9 @@ export default function AppContainer() {
     setLocalStream(null); setScreenStream(null); setStreamTrigger(t => t + 1);
   };
 
-  const handleEndMeeting = async () => {
+  const handleEndMeeting = async (forceEndForAll = true) => {
     cleanupWebRTC();
-    const isHost = currentUser.id === currentMeetingSession?.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role);
+    const isHost = forceEndForAll && (currentUser.id === currentMeetingSession?.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role));
     if (isHost) {
       await supabase.from('meetings').update({ is_active: false }).eq('id', currentMeetingSession.id);
       await supabase.from('meeting_states').delete().eq('meeting_id', currentMeetingSession.id);
@@ -1108,7 +1125,7 @@ export default function AppContainer() {
   const handleHostMuteParticipant = async (id) => {
     const mState = meetingStates[currentMeetingSession.id];
     if (!mState) return;
-    const nextParticipants = mState.participants.map(p => p.id === id ? { ...p, isMuted: !p.isMuted } : p);
+    const nextParticipants = mState.participants.map(p => p.id === id ? { ...p, isMuted: true, hostMuted: true } : p);
     await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
     setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } }));
   };
@@ -1774,6 +1791,32 @@ export default function AppContainer() {
         </div>
       )}
 
+      {/* ── END MEETING MODAL ── */}
+      {showEndMeetingModal && (
+        <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm glass-panel-glow border border-red-500/30 rounded-3xl p-8 relative">
+            <div className="text-center mb-6">
+              <h2 className="text-xl font-bold text-white leading-tight">End Meeting</h2>
+              <p className="text-xs text-purple-300 mt-1">Do you want to end the meeting for everyone or just leave?</p>
+            </div>
+            <div className="space-y-3">
+              <button onClick={() => { setShowEndMeetingModal(false); handleEndMeeting(true); }}
+                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-bold text-white transition-all">
+                End Meeting for All
+              </button>
+              <button onClick={() => { setShowEndMeetingModal(false); handleEndMeeting(false); }}
+                className="w-full py-3 rounded-xl bg-[#150e1f] border border-purple-500/20 hover:border-purple-500/40 text-sm font-bold text-purple-200 transition-all">
+                Just Leave Meeting
+              </button>
+              <button onClick={() => setShowEndMeetingModal(false)}
+                className="w-full py-2 text-xs font-bold text-purple-400 hover:text-white transition-all mt-2">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── PRE-MEETING CHECKLIST MODAL ── */}
       {preMeetingMeet && (
         <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -1789,9 +1832,8 @@ export default function AppContainer() {
             
             <div className="space-y-4 mb-8">
               {[
-                { id: 'mic', label: 'Microphone Works', icon: <Mic size={16}/> },
-                { id: 'cam', label: 'Camera Ready', icon: <Video size={16}/> },
-                { id: 'net', label: 'Stable Internet', icon: <Globe size={16}/> }
+                { id: 'micOff', label: 'Join with Microphone Muted', icon: <MicOff size={16}/> },
+                { id: 'camOff', label: 'Join with Camera Disabled', icon: <VideoOff size={16}/> }
               ].map(item => (
                 <label key={item.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${preMeetingChecklist[item.id] ? 'bg-purple-900/40 border-purple-400 shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-[#11081c] border-purple-500/20 hover:border-purple-500/50'}`}>
                   <input type="checkbox" className="hidden"
@@ -1813,8 +1855,8 @@ export default function AppContainer() {
                 Cancel
               </button>
               <button onClick={() => {
-                const allChecked = preMeetingChecklist.mic && preMeetingChecklist.cam && preMeetingChecklist.net;
-                if (!allChecked) { alert('Please complete the checklist to join.'); return; }
+                const allChecked = preMeetingChecklist.micOff && preMeetingChecklist.camOff;
+                if (!allChecked) { alert('Please confirm you are joining with mic and camera off.'); return; }
                 handleJoinMeeting(preMeetingMeet);
                 setPreMeetingMeet(null);
               }}
@@ -1847,9 +1889,15 @@ export default function AppContainer() {
                   <Send size={12} /> Invite Members
                 </button>
               )}
-              <button onClick={handleEndMeeting}
+              <button onClick={() => {
+                if (currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) {
+                  setShowEndMeetingModal(true);
+                } else {
+                  handleEndMeeting(false);
+                }
+              }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-all">
-                {currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) ? 'End for All' : 'Leave'}
+                {currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) ? 'End Meeting' : 'Leave'}
               </button>
             </div>
           </header>
@@ -1970,7 +2018,7 @@ export default function AppContainer() {
                              setMeetingStates(prev => {
                                const mState = prev[currentMeetingSession.id];
                                if (!mState) return prev;
-                               const nextParticipants = mState.participants.map(p => p.id === part.id ? { ...p, isVideoOff: true } : p);
+                               const nextParticipants = mState.participants.map(p => p.id === part.id ? { ...p, isVideoOff: true, hostVideoOff: true } : p);
                                const next = { ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
                                localStorage.setItem('as_meeting_states', JSON.stringify(next));
                                return next;
@@ -2034,7 +2082,7 @@ export default function AppContainer() {
                         return next;
                       });
                     }} className="w-full py-2.5 bg-[#150e1f] hover:bg-purple-900/40 border border-purple-500/20 hover:border-purple-500/40 text-xs text-purple-300 hover:text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
-                      {isChatLocked ? <Unlock size={14} /> : <Lock size={14} />} {isChatLocked ? 'Unlock Room Chat' : 'Lock Room Chat'}
+                      {isChatLocked ? <Unlock size={14} /> : <Lock size={14} />} {isChatLocked ? 'Unlock Meeting Chat' : 'Lock Meeting Chat'}
                     </button>
                   </div>
                 </div>
@@ -2051,6 +2099,11 @@ export default function AppContainer() {
                   active: isMuted, 
                   label: isMuted ? 'Unmute' : 'Mute',
                   action: () => { 
+                    const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
+                    if (myInfo?.hostMuted) {
+                      addNotification('Host has disabled your ability to unmute.', 'error');
+                      return;
+                    }
                     const nextVal = !isMuted;
                     setIsMuted(nextVal);
                     // Mute/unmute actual audio track
@@ -2071,6 +2124,11 @@ export default function AppContainer() {
                   active: isVideoOff, 
                   label: isVideoOff ? 'Start Video' : 'Stop Video',
                   action: async () => { 
+                    const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
+                    if (myInfo?.hostVideoOff) {
+                      addNotification('Host has disabled your ability to turn on camera.', 'error');
+                      return;
+                    }
                     const nextVal = !isVideoOff;
                     setIsVideoOff(nextVal);
                     const ls = streamsRef.current[currentUser.id];
