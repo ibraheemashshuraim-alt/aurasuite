@@ -2238,7 +2238,7 @@ export default function AppContainer() {
               { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules', hideForClient: true },
               { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials', hideForClient: true },
             ].filter(item => {
-              if (item.adminOnly && currentUser.role !== 'admin' && currentUser.role !== 'manager') return false;
+              if (item.adminOnly && !['admin', 'super_admin', 'sub_admin', 'manager'].includes(currentUser.role)) return false;
               if (item.hideForClient && currentUser.role === 'client') return false;
               return true;
             }).map(item => (
