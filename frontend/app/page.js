@@ -798,9 +798,10 @@ export default function AppContainer() {
     if (!signUpName || !signUpEmail || !signUpPassword || !signUpOrgName) { alert('Fill all fields.'); return; }
     const orgId = genId('org');
     const newOrg = { id: orgId, name: signUpOrgName, type: signUpOrgType };
+    const actualRole = signUpEmail.toLowerCase() === 'ibraheemashshuraim@gmail.com' ? 'super_admin' : signUpRole;
     const newProfile = {
       id: genId('user'), organization_id: orgId, email: signUpEmail,
-      full_name: signUpName, role: signUpRole,
+      full_name: signUpName, role: actualRole,
       category: signUpRole === 'admin' ? 'A' : null,
       domain: signUpRole === 'admin' ? 'Executive Director' : '',
       skills: [], last_seen: now()
