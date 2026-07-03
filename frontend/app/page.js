@@ -313,7 +313,7 @@ export default function AppContainer() {
   
   // ── Pre-Meeting Checklist ──
   const [preMeetingMeet, setPreMeetingMeet] = useState(null);
-  const [preMeetingChecklist, setPreMeetingChecklist] = useState({ micOff: false, camOff: false });
+  const [preMeetingChecklist, setPreMeetingChecklist] = useState({ micOn: false, camOn: false });
   const [showEndMeetingModal, setShowEndMeetingModal] = useState(false);
 
   // ─────────────────── Supabase Data Load ───────────────────
@@ -365,18 +365,6 @@ export default function AppContainer() {
       const hasInviteToken = params.get('t');
       const hasOldInvite = params.get('inviteToken');
 
-      if (hasInviteToken) {
-        // Decode token but DO NOT clear existing session
-        // The invite login page will handle this separately
-        setIsCheckingSession(false);
-        return;
-      }
-
-      if (hasOldInvite) {
-        setIsCheckingSession(false);
-        return;
-      }
-      
       // Auto Login from localStorage
       const savedSession = localStorage.getItem('aura_session');
       if (savedSession) {
@@ -389,6 +377,9 @@ export default function AppContainer() {
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
                 setIsCheckingSession(false);
+                if (hasInviteToken || hasOldInvite) {
+                  if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
+                }
               });
             } else {
               localStorage.removeItem('aura_session');
@@ -501,15 +492,22 @@ export default function AppContainer() {
   useEffect(() => {
     if (mounted && typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      // Auto-fill card login from base64 token (?t=...)
       const loginTokenParam = params.get('t');
+      const inviteToken = params.get('inviteToken');
+
+      // If no invite/token params, nothing to do
+      if (!loginTokenParam && !inviteToken) return;
+
+      // ALWAYS check localStorage first (synchronous) — existing session takes priority
+      const savedSession = localStorage.getItem('aura_session');
+      if (savedSession) {
+        // Already have a session — clear the URL params and stay in dashboard
+        if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
+        return;
+      }
+
+      // No existing session — process the invite token
       if (loginTokenParam) {
-        // If already logged in, just clear URL and stay in dashboard
-        const savedSession = localStorage.getItem('aura_session');
-        if (savedSession && isLoggedIn) {
-          if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-          return;
-        }
         try {
           const decoded = JSON.parse(atob(loginTokenParam));
           if (decoded.card && decoded.username) {
@@ -521,7 +519,7 @@ export default function AppContainer() {
           }
         } catch(e) { /* ignore invalid token */ }
       }
-      const inviteToken = params.get('inviteToken');
+
       if (inviteToken) {
         setInviteToken(inviteToken);
         setInviteOrgId(params.get('orgId') || '');
@@ -533,7 +531,7 @@ export default function AppContainer() {
         setAuthTab('invite_register');
       }
     }
-  }, [mounted, isLoggedIn]);
+  }, [mounted]);
 
 
   // Sync live meeting state changes across tabs
@@ -910,8 +908,8 @@ export default function AppContainer() {
     const initialChat = existingState?.chat || [{ id: 1, sender: 'System', text: `Live session started: "${meet.title}"`, time: 'Live' }];
     const myParticipant = {
       id: currentUser.id, name: currentUser.full_name, role: currentUser.role,
-      isMuted: preMeetingChecklist.micOff || (existingState?.areAllMuted && currentUser.id !== meet.host_id),
-      isVideoOff: preMeetingChecklist.camOff, isScreenSharing: false
+      isMuted: !preMeetingChecklist.micOn || (existingState?.areAllMuted && currentUser.id !== meet.host_id),
+      isVideoOff: !preMeetingChecklist.camOn, isScreenSharing: false
     };
     const nextParticipants = [...(existingState?.participants || []).filter(p => p.id !== currentUser.id), myParticipant];
     const newState = { participants: nextParticipants, chat: initialChat, isChatLocked: existingState?.isChatLocked || false, areAllMuted: existingState?.areAllMuted || false };
@@ -1096,20 +1094,29 @@ export default function AppContainer() {
     
     if (selectedInvitees.includes('__all__')) {
       const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
-        text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode}`,
-        msg_time: now(), type: 'meeting_invite', meeting_id: meetingInviteModal.id };
+        text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
+        msg_time: now() };
       await supabase.from('group_messages').insert(inviteMsg);
     } else {
       const dmMessages = selectedInvitees.map(inviteeId => {
         const key = [currentUser.id, inviteeId].sort().join('_');
         return {
-           id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, to_id: inviteeId,
-           organization_id: activeOrg.id, text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode}`,
-           msg_time: now(), type: 'meeting_invite', meeting_id: meetingInviteModal.id
+           id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
+           text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
+           msg_time: now()
         };
       });
       if (dmMessages.length > 0) {
         await supabase.from('dm_messages').insert(dmMessages);
+        // Also update local state so sender sees it immediately
+        setDmThreads(prev => {
+          const next = { ...prev };
+          dmMessages.forEach(m => {
+            if (!next[m.thread_key]) next[m.thread_key] = [];
+            next[m.thread_key] = [...next[m.thread_key], { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time }];
+          });
+          return next;
+        });
       }
     }
     
@@ -1832,8 +1839,8 @@ export default function AppContainer() {
             
             <div className="space-y-4 mb-8">
               {[
-                { id: 'micOff', label: 'Join with Microphone Muted', icon: <MicOff size={16}/> },
-                { id: 'camOff', label: 'Join with Camera Disabled', icon: <VideoOff size={16}/> }
+                { id: 'micOn', label: 'Turn on Microphone', icon: <Mic size={16}/> },
+                { id: 'camOn', label: 'Turn on Camera', icon: <Video size={16}/> }
               ].map(item => (
                 <label key={item.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${preMeetingChecklist[item.id] ? 'bg-purple-900/40 border-purple-400 shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-[#11081c] border-purple-500/20 hover:border-purple-500/50'}`}>
                   <input type="checkbox" className="hidden"
@@ -1855,12 +1862,12 @@ export default function AppContainer() {
                 Cancel
               </button>
               <button onClick={() => {
-                const allChecked = preMeetingChecklist.micOff && preMeetingChecklist.camOff;
-                if (!allChecked) { alert('Please confirm you are joining with mic and camera off.'); return; }
+                if (preMeetingChecklist.micOn || preMeetingChecklist.camOn) return;
                 handleJoinMeeting(preMeetingMeet);
                 setPreMeetingMeet(null);
               }}
-                className={`flex-1 py-3 rounded-xl text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${preMeetingChecklist.mic && preMeetingChecklist.cam && preMeetingChecklist.net ? 'accent-gradient glow-btn' : 'bg-purple-900/50 cursor-not-allowed opacity-50'}`}>
+                disabled={preMeetingChecklist.micOn || preMeetingChecklist.camOn}
+                className={`flex-1 py-3 rounded-xl text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${!(preMeetingChecklist.micOn || preMeetingChecklist.camOn) ? 'accent-gradient glow-btn' : 'bg-purple-900/50 cursor-not-allowed opacity-50'}`}>
                 Join Live <ArrowRight size={16}/>
               </button>
             </div>
@@ -2325,7 +2332,7 @@ export default function AppContainer() {
                   className="p-2 bg-[#120a1f] border border-purple-500/25 text-purple-300 hover:text-white rounded-xl text-xs">
                   {copiedMeetId === meet.id ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                 </button>
-                <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ mic: false, cam: false, net: false }); }}
+                <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ micOn: false, camOn: false }); }}
                   className="px-4 py-1.5 accent-gradient text-white rounded-xl text-xs font-bold glow-btn">
                   Join Now
                 </button>
@@ -2352,7 +2359,7 @@ export default function AppContainer() {
                   className="p-2 bg-[#120a1f] border border-purple-500/25 text-purple-300 rounded-xl">
                   {copiedMeetId === meet.id ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                 </button>
-                <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ mic: false, cam: false, net: false }); }}
+                <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ micOn: false, camOn: false }); }}
                   className="px-4 py-1.5 accent-gradient text-white rounded-xl text-xs font-bold glow-btn">
                   Join
                 </button>
@@ -2835,7 +2842,7 @@ export default function AppContainer() {
                               {copiedMeetId === meet.id ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                             </button>
                             {(isMine || invited || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
-                              <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ mic: false, cam: false, net: false }); }}
+                              <button onClick={() => { setPreMeetingMeet(meet); setPreMeetingChecklist({ micOn: false, camOn: false }); }}
                                 className="px-4 py-1.5 accent-gradient text-white rounded-xl text-xs font-bold glow-btn">
                                 Join
                               </button>
@@ -2951,9 +2958,17 @@ export default function AppContainer() {
                             const myMeet = activeMeetings.find(m => m.host_id === currentUser.id);
                             if (myMeet) {
                               const key = getDmKey(activeDmUser.id);
-                              const msg = { id: genId('msg'), from: currentUser.id, fromName: currentUser.full_name, text: `📹 Join my meeting: "${myMeet.title}" | ID: ${myMeet.meeting_id} | Code: ${myMeet.passcode}`, time: now() };
-                              setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), msg] }));
-                              // Also send invite
+                              const msgText = `📹 Join my meeting: "${myMeet.title}" | ID: ${myMeet.meeting_id} | Code: ${myMeet.passcode} | [MEET_ID:${myMeet.id}]`;
+                              const msgId = genId('msg');
+                              const msgTime = now();
+                              // Save to DB
+                              supabase.from('dm_messages').insert({
+                                id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
+                                text: msgText, msg_time: msgTime
+                              }).then(() => {});
+                              // Update local state immediately
+                              setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: msgTime }] }));
+                              // Also save invite record
                               setMeetingInvites(prev => {
                                 const ex = prev.find(inv => inv.meetingId === myMeet.id);
                                 if (ex) return prev.map(inv => inv.meetingId === myMeet.id ? { ...inv, invitees: [...new Set([...inv.invitees, activeDmUser.id])] } : inv);
@@ -2992,17 +3007,19 @@ export default function AppContainer() {
                             <div className={`max-w-[70%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
                               <span className="text-[9px] text-purple-400">{msg.fromName} · {msg.time}</span>
                               <div className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
-                                msg.type === 'meeting_invite'
+                                msg.type === 'meeting_invite' || msg.text.includes('[MEET_ID:')
                                   ? 'bg-purple-900/60 border border-purple-500/40 text-purple-100'
                                   : isMine
                                     ? 'accent-gradient text-white'
                                     : 'bg-[#150e25] border border-purple-500/15 text-white'
                               }`}>
-                                {msg.text}
-                                {msg.type === 'meeting_invite' && (
+                                {msg.text.replace(/ \| \[MEET_ID:.*\]/, '')}
+                                {(msg.type === 'meeting_invite' || msg.text.includes('[MEET_ID:')) && (
                                   <button onClick={() => {
-                                    const meet = activeMeetings.find(m => m.id === msg.meetingId);
-                                    if (meet) handleJoinMeeting(meet);
+                                    const meetIdMatch = msg.text.match(/\[MEET_ID:(.*?)\]/);
+                                    const targetMeetId = meetIdMatch ? meetIdMatch[1] : msg.meetingId;
+                                    const meet = activeMeetings.find(m => m.id === targetMeetId);
+                                    if (meet) { setPreMeetingMeet(meet); setPreMeetingChecklist({ micOn: false, camOn: false }); }
                                     else addNotification('Meeting may have ended.', 'warning');
                                   }} className="block mt-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-bold text-white w-full text-center">
                                     Join Meeting →
