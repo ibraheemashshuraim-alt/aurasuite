@@ -383,6 +383,14 @@ export default function AppContainer() {
 
           supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser}) => {
             if (savedUser) {
+              // 🚨 STRICT ISOLATION: If localStorage was corrupted with a worker session from an older bug, reject it!
+              const isWorker = ['worker', 'client'].includes(savedUser.role);
+              if (isWorker && loadedMode === 'admin') {
+                localStorage.removeItem('aura_session');
+                setIsCheckingSession(false);
+                return;
+              }
+
               supabase.from('organizations').select('*').eq('id', savedUser.organization_id).single().then(({data: savedOrg}) => {
                 setCurrentUser(savedUser);
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
