@@ -365,11 +365,22 @@ export default function AppContainer() {
       const hasInviteToken = params.get('t');
       const hasOldInvite = params.get('inviteToken');
 
-      // Auto Login from localStorage
-      const savedSession = localStorage.getItem('aura_session');
+      // Auto Login: Check sessionStorage first (tab-specific, used for workers), then localStorage
+      let savedSession = sessionStorage.getItem('aura_session');
+      let loadedMode = 'worker';
+      
+      if (!savedSession) {
+        savedSession = localStorage.getItem('aura_session');
+        loadedMode = 'admin';
+      }
+
       if (savedSession) {
         try {
-          const { userId } = JSON.parse(savedSession);
+          const parsed = JSON.parse(savedSession);
+          const userId = parsed.userId;
+          if (parsed.loginMode) setLoginMode(parsed.loginMode);
+          else setLoginMode(loadedMode);
+
           supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser}) => {
             if (savedUser) {
               supabase.from('organizations').select('*').eq('id', savedUser.organization_id).single().then(({data: savedOrg}) => {
@@ -379,11 +390,13 @@ export default function AppContainer() {
                 setIsCheckingSession(false);
               });
             } else {
+              sessionStorage.removeItem('aura_session');
               localStorage.removeItem('aura_session');
               setIsCheckingSession(false);
             }
           });
         } catch(e) {
+          sessionStorage.removeItem('aura_session');
           localStorage.removeItem('aura_session');
           setIsCheckingSession(false);
         }
@@ -396,9 +409,14 @@ export default function AppContainer() {
   // ── Session persistence ──
   useEffect(() => {
     if (currentUser && activeOrg) {
-      localStorage.setItem('aura_session', JSON.stringify({ userId: currentUser.id, orgId: activeOrg.id }));
+      const sessionData = JSON.stringify({ userId: currentUser.id, orgId: activeOrg.id, loginMode });
+      if (loginMode === 'worker') {
+        sessionStorage.setItem('aura_session', sessionData);
+      } else {
+        localStorage.setItem('aura_session', sessionData);
+      }
     }
-  }, [currentUser, activeOrg]);
+  }, [currentUser, activeOrg, loginMode]);
 
   // ─────────────────── Supabase Realtime Subscriptions ───────────────────
   useEffect(() => {
@@ -496,8 +514,9 @@ export default function AppContainer() {
       if (!loginTokenParam && !inviteToken) return;
 
       // If there's an invite token in the URL, it ALWAYS takes priority.
-      // Clear any existing session so the correct portal opens (not super admin).
-      localStorage.removeItem('aura_session');
+      // Clear any tab-specific worker session so the correct portal opens.
+      sessionStorage.removeItem('aura_session');
+      // We don't clear localStorage here, because we don't want to log the admin out in their other tab.
       setIsLoggedIn(false);
       setCurrentUser(null);
       setActiveOrg(null);
@@ -868,12 +887,17 @@ export default function AppContainer() {
     if (currentUser) {
       await supabase.from('presence').delete().eq('user_id', currentUser.id);
     }
-    localStorage.removeItem('aura_session');
+    sessionStorage.removeItem('aura_session');
+    if (loginMode === 'admin') {
+      localStorage.removeItem('aura_session');
+    }
     setIsLoggedIn(false);
     setCurrentUser(null);
     setActiveOrg(null);
     setIsInMeeting(false);
     setCurrentMeetingSession(null);
+    setAuthTab('login');
+    if (typeof window !== 'undefined') window.history.replaceState({}, document.title, window.location.pathname);
   };
 
   // ─────────────────── Meeting ───────────────────
