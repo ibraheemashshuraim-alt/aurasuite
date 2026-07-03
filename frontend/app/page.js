@@ -798,7 +798,7 @@ export default function AppContainer() {
     if (!signUpName || !signUpEmail || !signUpPassword || !signUpOrgName) { alert('Fill all fields.'); return; }
     const orgId = genId('org');
     const newOrg = { id: orgId, name: signUpOrgName, type: signUpOrgType };
-    const superAdmins = ['ibraheemashshuraim@gmail.com', 'abdullqudus.77@gmail.com'];
+    const superAdmins = ['ibraheemashshuraim@gmail.com'];
     const actualRole = superAdmins.includes(signUpEmail.toLowerCase()) ? 'super_admin' : signUpRole;
     const newProfile = {
       id: genId('user'), organization_id: orgId, email: signUpEmail,
@@ -836,7 +836,7 @@ export default function AppContainer() {
       organization_id: inviteOrgId || 'org-1',
       email: inviteEmail,
       full_name: inviteName,
-      role: ['ibraheemashshuraim@gmail.com', 'abdullqudus.77@gmail.com'].includes(inviteEmail.toLowerCase()) ? 'super_admin' : inviteRole,
+      role: ['ibraheemashshuraim@gmail.com'].includes(inviteEmail.toLowerCase()) ? 'super_admin' : inviteRole,
       category: inviteCategory || null,
       domain: inviteDomain || '',
       skills: [],
