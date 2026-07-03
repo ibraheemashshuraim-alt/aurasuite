@@ -925,18 +925,17 @@ export default function AppContainer() {
     setIsVideoOff(myParticipant.isVideoOff); setIsScreenSharing(false);
     setIsChatLocked(newState.isChatLocked); setAreAllMuted(newState.areAllMuted);
 
-    // Start camera & mic but disable tracks if selected OFF in pre-meeting
+    // Only request microphone on join — camera is requested only when user explicitly turns it on
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: { echoCancellation: true } });
+      const audioConstraints = { echoCancellation: true, noiseSuppression: true, sampleRate: 48000, channelCount: 1 };
+      const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
-      if (myParticipant.isVideoOff) stream.getVideoTracks().forEach(t => t.enabled = false);
-      
       streamsRef.current[currentUser.id] = stream;
       setLocalStream(stream);
       setStreamTrigger(t => t + 1);
       addNotification(`Joined "${meet.title}" successfully.`, 'success');
     } catch (err) {
-      addNotification('Camera/mic access denied. Joined without video.', 'warning');
+      addNotification('Mic access denied. Joined without audio.', 'warning');
     }
 
     // --- Supabase Realtime for WebRTC signaling (works cross-device/network) ---
@@ -978,7 +977,13 @@ export default function AppContainer() {
   };
 
   const createPeerConnection = (peerId, rtcChannel) => {
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
+    const pc = new RTCPeerConnection({ iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' }
+    ] });
     pc.onicecandidate = (e) => {
       if (e.candidate) rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'ICE', from: currentUser.id, to: peerId, candidate: e.candidate.toJSON() } });
     };
@@ -2049,27 +2054,26 @@ export default function AppContainer() {
                   <div>
                     <label className="text-[10px] text-purple-400 uppercase font-bold block mb-2 tracking-wider">Room Controls</label>
                     <div className="space-y-2">
-                      <button onClick={() => {
-                        setMeetingStates(prev => {
-                          const mState = prev[currentMeetingSession.id];
-                          if (!mState) return prev;
-                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isMuted: true });
-                          const next = { ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
-                          localStorage.setItem('as_meeting_states', JSON.stringify(next));
-                          return next;
-                        });
+                      <button onClick={async () => {
+                        const mState = meetingStates[currentMeetingSession.id];
+                        if (!mState) return;
+                        const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isMuted: true, hostMuted: true });
+                        const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants, areAllMuted: true } };
+                        setMeetingStates(next);
+                        setAreAllMuted(true);
+                        await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: true }, { onConflict: 'meeting_id' });
+                        addNotification('All participants muted.', 'info');
                       }} className="w-full py-2.5 bg-[#150e1f] hover:bg-red-950/40 border border-purple-500/20 hover:border-red-500/30 text-xs text-purple-300 hover:text-red-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
                         <MicOff size={14} /> Force Mute All Mics
                       </button>
-                      <button onClick={() => {
-                        setMeetingStates(prev => {
-                          const mState = prev[currentMeetingSession.id];
-                          if (!mState) return prev;
-                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isVideoOff: true });
-                          const next = { ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
-                          localStorage.setItem('as_meeting_states', JSON.stringify(next));
-                          return next;
-                        });
+                      <button onClick={async () => {
+                        const mState = meetingStates[currentMeetingSession.id];
+                        if (!mState) return;
+                        const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isVideoOff: true, hostVideoOff: true });
+                        const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
+                        setMeetingStates(next);
+                        await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
+                        addNotification('All cameras turned off.', 'info');
                       }} className="w-full py-2.5 bg-[#150e1f] hover:bg-red-950/40 border border-purple-500/20 hover:border-red-500/30 text-xs text-purple-300 hover:text-red-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
                         <VideoOff size={14} /> Turn Off All Cameras
                       </button>
@@ -2077,15 +2081,16 @@ export default function AppContainer() {
                   </div>
                   <div>
                     <label className="text-[10px] text-purple-400 uppercase font-bold block mb-2 tracking-wider">Chat Controls</label>
-                    <button onClick={() => { 
+                    <button onClick={async () => { 
                       const nextVal = !isChatLocked;
-                      setMeetingStates(prev => {
-                        const mState = prev[currentMeetingSession.id];
-                        if (!mState) return prev;
-                        const next = { ...prev, [currentMeetingSession.id]: { ...mState, isChatLocked: nextVal } };
-                        localStorage.setItem('as_meeting_states', JSON.stringify(next));
-                        return next;
-                      });
+                      setIsChatLocked(nextVal);
+                      const mState = meetingStates[currentMeetingSession.id];
+                      if (mState) {
+                        const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, isChatLocked: nextVal } };
+                        setMeetingStates(next);
+                        await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: mState.participants, chat: mState.chat, is_chat_locked: nextVal, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
+                      }
+                      addNotification(nextVal ? 'Meeting chat locked.' : 'Meeting chat unlocked.', 'info');
                     }} className="w-full py-2.5 bg-[#150e1f] hover:bg-purple-900/40 border border-purple-500/20 hover:border-purple-500/40 text-xs text-purple-300 hover:text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
                       {isChatLocked ? <Unlock size={14} /> : <Lock size={14} />} {isChatLocked ? 'Unlock Meeting Chat' : 'Lock Meeting Chat'}
                     </button>
