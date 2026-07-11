@@ -365,6 +365,13 @@ export default function AppContainer() {
       const hasInviteToken = params.get('t');
       const hasOldInvite = params.get('inviteToken');
 
+      // If an invite token is present, let the URL params effect handle the login flow.
+      // Do not auto-login from localStorage, otherwise it overrides the token!
+      if (hasInviteToken || hasOldInvite) {
+        setIsCheckingSession(false);
+        return;
+      }
+
       // Auto Login: Check sessionStorage first (tab-specific, used for workers), then localStorage
       let savedSession = sessionStorage.getItem('aura_session');
       let loadedMode = 'worker';
