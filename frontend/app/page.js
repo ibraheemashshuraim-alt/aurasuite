@@ -967,8 +967,7 @@ export default function AppContainer() {
 
     // Only request microphone on join — camera is requested only when user explicitly turns it on
     try {
-      const audioConstraints = { echoCancellation: true, noiseSuppression: true };
-      const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
       streamsRef.current[currentUser.id] = stream;
       setLocalStream(stream);
@@ -2099,33 +2098,36 @@ export default function AppContainer() {
                         try {
                           const mState = meetingStates[currentMeetingSession.id];
                           if (!mState) return;
-                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isMuted: true, hostMuted: true });
-                          const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants, areAllMuted: true } };
+                          const nextVal = !mState.areAllMuted;
+                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isMuted: nextVal, hostMuted: nextVal });
+                          const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants, areAllMuted: nextVal } };
                           setMeetingStates(next);
-                          setAreAllMuted(true);
-                          await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: true }, { onConflict: 'meeting_id' });
-                          addNotification('All participants muted.', 'info');
+                          setAreAllMuted(nextVal);
+                          await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: nextVal }, { onConflict: 'meeting_id' });
+                          addNotification(nextVal ? 'All participants muted.' : 'All participants unmuted.', 'info');
                         } finally {
                           setProcessingHostAction(null);
                         }
-                      }} disabled={processingHostAction === 'mute_all'} className="w-full py-2.5 bg-[#150e1f] hover:bg-red-950/40 border border-purple-500/20 hover:border-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-xs text-purple-300 hover:text-red-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
-                        <MicOff size={14} /> {processingHostAction === 'mute_all' ? 'Processing...' : 'Force Mute All Mics'}
+                      }} disabled={processingHostAction === 'mute_all'} className={`w-full py-2.5 disabled:opacity-50 disabled:cursor-not-allowed border text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all ${meetingStates[currentMeetingSession.id]?.areAllMuted ? 'bg-red-950/40 border-red-500/30 text-red-300' : 'bg-[#150e1f] border-purple-500/20 hover:border-red-500/30 text-purple-300 hover:text-red-300'}`}>
+                        <MicOff size={14} /> {processingHostAction === 'mute_all' ? 'Processing...' : (meetingStates[currentMeetingSession.id]?.areAllMuted ? 'Unmute All Mics' : 'Force Mute All Mics')}
                       </button>
                       <button onClick={async () => {
                         setProcessingHostAction('video_all');
                         try {
                           const mState = meetingStates[currentMeetingSession.id];
                           if (!mState) return;
-                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isVideoOff: true, hostVideoOff: true });
+                          const areAllCamerasOff = mState.participants.filter(p => p.id !== currentMeetingSession.host_id).every(p => p.hostVideoOff);
+                          const nextVal = !areAllCamerasOff;
+                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isVideoOff: nextVal, hostVideoOff: nextVal });
                           const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
                           setMeetingStates(next);
                           await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
-                          addNotification('All cameras turned off.', 'info');
+                          addNotification(nextVal ? 'All cameras turned off.' : 'All cameras turned back on.', 'info');
                         } finally {
                           setProcessingHostAction(null);
                         }
-                      }} disabled={processingHostAction === 'video_all'} className="w-full py-2.5 bg-[#150e1f] hover:bg-red-950/40 border border-purple-500/20 hover:border-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-xs text-purple-300 hover:text-red-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
-                        <VideoOff size={14} /> {processingHostAction === 'video_all' ? 'Processing...' : 'Turn Off All Cameras'}
+                      }} disabled={processingHostAction === 'video_all'} className={`w-full py-2.5 disabled:opacity-50 disabled:cursor-not-allowed border text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all ${meetingStates[currentMeetingSession.id]?.participants.filter(p => p.id !== currentMeetingSession?.host_id).every(p => p.hostVideoOff) ? 'bg-red-950/40 border-red-500/30 text-red-300' : 'bg-[#150e1f] border-purple-500/20 hover:border-red-500/30 text-purple-300 hover:text-red-300'}`}>
+                        <VideoOff size={14} /> {processingHostAction === 'video_all' ? 'Processing...' : (meetingStates[currentMeetingSession.id]?.participants.filter(p => p.id !== currentMeetingSession?.host_id).every(p => p.hostVideoOff) ? 'Turn On All Cameras' : 'Turn Off All Cameras')}
                       </button>
                     </div>
                   </div>
@@ -2174,7 +2176,7 @@ export default function AppContainer() {
                       if (!mState) return prev;
                       const nextParticipants = mState.participants.map(p => p.id === currentUser.id ? { ...p, isMuted: nextVal } : p);
                       const next = { ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
-                      localStorage.setItem('as_meeting_states', JSON.stringify(next));
+                      supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' }).then();
                       return next;
                     });
                   } 
@@ -2224,7 +2226,7 @@ export default function AppContainer() {
                       if (!mState) return prev;
                       const nextParticipants = mState.participants.map(p => p.id === currentUser.id ? { ...p, isVideoOff: nextVal } : p);
                       const next = { ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
-                      localStorage.setItem('as_meeting_states', JSON.stringify(next));
+                      supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' }).then();
                       return next;
                     });
                   } 
