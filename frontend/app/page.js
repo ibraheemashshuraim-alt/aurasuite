@@ -2099,7 +2099,14 @@ export default function AppContainer() {
                           const mState = meetingStates[currentMeetingSession.id];
                           if (!mState) return;
                           const nextVal = !mState.areAllMuted;
-                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isMuted: nextVal, hostMuted: nextVal });
+                          const nextParticipants = mState.participants.map(p => {
+                            if (p.id === currentMeetingSession.host_id) return p;
+                            if (nextVal) {
+                              return { ...p, isMuted: true, hostMuted: true }; // Force Mute
+                            } else {
+                              return { ...p, hostMuted: false }; // Allow Unmute (do not force on)
+                            }
+                          });
                           const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants, areAllMuted: nextVal } };
                           setMeetingStates(next);
                           setAreAllMuted(nextVal);
@@ -2118,7 +2125,14 @@ export default function AppContainer() {
                           if (!mState) return;
                           const areAllCamerasOff = mState.participants.filter(p => p.id !== currentMeetingSession.host_id).every(p => p.hostVideoOff);
                           const nextVal = !areAllCamerasOff;
-                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isVideoOff: nextVal, hostVideoOff: nextVal });
+                          const nextParticipants = mState.participants.map(p => {
+                            if (p.id === currentMeetingSession.host_id) return p;
+                            if (nextVal) {
+                              return { ...p, isVideoOff: true, hostVideoOff: true }; // Force Off
+                            } else {
+                              return { ...p, hostVideoOff: false }; // Allow On (do not force on)
+                            }
+                          });
                           const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
                           setMeetingStates(next);
                           await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
@@ -2163,7 +2177,7 @@ export default function AppContainer() {
                   action: () => { 
                     const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
                     if (myInfo?.hostMuted) {
-                      addNotification('Host has disabled your ability to unmute.', 'error');
+                      alert('Host has not allowed you to unmute your mic.');
                       return;
                     }
                     const nextVal = !isMuted;
@@ -2188,7 +2202,7 @@ export default function AppContainer() {
                   action: async () => { 
                     const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
                     if (myInfo?.hostVideoOff) {
-                      addNotification('Host has disabled your ability to turn on camera.', 'error');
+                      alert('Host has not allowed you to turn on your camera.');
                       return;
                     }
                     const nextVal = !isVideoOff;
