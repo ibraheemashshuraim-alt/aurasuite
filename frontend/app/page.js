@@ -315,6 +315,7 @@ export default function AppContainer() {
   const [preMeetingMeet, setPreMeetingMeet] = useState(null);
   const [preMeetingChecklist, setPreMeetingChecklist] = useState({ micOn: false, camOn: false });
   const [showEndMeetingModal, setShowEndMeetingModal] = useState(false);
+  const [processingHostAction, setProcessingHostAction] = useState(null);
 
   // ─────────────────── Supabase Data Load ───────────────────
   useEffect(() => {
@@ -966,7 +967,7 @@ export default function AppContainer() {
 
     // Only request microphone on join — camera is requested only when user explicitly turns it on
     try {
-      const audioConstraints = { echoCancellation: true, noiseSuppression: true, sampleRate: 48000, channelCount: 1 };
+      const audioConstraints = { echoCancellation: true, noiseSuppression: true };
       const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
       streamsRef.current[currentUser.id] = stream;
@@ -2094,27 +2095,37 @@ export default function AppContainer() {
                     <label className="text-[10px] text-purple-400 uppercase font-bold block mb-2 tracking-wider">Room Controls</label>
                     <div className="space-y-2">
                       <button onClick={async () => {
-                        const mState = meetingStates[currentMeetingSession.id];
-                        if (!mState) return;
-                        const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isMuted: true, hostMuted: true });
-                        const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants, areAllMuted: true } };
-                        setMeetingStates(next);
-                        setAreAllMuted(true);
-                        await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: true }, { onConflict: 'meeting_id' });
-                        addNotification('All participants muted.', 'info');
-                      }} className="w-full py-2.5 bg-[#150e1f] hover:bg-red-950/40 border border-purple-500/20 hover:border-red-500/30 text-xs text-purple-300 hover:text-red-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
-                        <MicOff size={14} /> Force Mute All Mics
+                        setProcessingHostAction('mute_all');
+                        try {
+                          const mState = meetingStates[currentMeetingSession.id];
+                          if (!mState) return;
+                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isMuted: true, hostMuted: true });
+                          const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants, areAllMuted: true } };
+                          setMeetingStates(next);
+                          setAreAllMuted(true);
+                          await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: true }, { onConflict: 'meeting_id' });
+                          addNotification('All participants muted.', 'info');
+                        } finally {
+                          setProcessingHostAction(null);
+                        }
+                      }} disabled={processingHostAction === 'mute_all'} className="w-full py-2.5 bg-[#150e1f] hover:bg-red-950/40 border border-purple-500/20 hover:border-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-xs text-purple-300 hover:text-red-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
+                        <MicOff size={14} /> {processingHostAction === 'mute_all' ? 'Processing...' : 'Force Mute All Mics'}
                       </button>
                       <button onClick={async () => {
-                        const mState = meetingStates[currentMeetingSession.id];
-                        if (!mState) return;
-                        const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isVideoOff: true, hostVideoOff: true });
-                        const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
-                        setMeetingStates(next);
-                        await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
-                        addNotification('All cameras turned off.', 'info');
-                      }} className="w-full py-2.5 bg-[#150e1f] hover:bg-red-950/40 border border-purple-500/20 hover:border-red-500/30 text-xs text-purple-300 hover:text-red-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
-                        <VideoOff size={14} /> Turn Off All Cameras
+                        setProcessingHostAction('video_all');
+                        try {
+                          const mState = meetingStates[currentMeetingSession.id];
+                          if (!mState) return;
+                          const nextParticipants = mState.participants.map(p => p.id === currentMeetingSession.host_id ? p : { ...p, isVideoOff: true, hostVideoOff: true });
+                          const next = { ...meetingStates, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
+                          setMeetingStates(next);
+                          await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
+                          addNotification('All cameras turned off.', 'info');
+                        } finally {
+                          setProcessingHostAction(null);
+                        }
+                      }} disabled={processingHostAction === 'video_all'} className="w-full py-2.5 bg-[#150e1f] hover:bg-red-950/40 border border-purple-500/20 hover:border-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-xs text-purple-300 hover:text-red-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-all">
+                        <VideoOff size={14} /> {processingHostAction === 'video_all' ? 'Processing...' : 'Turn Off All Cameras'}
                       </button>
                     </div>
                   </div>
