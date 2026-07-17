@@ -10,7 +10,7 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square
+  BrainCircuit, UserMinus, UserX, Briefcase
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -20,21 +20,18 @@ const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '
 const today = () => new Date().toISOString().split('T')[0];
 
 // ─── Participant Video Tile ──────────────────────────────────────
-function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, streamTrigger }) {
+function ParticipantTile({ part, stream, isHost, isMe, isMain }) {
   const videoRef = React.useRef(null);
   const audioRef = React.useRef(null);
 
-  // Attach stream to video element for visual.
-  // streamTrigger forces this to re-run when a remote track arrives (stream ref changes).
-  // NOTE: audio element does NOT depend on streamTrigger — this is intentional.
-  // If audio depended on streamTrigger it would be interrupted every time any stream changed.
+  // Attach stream to video element for visual
   React.useEffect(() => {
     if (videoRef.current && stream && !part.isVideoOff) {
       videoRef.current.srcObject = stream;
     } else if (videoRef.current && !stream) {
       videoRef.current.srcObject = null;
     }
-  }, [stream, part.isVideoOff, streamTrigger]);
+  }, [stream, part.isVideoOff]);
 
   // Attach stream to audio element for remote audio playback (non-self)
   React.useEffect(() => {
@@ -100,20 +97,6 @@ function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, st
           <MicOff size={12} />
         </div>
       )}
-      {/* Raise Hand badge */}
-      {part.isHandRaised && (
-        <div className="absolute top-2.5 right-10 p-1.5 bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 rounded-lg animate-bounce shadow-[0_0_15px_rgba(234,179,8,0.3)]">
-          <Hand size={14} fill="currentColor" />
-        </div>
-      )}
-      {/* Pin Button */}
-      <button 
-        onClick={onPin}
-        className={`absolute top-2.5 left-2.5 p-1.5 rounded-lg border transition-all ${pinned ? 'bg-purple-600/80 border-purple-400 text-white shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-black/40 border-white/10 text-white/50 hover:bg-black/60 hover:text-white'}`}
-        title={pinned ? "Unpin Video" : "Pin Video"}
-      >
-        <Pin size={12} />
-      </button>
     </div>
   );
 }
@@ -263,15 +246,6 @@ export default function AppContainer() {
   const [showMeetingChat, setShowMeetingChat] = useState(false);
   const [showMeetingParticipants, setShowMeetingParticipants] = useState(false);
   const [showHostTools, setShowHostTools] = useState(false);
-  const [customAlert, setCustomAlert] = useState(null);
-  const [pinnedUserId, setPinnedUserId] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef(null);
-  const recordedChunksRef = useRef([]);
-  // Audio fix: track previous media-control state to avoid spurious audio toggling
-  const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
-  const [showReactionsPanel, setShowReactionsPanel] = useState(false);
-  const [floatingReactions, setFloatingReactions] = useState([]); // [{id, emoji, userId, name}]
 
   // ── AI Onboarding ──
   const [onboardSkills, setOnboardSkills] = useState('React, Next.js, Node.js, CSS');
@@ -592,9 +566,6 @@ export default function AppContainer() {
 
 
   // Sync live meeting state changes across tabs
-  // AUDIO FIX: We use prevMediaStateRef to compare ONLY when host-controlled media fields
-  // actually change. This prevents the useEffect from touching audio tracks on every
-  // Supabase update (e.g. hand raise, chat message) which was causing audio jitter/cutting.
   useEffect(() => {
     if (!isInMeeting || !currentMeetingSession) return;
     const meetState = meetingStates[currentMeetingSession.id];
@@ -603,46 +574,56 @@ export default function AppContainer() {
       setMeetingChat(meetState.chat);
       setIsChatLocked(meetState.isChatLocked);
       setAreAllMuted(meetState.areAllMuted);
-
+      
       const myInfo = meetState.participants.find(p => p.id === currentUser?.id);
       if (myInfo) {
-        const prev = prevMediaStateRef.current;
-
-        // ── Audio: only act when hostMuted flag changes ──
-        if (myInfo.hostMuted && !prev.hostMuted) {
-          // Host just muted us
+        if (myInfo.hostMuted && !isMuted) {
           setIsMuted(true);
           const ls = streamsRef.current[currentUser?.id];
           if (ls) ls.getAudioTracks().forEach(t => { t.enabled = false; });
           addNotification('Host has muted your microphone.', 'warning');
-        } else if (!myInfo.hostMuted && prev.hostMuted) {
-          // Host just un-restricted our mic — don't force unmute, let user decide
+        } else if (myInfo.isMuted !== isMuted && !myInfo.hostMuted) {
+          setIsMuted(myInfo.isMuted);
+          const ls = streamsRef.current[currentUser?.id];
+          if (ls) ls.getAudioTracks().forEach(t => { t.enabled = !myInfo.isMuted; });
         }
-
-        // ── Video: only act when hostVideoOff flag changes ──
-        if (myInfo.hostVideoOff && !prev.hostVideoOff) {
+        
+        if (myInfo.hostVideoOff && !isVideoOff) {
           setIsVideoOff(true);
           const ls = streamsRef.current[currentUser?.id];
           if (ls) ls.getVideoTracks().forEach(t => t.stop());
           addNotification('Host has turned off your camera.', 'warning');
+        } else if (myInfo.isVideoOff !== isVideoOff && !myInfo.hostVideoOff) {
+          setIsVideoOff(myInfo.isVideoOff);
+          const ls = streamsRef.current[currentUser?.id];
+          if (myInfo.isVideoOff) {
+            if (ls) ls.getVideoTracks().forEach(t => t.stop());
+          } else {
+            navigator.mediaDevices.getUserMedia({ video: true }).then(newStream => {
+              const newVideoTrack = newStream.getVideoTracks()[0];
+              if (ls) {
+                ls.getVideoTracks().forEach(t => { t.stop(); ls.removeTrack(t); });
+                ls.addTrack(newVideoTrack);
+              } else {
+                streamsRef.current[currentUser.id] = newStream;
+              }
+              Object.values(pcsRef.current).forEach(pc => {
+                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) sender.replaceTrack(newVideoTrack);
+              });
+              setStreamTrigger(t => t + 1);
+            }).catch(err => {
+              addNotification('Camera access denied or unavailable', 'warning');
+            });
+          }
         }
-
-        // ── Screen share sync ──
-        if (myInfo.isScreenSharing !== undefined && myInfo.isScreenSharing !== isScreenSharing) {
+        if (myInfo.isScreenSharing !== isScreenSharing) {
           setIsScreenSharing(myInfo.isScreenSharing);
           if (!myInfo.isScreenSharing && screenStream) {
             screenStream.getTracks().forEach(t => t.stop());
             setScreenStream(null);
           }
         }
-
-        // Update prev ref
-        prevMediaStateRef.current = {
-          hostMuted: !!myInfo.hostMuted,
-          isMuted: !!myInfo.isMuted,
-          hostVideoOff: !!myInfo.hostVideoOff,
-          isVideoOff: !!myInfo.isVideoOff,
-        };
       } else {
         handleEndMeeting(false);
         addNotification('You have been removed from the meeting by the host.', 'error');
@@ -651,7 +632,7 @@ export default function AppContainer() {
       handleEndMeeting(false);
       addNotification('The meeting has been ended by the host.', 'info');
     }
-  }, [meetingStates, currentMeetingSession, isInMeeting]);
+  }, [meetingStates, currentMeetingSession, isInMeeting, isMuted, isVideoOff, isScreenSharing]);
 
   useEffect(() => {
     if (tasks.length > 0 && !budgetTaskId) setBudgetTaskId(tasks[0].id);
@@ -1028,11 +1009,6 @@ export default function AppContainer() {
       } else if (type === 'SCREEN_SHARE_STOPPED') {
         if (streamsRef.current[`screen-${from}`]) { streamsRef.current[`screen-${from}`].getTracks().forEach(t => t.stop()); delete streamsRef.current[`screen-${from}`]; }
         delete pcsRef.current[`screenId-${from}`]; setStreamTrigger(t => t + 1);
-      } else if (type === 'REACTION') {
-        const { emoji: inEmoji, name: senderName, reactionId: rid } = payload;
-        const newReaction = { id: rid, emoji: inEmoji, userId: from, name: senderName };
-        setFloatingReactions(prev => [...prev, newReaction]);
-        setTimeout(() => setFloatingReactions(prev => prev.filter(r => r.id !== rid)), 3500);
       }
     }).subscribe(() => {
       rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'NEW_PEER_JOINED', from: currentUser.id } });
@@ -1085,47 +1061,6 @@ export default function AppContainer() {
       addNotification('Screen sharing started!', 'success');
     } catch (err) {
       addNotification('Screen share cancelled or permission denied.', 'warning');
-    }
-  };
-
-  const handleStartRecording = async () => {
-    try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      const mediaRecorder = new MediaRecorder(displayStream);
-      mediaRecorderRef.current = mediaRecorder;
-      recordedChunksRef.current = [];
-      mediaRecorder.ondataavailable = e => {
-        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
-      };
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        document.body.appendChild(a);
-        a.style = 'display: none';
-        a.href = url;
-        a.download = `Meeting_Recording_${new Date().getTime()}.webm`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-        setIsRecording(false);
-        addNotification('Recording saved successfully.', 'success');
-      };
-      mediaRecorder.start();
-      setIsRecording(true);
-      displayStream.getVideoTracks()[0].onended = () => {
-        if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
-      };
-      addNotification('Meeting recording started.', 'success');
-    } catch (err) {
-      console.error(err);
-      addNotification('Failed to start recording. Permission denied.', 'error');
-    }
-  };
-
-  const handleStopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
   };
 
@@ -1255,7 +1190,7 @@ export default function AppContainer() {
   const handleSendLiveChat = async (e) => {
     e.preventDefault();
     if (!newChatMessage.trim()) return;
-    if (isChatLocked && currentUser.id !== currentMeetingSession.host_id && currentUser.role !== 'admin') { setCustomAlert('Chat is locked by host.'); return; }
+    if (isChatLocked && currentUser.id !== currentMeetingSession.host_id && currentUser.role !== 'admin') { alert('Chat is locked by host.'); return; }
     const newMsg = { id: Date.now(), sender: currentUser.full_name, text: newChatMessage, time: now() };
     const mState = meetingStates[currentMeetingSession.id];
     if (!mState) return;
@@ -1906,22 +1841,6 @@ export default function AppContainer() {
       )}
 
       {/* ── END MEETING MODAL ── */}
-      {/* ── CUSTOM ALERT MODAL ── */}
-      {customAlert && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-sm bg-[#11081c] border border-red-500/30 shadow-[0_0_40px_rgba(239,68,68,0.2)] rounded-3xl p-6 text-center animate-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4 border border-red-500/30">
-              <ShieldAlert size={32} />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Access Restricted</h3>
-            <p className="text-sm text-purple-300 mb-6">{customAlert}</p>
-            <button onClick={() => setCustomAlert(null)} className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20">
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
-
       {showEndMeetingModal && (
         <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm glass-panel-glow border border-red-500/30 rounded-3xl p-8 relative">
@@ -2050,19 +1969,16 @@ export default function AppContainer() {
                       </div>
                     );
                   } else {
-                    const activeSpeaker = pinnedUserId ? meetingParticipants.find(p => p.id === pinnedUserId) : (meetingParticipants.find(p => !p.isMuted && p.id !== currentUser.id) || meetingParticipants.find(p => p.id === currentMeetingSession?.host_id) || meetingParticipants[0]);
+                    const activeSpeaker = meetingParticipants.find(p => !p.isMuted && p.id !== currentUser.id) || meetingParticipants.find(p => p.id === currentMeetingSession?.host_id) || meetingParticipants[0];
                     if (!activeSpeaker) return null;
                     return (
-                      <div key={`main-${activeSpeaker.id}`} className="w-full h-full">
+                      <div key={`main-${activeSpeaker.id}-${streamTrigger}`} className="w-full h-full">
                         <ParticipantTile
                           part={activeSpeaker}
                           stream={streamsRef.current[activeSpeaker.id]}
                           isHost={activeSpeaker.id === currentMeetingSession?.host_id}
                           isMe={activeSpeaker.id === currentUser.id}
                           isMain={true}
-                          pinned={pinnedUserId === activeSpeaker.id}
-                          onPin={() => setPinnedUserId(pinnedUserId === activeSpeaker.id ? null : activeSpeaker.id)}
-                          streamTrigger={streamTrigger}
                         />
                       </div>
                     );
@@ -2070,35 +1986,16 @@ export default function AppContainer() {
                 })()}
               </div>
 
-              {/* Floating Reactions Overlay */}
-              {floatingReactions.length > 0 && (
-                <div className="absolute bottom-36 left-0 right-0 pointer-events-none flex flex-wrap gap-3 px-6 justify-center z-30">
-                  {floatingReactions.map(r => (
-                    <div
-                      key={r.id}
-                      style={{ animation: 'floatUpFade 3.5s ease-out forwards' }}
-                      className="flex flex-col items-center gap-1"
-                    >
-                      <span style={{ fontSize: 36 }}>{r.emoji}</span>
-                      <span className="text-[10px] text-white/70 bg-black/50 px-2 py-0.5 rounded-full">{r.name}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* Thumbnails Strip */}
               <div className="h-32 shrink-0 flex gap-3 overflow-x-auto overflow-y-hidden pb-1 snap-x">
                 {meetingParticipants.map(part => (
-                  <div key={`thumb-${part.id}`} className="w-48 shrink-0 h-full snap-start">
+                  <div key={`thumb-${part.id}-${streamTrigger}`} className="w-48 shrink-0 h-full snap-start">
                     <ParticipantTile
                       part={part}
                       stream={streamsRef.current[part.id]}
                       isHost={part.id === currentMeetingSession?.host_id}
                       isMe={part.id === currentUser.id}
                       isMain={false}
-                      pinned={pinnedUserId === part.id}
-                      onPin={() => setPinnedUserId(pinnedUserId === part.id ? null : part.id)}
-                      streamTrigger={streamTrigger}
                     />
                   </div>
                 ))}
@@ -2280,7 +2177,7 @@ export default function AppContainer() {
                   action: () => { 
                     const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
                     if (myInfo?.hostMuted) {
-                      setCustomAlert('Host has not allowed you to unmute your mic.');
+                      alert('Host has not allowed you to unmute your mic.');
                       return;
                     }
                     const nextVal = !isMuted;
@@ -2305,7 +2202,7 @@ export default function AppContainer() {
                   action: async () => { 
                     const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
                     if (myInfo?.hostVideoOff) {
-                      setCustomAlert('Host has not allowed you to turn on your camera.');
+                      alert('Host has not allowed you to turn on your camera.');
                       return;
                     }
                     const nextVal = !isVideoOff;
@@ -2353,12 +2250,6 @@ export default function AppContainer() {
                   active: isScreenSharing, 
                   label: isScreenSharing ? 'Stop Share' : 'Share Screen',
                   action: () => isScreenSharing ? handleStopScreenShare() : handleStartScreenShare()
-                },
-                { 
-                  icon: <span style={{fontSize:16}}>😊</span>, 
-                  active: showReactionsPanel, 
-                  label: 'Reactions',
-                  action: () => setShowReactionsPanel(p => !p)
                 }
               ].map((btn, i) => (
                 <button key={i} onClick={btn.action}
@@ -2368,65 +2259,6 @@ export default function AppContainer() {
                 </button>
               ))}
             </div>
-
-            {/* Reactions Panel */}
-            {showReactionsPanel && (
-              <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 bg-[#0d0820] border border-purple-500/30 rounded-3xl shadow-2xl shadow-purple-900/40 p-4 w-72 animate-in slide-in-from-bottom-4 duration-200">
-                <div className="text-[10px] uppercase font-bold text-purple-400 mb-3 tracking-widest">Reactions</div>
-                {/* Raise Hand — top prominent */}
-                {(() => {
-                  const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
-                  const isRaised = myInfo?.isHandRaised;
-                  return (
-                    <button
-                      onClick={async () => {
-                        const nextVal = !isRaised;
-                        const mState = meetingStates[currentMeetingSession.id];
-                        if (mState) {
-                          const nextParticipants = mState.participants.map(p => p.id === currentUser.id ? { ...p, isHandRaised: nextVal } : p);
-                          setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } }));
-                          await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
-                        }
-                      }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border mb-3 font-bold text-sm transition-all ${
-                        isRaised
-                          ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 shadow-[0_0_20px_rgba(234,179,8,0.2)]'
-                          : 'bg-purple-900/20 border-purple-500/20 text-white hover:bg-yellow-500/10 hover:border-yellow-500/30'
-                      }`}>
-                      <span style={{fontSize: 22}}>✋</span>
-                      <span>{isRaised ? 'Lower Hand' : 'Raise Hand'}</span>
-                      {isRaised && <span className="ml-auto text-[10px] bg-yellow-500/20 px-2 py-0.5 rounded-full">Active</span>}
-                    </button>
-                  );
-                })()}
-                {/* Emoji Reactions */}
-                <div className="text-[10px] uppercase font-bold text-purple-500 mb-2 tracking-widest">Send Reaction</div>
-                <div className="grid grid-cols-6 gap-2">
-                  {['👍', '❤️', '😂', '😮', '👏', '🎉', '🔥', '💯', '😢', '🤔', '👎', '⭐'].map(emoji => (
-                    <button
-                      key={emoji}
-                      onClick={async () => {
-                        // Show floating reaction on all clients via meeting chat broadcast
-                        const reactionId = `react-${Date.now()}-${Math.random()}`;
-                        const reaction = { id: reactionId, emoji, userId: currentUser.id, name: currentUser.full_name };
-                        setFloatingReactions(prev => [...prev, reaction]);
-                        // Auto-remove after 3.5s
-                        setTimeout(() => setFloatingReactions(prev => prev.filter(r => r.id !== reactionId)), 3500);
-                        // Broadcast via meeting chat so others see it too
-                        const mState = meetingStates[currentMeetingSession.id];
-                        if (mState && channelRef.current) {
-                          channelRef.current.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'REACTION', from: currentUser.id, name: currentUser.full_name, emoji, reactionId } });
-                        }
-                        setShowReactionsPanel(false);
-                      }}
-                      className="w-10 h-10 flex items-center justify-center rounded-xl bg-purple-900/20 border border-purple-500/15 hover:bg-purple-700/30 hover:border-purple-500/40 hover:scale-125 transition-all text-xl"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* View Controls */}
             <div className="flex gap-2 border-l border-purple-500/20 pl-4">
@@ -2440,13 +2272,6 @@ export default function AppContainer() {
                 <MessageSquare size={16} />
                 <span className="text-[9px] font-bold">Chat</span>
               </button>
-              {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
-                <button onClick={() => isRecording ? handleStopRecording() : handleStartRecording()}
-                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${isRecording ? 'text-red-400 bg-red-950/60 animate-pulse' : 'text-purple-400 hover:bg-purple-900/20 hover:text-purple-200'}`}>
-                  {isRecording ? <Square size={16} fill="currentColor" /> : <Disc size={16} />}
-                  <span className="text-[9px] font-bold">{isRecording ? 'Recording...' : 'Record'}</span>
-                </button>
-              )}
               {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                 <button onClick={() => { setShowHostTools(!showHostTools); setShowMeetingChat(false); setShowMeetingParticipants(false); }}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${showHostTools ? 'text-yellow-400 bg-yellow-900/20' : 'text-yellow-600 hover:bg-yellow-900/10 hover:text-yellow-500'}`}>
