@@ -20,18 +20,21 @@ const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '
 const today = () => new Date().toISOString().split('T')[0];
 
 // ─── Participant Video Tile ──────────────────────────────────────
-function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned }) {
+function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, streamTrigger }) {
   const videoRef = React.useRef(null);
   const audioRef = React.useRef(null);
 
-  // Attach stream to video element for visual
+  // Attach stream to video element for visual.
+  // streamTrigger forces this to re-run when a remote track arrives (stream ref changes).
+  // NOTE: audio element does NOT depend on streamTrigger — this is intentional.
+  // If audio depended on streamTrigger it would be interrupted every time any stream changed.
   React.useEffect(() => {
     if (videoRef.current && stream && !part.isVideoOff) {
       videoRef.current.srcObject = stream;
     } else if (videoRef.current && !stream) {
       videoRef.current.srcObject = null;
     }
-  }, [stream, part.isVideoOff]);
+  }, [stream, part.isVideoOff, streamTrigger]);
 
   // Attach stream to audio element for remote audio playback (non-self)
   React.useEffect(() => {
@@ -2050,7 +2053,7 @@ export default function AppContainer() {
                     const activeSpeaker = pinnedUserId ? meetingParticipants.find(p => p.id === pinnedUserId) : (meetingParticipants.find(p => !p.isMuted && p.id !== currentUser.id) || meetingParticipants.find(p => p.id === currentMeetingSession?.host_id) || meetingParticipants[0]);
                     if (!activeSpeaker) return null;
                     return (
-                      <div key={`main-${activeSpeaker.id}-${streamTrigger}`} className="w-full h-full">
+                      <div key={`main-${activeSpeaker.id}`} className="w-full h-full">
                         <ParticipantTile
                           part={activeSpeaker}
                           stream={streamsRef.current[activeSpeaker.id]}
@@ -2059,6 +2062,7 @@ export default function AppContainer() {
                           isMain={true}
                           pinned={pinnedUserId === activeSpeaker.id}
                           onPin={() => setPinnedUserId(pinnedUserId === activeSpeaker.id ? null : activeSpeaker.id)}
+                          streamTrigger={streamTrigger}
                         />
                       </div>
                     );
@@ -2085,7 +2089,7 @@ export default function AppContainer() {
               {/* Thumbnails Strip */}
               <div className="h-32 shrink-0 flex gap-3 overflow-x-auto overflow-y-hidden pb-1 snap-x">
                 {meetingParticipants.map(part => (
-                  <div key={`thumb-${part.id}-${streamTrigger}`} className="w-48 shrink-0 h-full snap-start">
+                  <div key={`thumb-${part.id}`} className="w-48 shrink-0 h-full snap-start">
                     <ParticipantTile
                       part={part}
                       stream={streamsRef.current[part.id]}
@@ -2094,6 +2098,7 @@ export default function AppContainer() {
                       isMain={false}
                       pinned={pinnedUserId === part.id}
                       onPin={() => setPinnedUserId(pinnedUserId === part.id ? null : part.id)}
+                      streamTrigger={streamTrigger}
                     />
                   </div>
                 ))}
