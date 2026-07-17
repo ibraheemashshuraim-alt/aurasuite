@@ -978,7 +978,14 @@ export default function AppContainer() {
 
     // Only request microphone on join — camera is requested only when user explicitly turns it on
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: false, 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: false,
+          autoGainControl: false
+        } 
+      });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
       streamsRef.current[currentUser.id] = stream;
       setLocalStream(stream);
