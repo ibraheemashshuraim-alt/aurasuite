@@ -303,6 +303,7 @@ export default function AppContainer() {
   const streamsRef = useRef({});
   const pcsRef = useRef({});
   const channelRef = useRef(null);
+  const audioElementsRef = useRef({}); // persistent Audio objects, never re-mounted
   const [localStream, setLocalStream] = useState(null);
   const [screenStream, setScreenStream] = useState(null);
   const [streamTrigger, setStreamTrigger] = useState(0);
@@ -1057,6 +1058,14 @@ export default function AppContainer() {
         streamsRef.current[`screen-${peerId}`] = remoteStream;
       } else {
         streamsRef.current[peerId] = remoteStream;
+        // Attach remote audio to a persistent Audio object (never re-mounted by React)
+        if (!audioElementsRef.current[peerId]) {
+          const audio = new Audio();
+          audio.autoplay = true;
+          audioElementsRef.current[peerId] = audio;
+        }
+        audioElementsRef.current[peerId].srcObject = remoteStream;
+        audioElementsRef.current[peerId].play().catch(() => {});
       }
       setStreamTrigger(t => t + 1);
     };
@@ -2097,23 +2106,7 @@ export default function AppContainer() {
                 ))}
               </div>
 
-              {/* Single source of truth for remote audio streams to prevent Chrome AEC stuttering/echo */}
-              {meetingParticipants.map(part => {
-                if (part.id === currentUser.id) return null;
-                return (
-                  <audio 
-                    key={`audio-${part.id}`} 
-                    autoPlay 
-                    playsInline 
-                    className="hidden" 
-                    ref={el => {
-                      if (el && streamsRef.current[part.id]) {
-                        el.srcObject = streamsRef.current[part.id];
-                      }
-                    }} 
-                  />
-                );
-              })}
+              {/* Audio is played via persistent JS Audio objects in audioElementsRef — no JSX audio tags needed */}
             </div>
 
             {/* Chat Sidebar */}
