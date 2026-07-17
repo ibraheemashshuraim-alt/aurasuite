@@ -979,9 +979,9 @@ export default function AppContainer() {
 
     // Only request microphone on join — camera is requested only when user explicitly turns it on
     try {
-      // noiseSuppression disabled: it aggressively cuts the tail/end of words.
-      // echoCancellation kept: prevents loopback echo on same-device testing.
-      const audioConstraints = { echoCancellation: true, noiseSuppression: false, autoGainControl: true };
+      // These exact constraints were stable in commit 2e6f49a — do NOT change noiseSuppression to false,
+      // it makes the voice sound distant and slow every time it's been tried.
+      const audioConstraints = { echoCancellation: true, noiseSuppression: true };
       const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
       streamsRef.current[currentUser.id] = stream;
