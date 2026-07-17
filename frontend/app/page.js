@@ -10,7 +10,7 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit, UserMinus, UserX, Briefcase
+  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -20,7 +20,7 @@ const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '
 const today = () => new Date().toISOString().split('T')[0];
 
 // ─── Participant Video Tile ──────────────────────────────────────
-function ParticipantTile({ part, stream, isHost, isMe, isMain }) {
+function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned }) {
   const videoRef = React.useRef(null);
   const audioRef = React.useRef(null);
 
@@ -97,6 +97,20 @@ function ParticipantTile({ part, stream, isHost, isMe, isMain }) {
           <MicOff size={12} />
         </div>
       )}
+      {/* Raise Hand badge */}
+      {part.isHandRaised && (
+        <div className="absolute top-2.5 right-10 p-1.5 bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 rounded-lg animate-bounce shadow-[0_0_15px_rgba(234,179,8,0.3)]">
+          <Hand size={14} fill="currentColor" />
+        </div>
+      )}
+      {/* Pin Button */}
+      <button 
+        onClick={onPin}
+        className={`absolute top-2.5 left-2.5 p-1.5 rounded-lg border transition-all ${pinned ? 'bg-purple-600/80 border-purple-400 text-white shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-black/40 border-white/10 text-white/50 hover:bg-black/60 hover:text-white'}`}
+        title={pinned ? "Unpin Video" : "Pin Video"}
+      >
+        <Pin size={12} />
+      </button>
     </div>
   );
 }
@@ -246,6 +260,11 @@ export default function AppContainer() {
   const [showMeetingChat, setShowMeetingChat] = useState(false);
   const [showMeetingParticipants, setShowMeetingParticipants] = useState(false);
   const [showHostTools, setShowHostTools] = useState(false);
+  const [customAlert, setCustomAlert] = useState(null);
+  const [pinnedUserId, setPinnedUserId] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
 
   // ── AI Onboarding ──
   const [onboardSkills, setOnboardSkills] = useState('React, Next.js, Node.js, CSS');
@@ -1064,6 +1083,47 @@ export default function AppContainer() {
     }
   };
 
+  const handleStartRecording = async () => {
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const mediaRecorder = new MediaRecorder(displayStream);
+      mediaRecorderRef.current = mediaRecorder;
+      recordedChunksRef.current = [];
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        document.body.appendChild(a);
+        a.style = 'display: none';
+        a.href = url;
+        a.download = `Meeting_Recording_${new Date().getTime()}.webm`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        setIsRecording(false);
+        addNotification('Recording saved successfully.', 'success');
+      };
+      mediaRecorder.start();
+      setIsRecording(true);
+      displayStream.getVideoTracks()[0].onended = () => {
+        if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+      };
+      addNotification('Meeting recording started.', 'success');
+    } catch (err) {
+      console.error(err);
+      addNotification('Failed to start recording. Permission denied.', 'error');
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    }
+  };
+
   const handleStopScreenShare = async () => {
     const s = streamsRef.current[`screen-${currentUser.id}`];
     if (s) s.getTracks().forEach(t => t.stop());
@@ -1190,7 +1250,7 @@ export default function AppContainer() {
   const handleSendLiveChat = async (e) => {
     e.preventDefault();
     if (!newChatMessage.trim()) return;
-    if (isChatLocked && currentUser.id !== currentMeetingSession.host_id && currentUser.role !== 'admin') { alert('Chat is locked by host.'); return; }
+    if (isChatLocked && currentUser.id !== currentMeetingSession.host_id && currentUser.role !== 'admin') { setCustomAlert('Chat is locked by host.'); return; }
     const newMsg = { id: Date.now(), sender: currentUser.full_name, text: newChatMessage, time: now() };
     const mState = meetingStates[currentMeetingSession.id];
     if (!mState) return;
@@ -1841,6 +1901,22 @@ export default function AppContainer() {
       )}
 
       {/* ── END MEETING MODAL ── */}
+      {/* ── CUSTOM ALERT MODAL ── */}
+      {customAlert && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#11081c] border border-red-500/30 shadow-[0_0_40px_rgba(239,68,68,0.2)] rounded-3xl p-6 text-center animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4 border border-red-500/30">
+              <ShieldAlert size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Access Restricted</h3>
+            <p className="text-sm text-purple-300 mb-6">{customAlert}</p>
+            <button onClick={() => setCustomAlert(null)} className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20">
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {showEndMeetingModal && (
         <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm glass-panel-glow border border-red-500/30 rounded-3xl p-8 relative">
@@ -1969,7 +2045,7 @@ export default function AppContainer() {
                       </div>
                     );
                   } else {
-                    const activeSpeaker = meetingParticipants.find(p => !p.isMuted && p.id !== currentUser.id) || meetingParticipants.find(p => p.id === currentMeetingSession?.host_id) || meetingParticipants[0];
+                    const activeSpeaker = pinnedUserId ? meetingParticipants.find(p => p.id === pinnedUserId) : (meetingParticipants.find(p => !p.isMuted && p.id !== currentUser.id) || meetingParticipants.find(p => p.id === currentMeetingSession?.host_id) || meetingParticipants[0]);
                     if (!activeSpeaker) return null;
                     return (
                       <div key={`main-${activeSpeaker.id}-${streamTrigger}`} className="w-full h-full">
@@ -1979,6 +2055,8 @@ export default function AppContainer() {
                           isHost={activeSpeaker.id === currentMeetingSession?.host_id}
                           isMe={activeSpeaker.id === currentUser.id}
                           isMain={true}
+                          pinned={pinnedUserId === activeSpeaker.id}
+                          onPin={() => setPinnedUserId(pinnedUserId === activeSpeaker.id ? null : activeSpeaker.id)}
                         />
                       </div>
                     );
@@ -1996,6 +2074,8 @@ export default function AppContainer() {
                       isHost={part.id === currentMeetingSession?.host_id}
                       isMe={part.id === currentUser.id}
                       isMain={false}
+                      pinned={pinnedUserId === part.id}
+                      onPin={() => setPinnedUserId(pinnedUserId === part.id ? null : part.id)}
                     />
                   </div>
                 ))}
@@ -2177,7 +2257,7 @@ export default function AppContainer() {
                   action: () => { 
                     const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
                     if (myInfo?.hostMuted) {
-                      alert('Host has not allowed you to unmute your mic.');
+                      setCustomAlert('Host has not allowed you to unmute your mic.');
                       return;
                     }
                     const nextVal = !isMuted;
@@ -2202,7 +2282,7 @@ export default function AppContainer() {
                   action: async () => { 
                     const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
                     if (myInfo?.hostVideoOff) {
-                      alert('Host has not allowed you to turn on your camera.');
+                      setCustomAlert('Host has not allowed you to turn on your camera.');
                       return;
                     }
                     const nextVal = !isVideoOff;
@@ -2250,6 +2330,21 @@ export default function AppContainer() {
                   active: isScreenSharing, 
                   label: isScreenSharing ? 'Stop Share' : 'Share Screen',
                   action: () => isScreenSharing ? handleStopScreenShare() : handleStartScreenShare()
+                },
+                { 
+                  icon: meetingParticipants.find(p => p.id === currentUser.id)?.isHandRaised ? <Hand size={16} className="text-yellow-400" fill="currentColor" /> : <Hand size={16} />, 
+                  active: meetingParticipants.find(p => p.id === currentUser.id)?.isHandRaised, 
+                  label: meetingParticipants.find(p => p.id === currentUser.id)?.isHandRaised ? 'Lower Hand' : 'Raise Hand',
+                  action: async () => { 
+                    const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
+                    const nextVal = !myInfo?.isHandRaised;
+                    const mState = meetingStates[currentMeetingSession.id];
+                    if (mState) {
+                      const nextParticipants = mState.participants.map(p => p.id === currentUser.id ? { ...p, isHandRaised: nextVal } : p);
+                      setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } }));
+                      await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
+                    }
+                  } 
                 }
               ].map((btn, i) => (
                 <button key={i} onClick={btn.action}
@@ -2272,6 +2367,13 @@ export default function AppContainer() {
                 <MessageSquare size={16} />
                 <span className="text-[9px] font-bold">Chat</span>
               </button>
+              {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
+                <button onClick={() => isRecording ? handleStopRecording() : handleStartRecording()}
+                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${isRecording ? 'text-red-400 bg-red-950/60 animate-pulse' : 'text-purple-400 hover:bg-purple-900/20 hover:text-purple-200'}`}>
+                  {isRecording ? <Square size={16} fill="currentColor" /> : <Disc size={16} />}
+                  <span className="text-[9px] font-bold">{isRecording ? 'Recording...' : 'Record'}</span>
+                </button>
+              )}
               {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                 <button onClick={() => { setShowHostTools(!showHostTools); setShowMeetingChat(false); setShowMeetingParticipants(false); }}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${showHostTools ? 'text-yellow-400 bg-yellow-900/20' : 'text-yellow-600 hover:bg-yellow-900/10 hover:text-yellow-500'}`}>
