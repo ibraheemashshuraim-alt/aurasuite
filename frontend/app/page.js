@@ -979,7 +979,7 @@ export default function AppContainer() {
 
     // Only request microphone on join — camera is requested only when user explicitly turns it on
     try {
-      const audioConstraints = { echoCancellation: true, noiseSuppression: true, sampleRate: 48000, channelCount: 1 };
+      const audioConstraints = { echoCancellation: true, noiseSuppression: true };
       const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
       streamsRef.current[currentUser.id] = stream;
@@ -1044,13 +1044,10 @@ export default function AppContainer() {
     pc.onicecandidate = (e) => {
       if (e.candidate) rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'ICE', from: currentUser.id, to: peerId, candidate: e.candidate.toJSON() } });
     };
-    pc.onnegotiationneeded = async () => {
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'OFFER', from: currentUser.id, to: peerId, sdp: { type: offer.type, sdp: offer.sdp } } });
-      } catch (err) {}
-    };
+    // NOTE: onnegotiationneeded is intentionally NOT set here.
+    // We use manual signaling (NEW_PEER_JOINED -> OFFER -> ANSWER) which is already
+    // complete. Allowing onnegotiationneeded to fire causes mid-call renegotiation
+    // that interrupts audio every time a track is added (camera on/off, screen share).
     pc.ontrack = (e) => {
       const remoteStream = e.streams[0];
       const expectedScreenId = pcsRef.current[`screenId-${peerId}`];
