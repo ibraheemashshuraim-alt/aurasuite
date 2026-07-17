@@ -36,13 +36,6 @@ function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, st
     }
   }, [stream, part.isVideoOff, streamTrigger]);
 
-  // Attach stream to audio element for remote audio playback (non-self)
-  React.useEffect(() => {
-    if (audioRef.current && stream && !isMe) {
-      audioRef.current.srcObject = stream;
-    }
-  }, [stream, isMe]);
-
   const hasStream = !!stream && !part.isVideoOff;
   const height = isMain ? '100%' : undefined;
 
@@ -51,8 +44,7 @@ function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, st
       className="relative bg-[#0d0a17] rounded-2xl border border-purple-500/20 overflow-hidden w-full"
       style={{ minHeight: isMain ? '100%' : 120, height }}
     >
-      {/* Hidden audio element to play remote participant's audio */}
-      {!isMe && <audio ref={audioRef} autoPlay playsInline className="hidden" />}
+      {/* Hidden audio element removed from here to prevent duplicate playback in Main and Thumbnails. */}
 
       {/* Real video */}
       {hasStream && (
@@ -2103,6 +2095,24 @@ export default function AppContainer() {
                   </div>
                 ))}
               </div>
+
+              {/* Single source of truth for remote audio streams to prevent Chrome AEC stuttering/echo */}
+              {meetingParticipants.map(part => {
+                if (part.id === currentUser.id) return null;
+                return (
+                  <audio 
+                    key={`audio-${part.id}`} 
+                    autoPlay 
+                    playsInline 
+                    className="hidden" 
+                    ref={el => {
+                      if (el && streamsRef.current[part.id]) {
+                        el.srcObject = streamsRef.current[part.id];
+                      }
+                    }} 
+                  />
+                );
+              })}
             </div>
 
             {/* Chat Sidebar */}
