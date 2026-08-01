@@ -568,6 +568,7 @@ export default function AppContainer() {
             if (decoded.orgType) setAuthOrgType(decoded.orgType);
           }
         } catch(e) { /* ignore invalid token */ }
+      }
 
       if (inviteToken) {
         setInviteToken(inviteToken);
