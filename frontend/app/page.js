@@ -96,7 +96,7 @@ export default function LandingPage() {
           </nav>
 
           <div className="flex gap-4">
-            <button onClick={() => router.push('/login')} className="px-5 py-2.5 text-sm font-bold text-purple-300 hover:text-white transition-colors">
+            <button onClick={() => router.push('/admin')} className="px-5 py-2.5 text-sm font-bold text-purple-300 hover:text-white transition-colors">
               Login to Portal
             </button>
             <button onClick={() => setShowRegisterModal(true)} className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-bold shadow-[0_0_20px_rgba(147,51,234,0.3)] hover:scale-105 transition-all">
