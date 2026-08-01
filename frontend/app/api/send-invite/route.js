@@ -34,6 +34,8 @@ export async function POST(request) {
       theme = { bg: '#0f1115', border: '#334155', accent: '#94a3b8', accentDark: '#64748b', boxBg: '#1e293b', boxBorder: '#475569', buttonBg: '#475569', textMuted: '#e2e8f0', textSoft: '#cbd5e1', roleText: 'Factory Manager' };
     }
 
+    const portalUrl = `https://aurasuite-kappa.vercel.app/login?card=${cardNumber}`;
+
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: ${theme.bg}; padding: 30px; border-radius: 12px; color: #ffffff; border: 1px solid ${theme.border};">
         <div style="text-align: center; margin-bottom: 20px;">
@@ -62,7 +64,7 @@ export async function POST(request) {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="https://aurasuite-kappa.vercel.app/login?card=${cardNumber}" style="background-color: ${theme.buttonBg}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Access Your Portal</a>
+          <a href="${portalUrl}" style="background-color: ${theme.buttonBg}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Access Your Portal</a>
         </div>
         
         <div style="background-color: ${theme.boxBg}; padding: 15px; border-radius: 8px; font-size: 12px; color: ${theme.textSoft};">
