@@ -568,7 +568,6 @@ export default function AppContainer() {
             if (decoded.orgType) setAuthOrgType(decoded.orgType);
           }
         } catch(e) { /* ignore invalid token */ }
-      }
 
       if (inviteToken) {
         setInviteToken(inviteToken);
@@ -579,6 +578,11 @@ export default function AppContainer() {
         setInviteCategory(params.get('category') || '');
         setInviteDomain(params.get('domain') || '');
         setAuthTab('invite_register');
+        const cardParam = params.get('card');
+        if (cardParam) {
+          setAuthCardNumber(cardParam);
+          setAuthTab('login');
+        }
       }
     }
   }, [mounted]);
