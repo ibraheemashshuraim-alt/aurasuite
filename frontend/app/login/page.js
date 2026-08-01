@@ -544,17 +544,31 @@ export default function AppContainer() {
       const params = new URLSearchParams(window.location.search);
       const loginTokenParam = params.get('t');
       const inviteToken = params.get('inviteToken');
+      const cardParam = params.get('card');
 
-      // If no invite/token params, nothing to do
-      if (!loginTokenParam && !inviteToken) return;
+      // If no relevant params, nothing to do
+      if (!loginTokenParam && !inviteToken && !cardParam) return;
 
-      // If there's an invite token in the URL, it ALWAYS takes priority.
-      // Clear any tab-specific worker session so the correct portal opens.
-      sessionStorage.removeItem('aura_session');
-      // We don't clear localStorage here, because we don't want to log the admin out in their other tab.
-      setIsLoggedIn(false);
-      setCurrentUser(null);
-      setActiveOrg(null);
+      if (cardParam) {
+        // Force complete logout across tabs when accessing via direct card link
+        sessionStorage.removeItem('aura_session');
+        localStorage.removeItem('aura_session');
+        setIsLoggedIn(false);
+        setCurrentUser(null);
+        setActiveOrg(null);
+        
+        setAuthCardNumber(cardParam);
+        setAuthTab('login');
+      }
+
+      if (loginTokenParam || inviteToken) {
+        // Clear any tab-specific worker session so the correct portal opens.
+        sessionStorage.removeItem('aura_session');
+        // We don't clear localStorage here, because we don't want to log the admin out in their other tab.
+        setIsLoggedIn(false);
+        setCurrentUser(null);
+        setActiveOrg(null);
+      }
 
       // Process the invite token
       if (loginTokenParam) {
@@ -579,11 +593,6 @@ export default function AppContainer() {
         setInviteCategory(params.get('category') || '');
         setInviteDomain(params.get('domain') || '');
         setAuthTab('invite_register');
-        const cardParam = params.get('card');
-        if (cardParam) {
-          setAuthCardNumber(cardParam);
-          setAuthTab('login');
-        }
       }
     }
   }, [mounted]);
