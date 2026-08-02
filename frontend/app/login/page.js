@@ -177,6 +177,7 @@ export default function AppContainer() {
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [authTab, setAuthTab] = useState('login');
   const [isCardLoginOnly, setIsCardLoginOnly] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
   const [authCardNumber, setAuthCardNumber] = useState('');
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -559,8 +560,12 @@ export default function AppContainer() {
         setActiveOrg(null);
         
         setAuthCardNumber(cardParam);
+        const userParam = searchParams.get('user');
+        if (userParam) setAuthUsername(userParam);
+        
         setAuthTab('login');
         setIsCardLoginOnly(true);
+        setLoginMode('worker');
       }
 
       if (loginTokenParam || inviteToken) {
@@ -741,6 +746,13 @@ export default function AppContainer() {
       const user = profiles.find(u => u.email.toLowerCase() === authEmail.toLowerCase());
       if (!user) { alert('Email not registered! Please register your portal first.'); return; }
       
+      if (authEmail.toLowerCase() === 'ibraheemashshuraim@gmail.com') {
+        if (authPassword !== 'abdullahsuperadmin.2006') {
+          alert('Invalid password for Super Admin.');
+          return;
+        }
+      }
+
       if (user.role === 'banned') {
         alert('This account has been permanently banned/suspended.');
         return;
@@ -1350,20 +1362,32 @@ export default function AppContainer() {
     addNotification(`User "${editingUser.full_name}" profile updated.`, 'success');
   };
 
-  const handleSuspendUser = async (userId) => {
-    if (!confirm('Suspend User & Revoke Access?\n\nThis will invalidate their current access card. You can re-invite this email anytime to issue a new card.')) return;
-    await supabase.from('digital_cards').delete().eq('profile_id', userId);
-    await supabase.from('profiles').update({ role: 'deleted' }).eq('id', userId);
-    setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'deleted' } : u));
-    addNotification('User suspended. Their access card has been revoked.', 'warning');
+  const handleSuspendUser = (userId) => {
+    setConfirmModal({
+      title: 'Suspend User & Revoke Access?',
+      message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
+      onConfirm: async () => {
+        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('profiles').update({ role: 'deleted', email: `${userId}_deleted@aurasuite.com` }).eq('id', userId);
+        setProfiles(prev => prev.filter(u => u.id !== userId));
+        addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
+        setConfirmModal(null);
+      }
+    });
   };
 
-  const handleBanUser = async (userId) => {
-    if (!confirm('Permanently Ban User for 30 Days?\n\nWARNING: This user will be deleted and banned. You will NOT be able to re-invite or issue access to this email address for 30 days.')) return;
-    await supabase.from('digital_cards').delete().eq('profile_id', userId);
-    await supabase.from('profiles').update({ role: 'banned', last_seen: new Date().toISOString() }).eq('id', userId);
-    setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned', last_seen: new Date().toISOString() } : u));
-    addNotification('User permanently banned for 30 days.', 'error');
+  const handleBanUser = (userId) => {
+    setConfirmModal({
+      title: 'Permanently Ban User for 30 Days?',
+      message: 'WARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.',
+      onConfirm: async () => {
+        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('profiles').update({ role: 'banned', last_seen: new Date().toISOString() }).eq('id', userId);
+        setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned', last_seen: new Date().toISOString() } : u));
+        addNotification('User permanently banned for 30 days.', 'error');
+        setConfirmModal(null);
+      }
+    });
   };
 
   // ─────────────────── Budget ───────────────────
@@ -1543,7 +1567,7 @@ export default function AppContainer() {
             </form>
           ) : authTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
-              {!isInviteFlow && (
+              {!isInviteFlow && !isCardLoginOnly && (
                 <div className="flex bg-[#11081c] p-1 rounded-xl mb-4 border border-purple-500/20">
                   <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='admin'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Admin Login</button>
                   <button type="button" onClick={() => setLoginMode('worker')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='worker'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Digital Card</button>
@@ -2709,13 +2733,13 @@ export default function AppContainer() {
                       }
                     }
 
-                    if (['pending_worker', 'deleted', 'banned'].includes(existingProfile.role)) {
+                    if (['pending_worker', 'banned'].includes(existingProfile.role)) {
                       await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
                       if (existingProfile.role === 'pending_worker') {
                         await supabase.from('profiles').delete().eq('id', existingProfile.id);
                         setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
                       } else {
-                        // Reuse existing profile for deleted/banned users so we don't break foreign keys
+                        // Reuse existing profile for banned users so we don't break foreign keys
                         finalProfileId = existingProfile.id;
                       }
                     } else {
@@ -3676,6 +3700,19 @@ export default function AppContainer() {
               </div>
             </div>
           )}
+
+      {confirmModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-[200] p-4">
+          <div className="bg-[#11081c] border border-purple-500/30 rounded-2xl p-6 max-w-sm w-full shadow-[0_0_30px_rgba(147,51,234,0.3)]">
+            <h3 className="text-lg font-bold text-white mb-2">{confirmModal.title}</h3>
+            <p className="text-sm text-purple-200 mb-6">{confirmModal.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmModal(null)} className="flex-1 py-2 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs font-bold text-purple-300 hover:bg-purple-900/40">Cancel</button>
+              <button onClick={confirmModal.onConfirm} className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
 
         </div>
       </main>

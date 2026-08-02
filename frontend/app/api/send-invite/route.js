@@ -34,7 +34,7 @@ export async function POST(request) {
       theme = { bg: '#0f1115', border: '#334155', accent: '#94a3b8', accentDark: '#64748b', boxBg: '#1e293b', boxBorder: '#475569', buttonBg: '#475569', textMuted: '#e2e8f0', textSoft: '#cbd5e1', roleText: 'Factory Manager' };
     }
 
-    const portalUrl = `https://aurasuite-kappa.vercel.app/login?card=${cardNumber}`;
+    const portalUrl = `https://aurasuite-kappa.vercel.app/login?card=${cardNumber}&user=${username}`;
 
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: ${theme.bg}; padding: 30px; border-radius: 12px; color: #ffffff; border: 1px solid ${theme.border};">
