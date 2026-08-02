@@ -176,6 +176,7 @@ export default function AppContainer() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [authTab, setAuthTab] = useState('login');
+  const [isCardLoginOnly, setIsCardLoginOnly] = useState(false);
   const [authCardNumber, setAuthCardNumber] = useState('');
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -559,6 +560,7 @@ export default function AppContainer() {
         
         setAuthCardNumber(cardParam);
         setAuthTab('login');
+        setIsCardLoginOnly(true);
       }
 
       if (loginTokenParam || inviteToken) {
@@ -1349,17 +1351,19 @@ export default function AppContainer() {
   };
 
   const handleSuspendUser = async (userId) => {
-    if (!confirm('Suspend this user? They will be hidden from the team list but can be restored.')) return;
+    if (!confirm('Suspend User & Revoke Access?\n\nThis will invalidate their current access card. You can re-invite this email anytime to issue a new card.')) return;
+    await supabase.from('digital_cards').delete().eq('profile_id', userId);
     await supabase.from('profiles').update({ role: 'deleted' }).eq('id', userId);
     setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'deleted' } : u));
-    addNotification('User suspended and hidden from view.', 'warning');
+    addNotification('User suspended. Their access card has been revoked.', 'warning');
   };
 
   const handleBanUser = async (userId) => {
-    if (!confirm('Ban this user permanently? They will NOT be able to login for 1 month.')) return;
-    await supabase.from('profiles').update({ role: 'banned' }).eq('id', userId);
-    setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned' } : u));
-    addNotification('User banned (permanently deleted from view).', 'error');
+    if (!confirm('Permanently Ban User for 30 Days?\n\nWARNING: This user will be deleted and banned. You will NOT be able to re-invite or issue access to this email address for 30 days.')) return;
+    await supabase.from('digital_cards').delete().eq('profile_id', userId);
+    await supabase.from('profiles').update({ role: 'banned', last_seen: new Date().toISOString() }).eq('id', userId);
+    setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned', last_seen: new Date().toISOString() } : u));
+    addNotification('User permanently banned for 30 days.', 'error');
   };
 
   // ─────────────────── Budget ───────────────────
@@ -1502,8 +1506,8 @@ export default function AppContainer() {
             </p>
           </div>
 
-          {!isInviteFlow && (
-            <div className="flex bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6">
+          {!isInviteFlow && !isCardLoginOnly && (
+            <div className="flex flex-col sm:flex-row bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6 gap-1">
               {['login', 'signup'].map(tab => (
                 <button key={tab} onClick={() => setAuthTab(tab)}
                   className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authTab === tab ? 'bg-[#9333ea] text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
@@ -2690,14 +2694,30 @@ export default function AppContainer() {
                   e.preventDefault();
                   if (!genInviteName || !inviteEmail) { alert('Please enter name and email'); return; }
                   
-                  // Check if this email exists - if it's a pending_worker, allow re-invite by deleting old records
+                  // Check if this email exists
                   const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
+                  let finalProfileId = genId('user');
+
                   if (existingProfile) {
-                    if (existingProfile.role === 'pending_worker') {
-                      // Delete old pending profile and card so we can re-invite
+                    if (existingProfile.role === 'banned') {
+                      const banDate = new Date(existingProfile.last_seen).getTime();
+                      const daysSinceBan = (Date.now() - banDate) / (1000 * 60 * 60 * 24);
+                      if (daysSinceBan < 30) {
+                        const availableDate = new Date(banDate + 30 * 24 * 60 * 60 * 1000).toLocaleDateString();
+                        addNotification(`This email is under a 30-day permanent ban. Re-invite available after ${availableDate}.`, 'error');
+                        return;
+                      }
+                    }
+
+                    if (['pending_worker', 'deleted', 'banned'].includes(existingProfile.role)) {
                       await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
-                      await supabase.from('profiles').delete().eq('id', existingProfile.id);
-                      setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
+                      if (existingProfile.role === 'pending_worker') {
+                        await supabase.from('profiles').delete().eq('id', existingProfile.id);
+                        setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
+                      } else {
+                        // Reuse existing profile for deleted/banned users so we don't break foreign keys
+                        finalProfileId = existingProfile.id;
+                      }
                     } else {
                       alert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
                       return;
@@ -2707,7 +2727,6 @@ export default function AppContainer() {
                   const cardNumber = `AS-2026-${Math.floor(1000 + Math.random() * 9000)}`;
                   const tempUsername = genInviteName.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 100);
                   const tempPassword = Math.random().toString(36).slice(-8);
-                  const newProfileId = genId('user');
 
                   // Build the invite link using a single base64 token (no & in URL = no encoding issues)
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
@@ -2716,7 +2735,7 @@ export default function AppContainer() {
 
                   // 1. Create Profile (as 'pending_worker' to hide from UI until they login)
                   const newProfile = {
-                    id: newProfileId,
+                    id: finalProfileId,
                     organization_id: activeOrg.id,
                     email: inviteEmail,
                     full_name: genInviteName,
@@ -2732,7 +2751,7 @@ export default function AppContainer() {
                     card_number: cardNumber,
                     username: tempUsername,
                     temp_password: tempPassword,
-                    profile_id: newProfileId,
+                    profile_id: finalProfileId,
                     organization_id: activeOrg.id,
                     email: inviteEmail,
                     full_name: genInviteName,
@@ -2743,8 +2762,14 @@ export default function AppContainer() {
                   };
                   
                   try {
-                    const { error: pErr } = await supabase.from('profiles').insert(newProfile);
-                    if (pErr) throw pErr;
+                    if (finalProfileId === existingProfile?.id) {
+                      const { error: pErr } = await supabase.from('profiles').update(newProfile).eq('id', finalProfileId);
+                      if (pErr) throw pErr;
+                      setProfiles(prev => prev.map(p => p.id === finalProfileId ? newProfile : p));
+                    } else {
+                      const { error: pErr } = await supabase.from('profiles').insert(newProfile);
+                      if (pErr) throw pErr;
+                    }
 
                     const { error: cErr } = await supabase.from('digital_cards').insert(newCard);
                     if (cErr) throw cErr;
