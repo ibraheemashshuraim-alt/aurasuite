@@ -1497,6 +1497,34 @@ export default function AppContainer() {
     </div>
   );
 
+  // ── KICKOUT SCREEN FOR RELOAD ──
+  if (kickoutModal && !isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-luxury-bg flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#11081c] border border-red-500/50 shadow-[0_0_80px_rgba(239,68,68,0.3)] rounded-3xl p-8 text-center animate-in zoom-in-95 duration-300 relative overflow-hidden">
+            <div className="absolute inset-0 bg-red-600/5 rounded-3xl pointer-events-none" />
+            <div className="w-20 h-20 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-6 border border-red-500/40 relative z-10 shadow-[0_0_30px_rgba(239,68,68,0.5)]">
+              <ShieldAlert size={40} />
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-3 relative z-10">Access Revoked</h3>
+            <p className="text-sm text-red-300 font-medium mb-8 relative z-10 leading-relaxed">
+              Your card access has been suspended by the Admin.
+            </p>
+            <button onClick={() => {
+              localStorage.clear();
+              sessionStorage.clear();
+              window.close();
+              window.location.href = 'about:blank';
+            }} className="w-full py-3.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] relative z-10 text-sm tracking-wide">
+              Close Portal
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── LOGIN SCREEN ──
   if (!isLoggedIn) {
     if (authTab === 'invite_register') {
