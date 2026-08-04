@@ -586,9 +586,9 @@ export default function AppContainer() {
         setIsCardLoginOnly(true);
         setLoginMode('worker');
         
-        supabase.from('digital_cards').select('is_revoked').eq('card_number', cardParam).single().then(({data, error}) => {
-             if (data && (data.is_revoked === true || data.status === 'suspended')) {
-                 setCardError("Access Revoked: Your access card has been suspended by the Admin. Please contact support or request a new card.");
+        supabase.from('digital_cards').select('is_revoked, status').eq('card_number', cardParam).single().then(({data, error}) => {
+             if (error || !data || data.is_revoked === true || data.status === 'suspended') {
+                 setCardError("Access Revoked: Your access card has been suspended by the Admin.");
              }
         });
       }

@@ -469,7 +469,7 @@ export default function AppContainer() {
             setCurrentUser(prev => {
               if (!prev) return prev;
               const updated = data.find(p => p.id === prev.id);
-              if (updated && (updated.role === 'banned' || updated.role === 'deleted')) {
+              if (!updated || updated.role === 'banned' || updated.role === 'deleted') {
                 setKickoutModal(true);
                 // DO NOT return null here, it will crash the UI because currentUser is still rendering!
                 return updated || prev;
