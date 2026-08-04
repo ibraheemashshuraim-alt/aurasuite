@@ -761,6 +761,17 @@ export default function AppContainer() {
       }
       
       // Proceed to login
+      let user = profiles.find(p => p.id === card.profile_id);
+      
+      if (!user) {
+        const { data: fetchUser, error: fetchUserError } = await supabase.from('profiles').select('*').eq('id', card.profile_id).single();
+        if (fetchUserError || !fetchUser) {
+           alert('Error: Could not retrieve linked user profile.');
+           return;
+        }
+        user = fetchUser;
+      }
+
       if (user) {
         if (user.role === 'banned' || user.role === 'deleted' || card.is_revoked === true) {
           setCardError('Access Revoked: Your card access has been suspended by the Admin.');
