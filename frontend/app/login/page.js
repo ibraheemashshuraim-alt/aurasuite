@@ -747,7 +747,7 @@ export default function AppContainer() {
       }
       const card = cards[0];
       if (card.is_revoked === true || card.status === 'suspended') {
-        alert('Access Denied: This card has been suspended by the Admin.');
+        setCardError('Access Revoked: Your card access has been suspended by the Admin.');
         return;
       }
       if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
@@ -763,7 +763,7 @@ export default function AppContainer() {
       // Proceed to login
       if (user) {
         if (user.role === 'banned' || user.role === 'deleted' || card.is_revoked === true) {
-          alert('Access Denied: This card has been suspended by the Admin.');
+          setCardError('Access Revoked: Your card access has been suspended by the Admin.');
           return;
         }
         const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
@@ -1572,7 +1572,12 @@ export default function AppContainer() {
              <div className="absolute top-0 right-0 w-40 h-40 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
              <div className="absolute bottom-0 left-0 w-32 h-32 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
              <h2 className="text-xl font-bold text-white mb-4">Access Revoked</h2>
-             <p className="text-sm text-red-400 font-semibold">{cardError}</p>
+             <p className="text-sm text-red-400 font-semibold mb-6">{cardError}</p>
+             <button onClick={() => {
+                localStorage.removeItem('aura_session');
+                sessionStorage.removeItem('aura_session');
+                window.location.href = 'about:blank';
+             }} className="py-2.5 px-6 rounded-xl bg-red-950/30 border border-red-500/30 text-xs font-bold text-white hover:bg-red-900/40 transition-colors">Close Portal</button>
           </div>
         </div>
       );

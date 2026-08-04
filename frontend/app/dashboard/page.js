@@ -2707,6 +2707,18 @@ export default function AppContainer() {
                   e.preventDefault();
                   if (!genInviteName || !inviteEmail) { alert('Please enter name and email'); return; }
                   
+                  // Task A: STRICTLY QUERY banned_emails FIRST
+                  const { data: banRecord } = await supabase
+                    .from('banned_emails')
+                    .select('*')
+                    .eq('email', inviteEmail.toLowerCase())
+                    .single();
+
+                  if (banRecord && new Date(banRecord.banned_until) > new Date()) {
+                    alert('This email is banned for 30 days.');
+                    return;
+                  }
+                  
                   // Check if this email exists - if it's a pending_worker, allow re-invite by deleting old records
                   const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
                   if (existingProfile) {
