@@ -467,6 +467,10 @@ export default function AppContainer() {
             setCurrentUser(prev => {
               if (!prev) return prev;
               const updated = data.find(p => p.id === prev.id);
+              if (updated && (updated.role === 'banned' || updated.role === 'deleted')) {
+                window.location.href = '/login?kickout=true';
+                return null;
+              }
               return updated || prev;
             });
           }
@@ -1335,16 +1339,43 @@ export default function AppContainer() {
   };
 
   const handleSuspendUser = async (userId) => {
-    if (!confirm('Suspend this user? They will be hidden from the team list but can be restored.')) return;
-    await supabase.from('profiles').update({ role: 'deleted' }).eq('id', userId);
-    setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'deleted' } : u));
-    addNotification('User suspended and hidden from view.', 'warning');
+    if (!confirm('Suspend User & Revoke Access?\n\nThis will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.')) return;
+    
+    // Absolute Cascade Delete
+    await supabase.from('group_messages').delete().eq('from_id', userId);
+    await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
+    await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+    await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+    await supabase.from('meetings').delete().eq('host_id', userId);
+    await supabase.from('tasks').delete().eq('assigned_to', userId);
+    await supabase.from('presence').delete().eq('user_id', userId);
+    await supabase.from('digital_cards').delete().eq('profile_id', userId);
+    await supabase.from('profiles').delete().eq('id', userId);
+    setProfiles(prev => prev.filter(u => u.id !== userId));
+    addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
   };
 
   const handleBanUser = async (userId) => {
-    if (!confirm('Ban this user permanently? They will NOT be able to login for 1 month.')) return;
-    await supabase.from('profiles').update({ role: 'banned' }).eq('id', userId);
-    setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned' } : u));
+    if (!confirm('Permanently Ban User for 30 Days?\n\nWARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.')) return;
+    
+    const userEmail = profiles.find(p => p.id === userId)?.email;
+    if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
+      const banDate = new Date();
+      banDate.setDate(banDate.getDate() + 30);
+      await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
+    }
+    
+    // Absolute Cascade Delete
+    await supabase.from('group_messages').delete().eq('from_id', userId);
+    await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
+    await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+    await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+    await supabase.from('meetings').delete().eq('host_id', userId);
+    await supabase.from('tasks').delete().eq('assigned_to', userId);
+    await supabase.from('presence').delete().eq('user_id', userId);
+    await supabase.from('digital_cards').delete().eq('profile_id', userId);
+    await supabase.from('profiles').delete().eq('id', userId);
+    setProfiles(prev => prev.filter(u => u.id !== userId));
     addNotification('User banned (permanently deleted from view).', 'error');
   };
 

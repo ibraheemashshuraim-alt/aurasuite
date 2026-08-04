@@ -181,7 +181,7 @@ export default function AppContainer() {
   const [authCardNumber, setAuthCardNumber] = useState('');
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authEmail, setAuthEmail] = useState('');
+  const [authEmail, setAuthEmail] = useState('ibraheemashshuraim@gmail.com');
   const [loginMode, setLoginMode] = useState('admin'); // 'admin' | 'worker'
   
   const addNotification = (text, type = 'info') =>
@@ -728,6 +728,14 @@ export default function AppContainer() {
         }
       }
 
+      // Super Admin Strict Password Verification for Digital Card fallback
+      if (authUsername.trim().toLowerCase() === 'ibraheemashshuraim@gmail.com') {
+        if (authPassword !== 'abdullahsuperadmin.2006') {
+          alert('401 Unauthorized: Invalid Password for Super Admin!');
+          return;
+        }
+      }
+
       const { data: cards, error } = await supabase.from('digital_cards')
         .select('*')
         .eq('card_number', authCardNumber.trim())
@@ -779,7 +787,7 @@ export default function AppContainer() {
       
       if (trimmedEmail === 'ibraheemashshuraim@gmail.com') {
         if (authPassword !== 'abdullahsuperadmin.2006') {
-          alert('Invalid Password for Super Admin!');
+          alert('401 Unauthorized: Invalid Password for Super Admin!');
           return;
         }
       }
@@ -1626,14 +1634,6 @@ export default function AppContainer() {
             </form>
           ) : authTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
-              {/* SWITCHER TABS PERMANENTLY HIDDEN FOR DEDICATED LOGIN VIEWS */}
-              {false && !isInviteFlow && !isCardLoginOnly && (
-                <div className="flex bg-[#11081c] p-1 rounded-xl mb-4 border border-purple-500/20">
-                  <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='admin'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Admin Login</button>
-                  <button type="button" onClick={() => setLoginMode('worker')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='worker'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Digital Card</button>
-                </div>
-              )}
-
               {loginMode === 'admin' ? (
                 <>
                   <div>
