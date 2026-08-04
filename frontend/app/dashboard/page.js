@@ -1413,14 +1413,14 @@ export default function AppContainer() {
         // Suspend the user to trigger Realtime Kickout Modal immediately
         const { error } = await supabase
           .from('profiles')
-          .update({ role: 'suspended', status: 'suspended' })
+          .update({ role: 'suspended' })
           .eq('id', userId);
 
         if (error) {
           console.error('Suspend error:', error);
           addNotification('Error suspending user', 'error');
         } else {
-          setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'suspended', status: 'suspended' } : u));
+          setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'suspended' } : u));
           addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
         }
         setConfirmModal(null);
