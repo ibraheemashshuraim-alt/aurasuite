@@ -427,9 +427,9 @@ export default function AppContainer() {
               return;
             }
 
-            const loadOrg = () => {
+            const loadOrg = (extra = {}) => {
               supabase.from('organizations').select('*').eq('id', savedUser.organization_id).single().then(({data: savedOrg}) => {
-                setCurrentUser(savedUser);
+                setCurrentUser({ ...savedUser, ...extra });
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
                 setIsCheckingSession(false);
@@ -437,7 +437,7 @@ export default function AppContainer() {
             };
 
             if (isWorker) {
-              supabase.from('digital_cards').select('is_revoked').eq('profile_id', userId).single().then(({data: card}) => {
+              supabase.from('digital_cards').select('id, is_revoked').eq('profile_id', userId).single().then(({data: card}) => {
                 if (!card || card.is_revoked === true) {
                   sessionStorage.clear();
                   localStorage.clear();
@@ -445,7 +445,7 @@ export default function AppContainer() {
                   setIsCheckingSession(false);
                   return;
                 }
-                loadOrg();
+                loadOrg({ card_id: card.id });
               });
             } else {
               loadOrg();
@@ -541,25 +541,33 @@ export default function AppContainer() {
   useEffect(() => {
     if (!mounted || !currentUser) return;
     
-    const kickoutChannel = supabase
-      .channel(`kickout-listener-${currentUser.id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, (payload) => {
-          if (payload.new.role === 'banned' || payload.new.role === 'deleted') {
-              localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
-          }
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, () => {
-          localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'digital_cards', filter: `profile_id=eq.${currentUser.id}` }, (payload) => {
-          if (payload.new.is_revoked === true) {
-              localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
-          }
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'digital_cards', filter: `profile_id=eq.${currentUser.id}` }, () => {
-          localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
-      })
-      .subscribe();
+    let kickoutChannel = supabase.channel(`kickout-listener-${currentUser.id}`);
+
+    // If the user has a digital card (worker/client), listen to exact card changes
+    if (currentUser.card_id) {
+       kickoutChannel = kickoutChannel
+         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'digital_cards', filter: `id=eq.${currentUser.card_id}` }, (payload) => {
+             if (payload.new.is_revoked === true) {
+                 localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
+             }
+         })
+         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'digital_cards', filter: `id=eq.${currentUser.card_id}` }, () => {
+             localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
+         });
+    } else {
+       // For fallback on profiles if they are added to realtime later, or for other roles
+       kickoutChannel = kickoutChannel
+         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, (payload) => {
+             if (payload.new.role === 'banned' || payload.new.role === 'deleted') {
+                 localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
+             }
+         })
+         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, () => {
+             localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
+         });
+    }
+
+    kickoutChannel.subscribe();
       
     return () => { supabase.removeChannel(kickoutChannel); };
   }, [mounted, currentUser]);
