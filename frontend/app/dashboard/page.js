@@ -554,18 +554,15 @@ export default function AppContainer() {
         },
         (payload) => {
           console.log('⚡ REALTIME EVENT RECEIVED:', payload);
-          if (payload.eventType === 'DELETE') {
+
+          const newRole = payload.new?.role;
+          if (payload.eventType === 'DELETE' || newRole === 'suspended' || newRole === 'banned' || newRole === 'deleted') {
+            console.log('🚫 FORCING KICKOUT MODAL NOW!');
             setKickoutModal(true);
+            setIsLoggedIn(false);
+
             localStorage.clear();
             sessionStorage.clear();
-          } else if (payload.eventType === 'UPDATE') {
-            const role = payload.new?.role;
-            const status = payload.new?.status;
-            if (role === 'banned' || role === 'deleted' || role === 'suspended' || status === 'suspended') {
-              setKickoutModal(true);
-              localStorage.clear();
-              sessionStorage.clear();
-            }
           }
         }
       )
@@ -1521,7 +1518,7 @@ export default function AppContainer() {
   );
 
   // ── KICKOUT SCREEN FOR RELOAD ──
-  if (kickoutModal && !isLoggedIn) {
+  if (kickoutModal) {
     return (
       <div className="min-h-screen bg-luxury-bg flex items-center justify-center p-4">
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
