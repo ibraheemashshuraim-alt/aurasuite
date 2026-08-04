@@ -1408,20 +1408,21 @@ export default function AppContainer() {
   const handleSuspendUser = async (userId) => {
     setConfirmModal({
       title: 'Suspend User & Revoke Access?',
-      message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
+      message: 'This will instantly suspend their profile and invalidate their current access card.',
       onConfirm: async () => {
-        // Absolute Cascade Delete
-        await supabase.from('group_messages').delete().eq('from_id', userId);
-        await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
-        await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-        await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-        await supabase.from('meetings').delete().eq('host_id', userId);
-        await supabase.from('tasks').delete().eq('assigned_to', userId);
-        await supabase.from('presence').delete().eq('user_id', userId);
-        await supabase.from('digital_cards').delete().eq('profile_id', userId);
-        await supabase.from('profiles').delete().eq('id', userId);
-        setProfiles(prev => prev.filter(u => u.id !== userId));
-        addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
+        // Suspend the user to trigger Realtime Kickout Modal immediately
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: 'suspended', status: 'suspended' })
+          .eq('id', userId);
+
+        if (error) {
+          console.error('Suspend error:', error);
+          addNotification('Error suspending user', 'error');
+        } else {
+          setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'suspended', status: 'suspended' } : u));
+          addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
+        }
         setConfirmModal(null);
       }
     });
