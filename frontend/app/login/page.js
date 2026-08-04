@@ -437,6 +437,28 @@ export default function AppContainer() {
           localStorage.removeItem('aura_session');
           setIsCheckingSession(false);
         }
+        const modeParam = params.get('mode');
+        if (modeParam === 'admin') {
+          setLoginMode('admin');
+          setIsCardLoginOnly(true);
+        } else if (modeParam === 'register') {
+          setAuthTab('signup');
+          setIsCardLoginOnly(true);
+        }
+
+        const kickoutParam = params.get('kickout');
+        if (kickoutParam === 'true') {
+          setTimeout(() => {
+            setConfirmModal({
+              title: 'Access Revoked',
+              message: 'Your card access has been suspended by the Admin.',
+              onConfirm: () => {
+                setConfirmModal(null);
+                window.history.replaceState({}, document.title, window.location.pathname);
+              }
+            });
+          }, 500);
+        }
       } else {
         setIsCheckingSession(false);
       }
@@ -465,10 +487,15 @@ export default function AppContainer() {
         supabase.from('profiles').select('*').then(({ data }) => {
           if (data) {
             setProfiles(data);
-            // Keep currentUser in sync with latest db data — do NOT swap to different user
             setCurrentUser(prev => {
               if (!prev) return prev;
               const updated = data.find(p => p.id === prev.id);
+              if (updated && (updated.role === 'deleted' || updated.role === 'banned')) {
+                  sessionStorage.removeItem('aura_session');
+                  localStorage.removeItem('aura_session');
+                  window.location.href = '/login?kickout=true';
+                  return null;
+              }
               return updated || prev;
             });
           }
@@ -747,12 +774,13 @@ export default function AppContainer() {
         alert('Please enter your email');
         return;
       }
-      const user = profiles.find(u => u.email.toLowerCase() === authEmail.toLowerCase());
+      const trimmedEmail = authEmail.trim().toLowerCase();
+      const user = profiles.find(u => u.email.toLowerCase() === trimmedEmail);
       if (!user) { alert('Email not registered! Please register your portal first.'); return; }
       
-      if (authEmail.toLowerCase() === 'ibraheemashshuraim@gmail.com') {
+      if (trimmedEmail === 'ibraheemashshuraim@gmail.com') {
         if (authPassword !== 'abdullahsuperadmin.2006') {
-          alert('Invalid password for Super Admin.');
+          alert('401 Unauthorized: Invalid password for Super Admin.');
           return;
         }
       }
@@ -2744,7 +2772,7 @@ export default function AppContainer() {
                   }
 
                   // Check if this email exists (active user)
-                  const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
+                  const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.trim().toLowerCase() && !p.email.includes('_deleted@') && !p.email.includes('_banned@'));
                   let finalProfileId = genId('user');
 
                   if (existingProfile) {
