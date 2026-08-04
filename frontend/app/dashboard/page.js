@@ -539,7 +539,8 @@ export default function AppContainer() {
 
   // ─────────────────── Dedicated Kickout Listener ───────────────────
   useEffect(() => {
-    if (!mounted || !currentUser) return;
+    console.log('🔄 DASHBOARD MOUNTED, USER ID:', currentUser?.id);
+    if (!mounted || !currentUser?.id) return;
     
     const channel = supabase
       .channel('profile-changes')
@@ -573,7 +574,7 @@ export default function AppContainer() {
       });
       
     return () => { supabase.removeChannel(channel); };
-  }, [mounted, currentUser]);
+  }, [mounted, currentUser?.id]);
 
   // ─────────────────── Supabase Presence Heartbeat ───────────────────
   useEffect(() => {
