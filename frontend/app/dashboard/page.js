@@ -580,7 +580,17 @@ export default function AppContainer() {
     if (!mounted || !isLoggedIn || !currentUser) return;
 
     const updatePresence = async () => {
-      await supabase.from('presence').upsert({ user_id: currentUser.id, organization_id: activeOrg?.id, last_seen: Date.now() }, { onConflict: 'user_id' });
+      if (['suspended', 'banned', 'deleted'].includes(currentUser.role) || currentUser.status === 'suspended') return;
+      
+      const { data: existing } = await supabase.from('presence').select('user_id').eq('user_id', currentUser.id).maybeSingle();
+      
+      if (existing) {
+        const { error } = await supabase.from('presence').update({ last_seen: Date.now() }).eq('user_id', currentUser.id);
+        if (error) console.error('Presence Update Error:', error);
+      } else {
+        const { error } = await supabase.from('presence').insert({ user_id: currentUser.id, organization_id: activeOrg?.id, last_seen: Date.now() });
+        if (error) console.error('Presence Insert Error:', error);
+      }
       const { data } = await supabase.from('presence').select('*');
       if (data) {
         const now = Date.now();
