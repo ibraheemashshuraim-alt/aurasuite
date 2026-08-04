@@ -200,6 +200,7 @@ export default function AppContainer() {
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizStep, setQuizStep] = useState(0);
   const [quizLoading, setQuizLoading] = useState(false);
+  const [cardError, setCardError] = useState(null);
 
   const [signUpName, setSignUpName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
@@ -448,16 +449,7 @@ export default function AppContainer() {
 
         const kickoutParam = params.get('kickout');
         if (kickoutParam === 'true') {
-          setTimeout(() => {
-            setConfirmModal({
-              title: 'Access Revoked',
-              message: 'Your card access has been suspended by the Admin.',
-              onConfirm: () => {
-                setConfirmModal(null);
-                window.history.replaceState({}, document.title, window.location.pathname);
-              }
-            });
-          }, 500);
+          setCardError('Access Revoked: Your access card has been suspended by the Admin. Please contact support or request a new card.');
         }
       } else {
         setIsCheckingSession(false);
@@ -593,6 +585,12 @@ export default function AppContainer() {
         setAuthTab('login');
         setIsCardLoginOnly(true);
         setLoginMode('worker');
+        
+        supabase.from('digital_cards').select('is_revoked').eq('card_number', cardParam).single().then(({data, error}) => {
+             if (data && (data.is_revoked === true || data.status === 'suspended')) {
+                 setCardError("Access Revoked: Your access card has been suspended by the Admin. Please contact support or request a new card.");
+             }
+        });
       }
 
       if (loginTokenParam || inviteToken) {
@@ -722,6 +720,14 @@ export default function AppContainer() {
         return;
       }
       // Digital Card Login
+      // Super Admin Strict Password Verification for Digital Card fallback
+      if (authUsername.trim().toLowerCase() === 'ibraheemashshuraim@gmail.com') {
+        if (authPassword !== 'abdullahsuperadmin.2006') {
+          alert('Invalid Password for Super Admin!');
+          return;
+        }
+      }
+
       const { data: cards, error } = await supabase.from('digital_cards')
         .select('*')
         .eq('card_number', authCardNumber.trim())
@@ -1391,7 +1397,14 @@ export default function AppContainer() {
       title: 'Suspend User & Revoke Access?',
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
-        // HARD DELETE OR UNSET
+        // Absolute Cascade Delete
+        await supabase.from('group_messages').delete().eq('from_id', userId);
+        await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
+        await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+        await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+        await supabase.from('meetings').delete().eq('host_id', userId);
+        await supabase.from('tasks').delete().eq('assigned_to', userId);
+        await supabase.from('presence').delete().eq('user_id', userId);
         await supabase.from('digital_cards').delete().eq('profile_id', userId);
         await supabase.from('profiles').delete().eq('id', userId);
         setProfiles(prev => prev.filter(u => u.id !== userId));
@@ -1543,6 +1556,20 @@ export default function AppContainer() {
         </div>
       );
     }
+    
+    if (cardError) {
+      return (
+        <div className="min-h-screen bg-luxury-bg flex items-center justify-center p-4">
+          <div className="w-full max-w-md glass-panel-glow p-8 rounded-2xl border border-red-500/20 text-center relative overflow-hidden">
+             <div className="absolute top-0 right-0 w-40 h-40 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
+             <div className="absolute bottom-0 left-0 w-32 h-32 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
+             <h2 className="text-xl font-bold text-white mb-4">Access Revoked</h2>
+             <p className="text-sm text-red-400 font-semibold">{cardError}</p>
+          </div>
+        </div>
+      );
+    }
+    
     return (
       <div className="min-h-screen bg-luxury-bg text-[#f3f1f5] flex items-center justify-center p-4">
         <div className="w-full max-w-md glass-panel-glow p-8 rounded-2xl border border-[#9333ea]/20 relative overflow-hidden">
