@@ -732,8 +732,8 @@ export default function AppContainer() {
         return;
       }
       const card = cards[0];
-      if (card.is_revoked) {
-        alert('Access Revoked: This card has been suspended. Please request a new card.');
+      if (card.is_revoked === true || card.status === 'suspended') {
+        alert('Access Denied: This card has been suspended by the Admin.');
         return;
       }
       if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
@@ -747,16 +747,10 @@ export default function AppContainer() {
       }
       
       // Proceed to login
-      const user = profiles.find(u => u.id === card.profile_id);
       if (user) {
-        if (user.role === 'banned') {
-          alert('This account has been permanently banned/suspended.');
+        if (user.role === 'banned' || user.role === 'deleted' || card.is_revoked === true) {
+          alert('Access Denied: This card has been suspended by the Admin.');
           return;
-        }
-        if (user.role === 'deleted') {
-          // Restore suspended user
-          user.role = 'worker';
-          supabase.from('profiles').update({ role: 'worker' }).eq('id', user.id);
         }
         const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
         setCurrentUser(user);
@@ -774,24 +768,22 @@ export default function AppContainer() {
         alert('Please enter your email');
         return;
       }
+      
       const trimmedEmail = authEmail.trim().toLowerCase();
-      const user = profiles.find(u => u.email.toLowerCase() === trimmedEmail);
-      if (!user) { alert('Email not registered! Please register your portal first.'); return; }
       
       if (trimmedEmail === 'ibraheemashshuraim@gmail.com') {
         if (authPassword !== 'abdullahsuperadmin.2006') {
-          alert('401 Unauthorized: Invalid password for Super Admin.');
+          alert('Invalid Password for Super Admin!');
           return;
         }
       }
 
-      if (user.role === 'banned') {
-        alert('This account has been permanently banned/suspended.');
+      const user = profiles.find(u => u.email.toLowerCase() === trimmedEmail);
+      if (!user) { alert('Email not registered! Please register your portal first.'); return; }
+      
+      if (user.role === 'banned' || user.role === 'deleted') {
+        alert('Access Denied: This card has been suspended by the Admin.');
         return;
-      }
-      if (user.role === 'deleted') {
-        user.role = 'admin';
-        supabase.from('profiles').update({ role: 'admin' }).eq('id', user.id);
       }
 
       const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
@@ -1399,8 +1391,9 @@ export default function AppContainer() {
       title: 'Suspend User & Revoke Access?',
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
-        await supabase.from('digital_cards').update({ is_revoked: true, is_pending: false }).eq('profile_id', userId);
-        await supabase.from('profiles').update({ role: 'deleted', email: `${userId}_deleted@aurasuite.com` }).eq('id', userId);
+        // HARD DELETE OR UNSET
+        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('profiles').delete().eq('id', userId);
         setProfiles(prev => prev.filter(u => u.id !== userId));
         addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
         setConfirmModal(null);
@@ -1568,7 +1561,8 @@ export default function AppContainer() {
             </p>
           </div>
 
-          {!isInviteFlow && !isCardLoginOnly && (
+          {/* TOP TABS PERMANENTLY HIDDEN FOR CLEAN UI */}
+          {false && !isInviteFlow && !isCardLoginOnly && (
             <div className="flex flex-col sm:flex-row bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6 gap-1">
               {['login', 'signup'].map(tab => (
                 <button key={tab} onClick={() => setAuthTab(tab)}
@@ -1605,7 +1599,8 @@ export default function AppContainer() {
             </form>
           ) : authTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
-              {!isInviteFlow && !isCardLoginOnly && (
+              {/* SWITCHER TABS PERMANENTLY HIDDEN FOR DEDICATED LOGIN VIEWS */}
+              {false && !isInviteFlow && !isCardLoginOnly && (
                 <div className="flex bg-[#11081c] p-1 rounded-xl mb-4 border border-purple-500/20">
                   <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='admin'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Admin Login</button>
                   <button type="button" onClick={() => setLoginMode('worker')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='worker'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Digital Card</button>
