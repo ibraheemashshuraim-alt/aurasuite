@@ -411,7 +411,7 @@ export default function AppContainer() {
           else setLoginMode(loadedMode);
 
           supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser, error: pError}) => {
-            if (pError || !savedUser || savedUser.role === 'banned' || savedUser.role === 'deleted') {
+            if (pError || !savedUser || ['banned', 'deleted', 'suspended'].includes(savedUser.role) || savedUser.status === 'suspended') {
               sessionStorage.clear();
               localStorage.clear();
               setKickoutModal(true);
@@ -543,29 +543,18 @@ export default function AppContainer() {
     
     let kickoutChannel = supabase.channel(`kickout-listener-${currentUser.id}`);
 
-    // If the user has a digital card (worker/client), listen to exact card changes
-    if (currentUser.card_id) {
-       kickoutChannel = kickoutChannel
-         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'digital_cards', filter: `id=eq.${currentUser.card_id}` }, (payload) => {
-             if (payload.new.is_revoked === true) {
-                 localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
-             }
-         })
-         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'digital_cards', filter: `id=eq.${currentUser.card_id}` }, () => {
-             localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
-         });
-    } else {
-       // For fallback on profiles if they are added to realtime later, or for other roles
-       kickoutChannel = kickoutChannel
-         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, (payload) => {
-             if (payload.new.role === 'banned' || payload.new.role === 'deleted') {
-                 localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
-             }
-         })
-         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, () => {
-             localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
-         });
-    }
+    // Re-bind Realtime Listener directly to public.profiles
+    kickoutChannel = kickoutChannel
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, (payload) => {
+          const role = payload.new.role;
+          const status = payload.new.status;
+          if (role === 'banned' || role === 'deleted' || role === 'suspended' || status === 'suspended') {
+              localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
+          }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, () => {
+          localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
+      });
 
     kickoutChannel.subscribe();
       
