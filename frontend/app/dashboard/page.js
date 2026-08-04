@@ -541,24 +541,38 @@ export default function AppContainer() {
   useEffect(() => {
     if (!mounted || !currentUser) return;
     
-    let kickoutChannel = supabase.channel(`kickout-listener-${currentUser.id}`);
-
-    // Re-bind Realtime Listener directly to public.profiles
-    kickoutChannel = kickoutChannel
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, (payload) => {
-          const role = payload.new.role;
-          const status = payload.new.status;
-          if (role === 'banned' || role === 'deleted' || role === 'suspended' || status === 'suspended') {
-              localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
+    const channel = supabase
+      .channel('profile-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${currentUser.id}`
+        },
+        (payload) => {
+          console.log('⚡ REALTIME EVENT RECEIVED:', payload);
+          if (payload.eventType === 'DELETE') {
+            setKickoutModal(true);
+            localStorage.clear();
+            sessionStorage.clear();
+          } else if (payload.eventType === 'UPDATE') {
+            const role = payload.new?.role;
+            const status = payload.new?.status;
+            if (role === 'banned' || role === 'deleted' || role === 'suspended' || status === 'suspended') {
+              setKickoutModal(true);
+              localStorage.clear();
+              sessionStorage.clear();
+            }
           }
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUser.id}` }, () => {
-          localStorage.clear(); sessionStorage.clear(); setKickoutModal(true);
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 REALTIME SUBSCRIPTION STATUS:', status);
       });
-
-    kickoutChannel.subscribe();
       
-    return () => { supabase.removeChannel(kickoutChannel); };
+    return () => { supabase.removeChannel(channel); };
   }, [mounted, currentUser]);
 
   // ─────────────────── Supabase Presence Heartbeat ───────────────────
