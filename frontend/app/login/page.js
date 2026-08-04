@@ -586,8 +586,8 @@ export default function AppContainer() {
         setIsCardLoginOnly(true);
         setLoginMode('worker');
         
-        supabase.from('digital_cards').select('is_revoked, status').eq('card_number', cardParam).single().then(({data, error}) => {
-             if (error || !data || data.is_revoked === true || data.status === 'suspended') {
+        supabase.from('digital_cards').select('is_revoked').eq('card_number', cardParam).single().then(({data, error}) => {
+             if (error || !data || data.is_revoked === true) {
                  setCardError("Access Revoked: Your access card has been suspended by the Admin.");
              }
         });
@@ -785,11 +785,14 @@ export default function AppContainer() {
       
       const trimmedEmail = authEmail.trim().toLowerCase();
       
-      if (trimmedEmail === 'ibraheemashshuraim@gmail.com') {
-        if (authPassword !== 'abdullahsuperadmin.2006') {
-          alert('401 Unauthorized: Invalid Password for Super Admin!');
-          return;
-        }
+      if (trimmedEmail !== 'ibraheemashshuraim@gmail.com') {
+        alert('401 Unauthorized: Only Super Admin can login via email. Workers must use Digital Cards.');
+        return;
+      }
+
+      if (authPassword !== 'abdullahsuperadmin.2006') {
+        alert('401 Unauthorized: Invalid Password for Super Admin!');
+        return;
       }
 
       const user = profiles.find(u => u.email.toLowerCase() === trimmedEmail);
