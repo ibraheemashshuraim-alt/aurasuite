@@ -560,7 +560,7 @@ export default function AppContainer() {
         setActiveOrg(null);
         
         setAuthCardNumber(cardParam);
-        const userParam = searchParams.get('user');
+        const userParam = params.get('user');
         if (userParam) setAuthUsername(userParam);
         
         setAuthTab('login');
@@ -705,6 +705,10 @@ export default function AppContainer() {
         return;
       }
       const card = cards[0];
+      if (card.is_revoked) {
+        alert('Access Revoked: This card has been suspended. Please request a new card.');
+        return;
+      }
       if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
         alert('Invalid Password');
         return;
@@ -1367,7 +1371,7 @@ export default function AppContainer() {
       title: 'Suspend User & Revoke Access?',
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
-        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('digital_cards').update({ is_revoked: true, is_pending: false }).eq('profile_id', userId);
         await supabase.from('profiles').update({ role: 'deleted', email: `${userId}_deleted@aurasuite.com` }).eq('id', userId);
         setProfiles(prev => prev.filter(u => u.id !== userId));
         addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
@@ -1381,8 +1385,14 @@ export default function AppContainer() {
       title: 'Permanently Ban User for 30 Days?',
       message: 'WARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.',
       onConfirm: async () => {
-        await supabase.from('digital_cards').delete().eq('profile_id', userId);
-        await supabase.from('profiles').update({ role: 'banned', last_seen: new Date().toISOString() }).eq('id', userId);
+        const userEmail = profiles.find(p => p.id === userId)?.email;
+        if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
+          const banDate = new Date();
+          banDate.setDate(banDate.getDate() + 30);
+          await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
+        }
+        await supabase.from('digital_cards').update({ is_revoked: true, is_pending: false }).eq('profile_id', userId);
+        await supabase.from('profiles').update({ role: 'banned', last_seen: new Date().toISOString(), email: `${userId}_banned@aurasuite.com` }).eq('id', userId);
         setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned', last_seen: new Date().toISOString() } : u));
         addNotification('User permanently banned for 30 days.', 'error');
         setConfirmModal(null);
@@ -2718,30 +2728,30 @@ export default function AppContainer() {
                   e.preventDefault();
                   if (!genInviteName || !inviteEmail) { alert('Please enter name and email'); return; }
                   
-                  // Check if this email exists
+                  // Check if this email is banned in Supabase
+                  const { data: bannedData } = await supabase.from('banned_emails').select('*').eq('email', inviteEmail.toLowerCase());
+                  if (bannedData && bannedData.length > 0) {
+                    const banRecord = bannedData[0];
+                    const bannedUntil = new Date(banRecord.banned_until).getTime();
+                    if (Date.now() < bannedUntil) {
+                      const availableDate = new Date(banRecord.banned_until).toLocaleDateString();
+                      addNotification(`This email is under a 30-day permanent ban. Re-invite available after ${availableDate}.`, 'error');
+                      return;
+                    } else {
+                      // Auto Unblock
+                      await supabase.from('banned_emails').delete().eq('email', inviteEmail.toLowerCase());
+                    }
+                  }
+
+                  // Check if this email exists (active user)
                   const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
                   let finalProfileId = genId('user');
 
                   if (existingProfile) {
-                    if (existingProfile.role === 'banned') {
-                      const banDate = new Date(existingProfile.last_seen).getTime();
-                      const daysSinceBan = (Date.now() - banDate) / (1000 * 60 * 60 * 24);
-                      if (daysSinceBan < 30) {
-                        const availableDate = new Date(banDate + 30 * 24 * 60 * 60 * 1000).toLocaleDateString();
-                        addNotification(`This email is under a 30-day permanent ban. Re-invite available after ${availableDate}.`, 'error');
-                        return;
-                      }
-                    }
-
-                    if (['pending_worker', 'banned'].includes(existingProfile.role)) {
+                    if (existingProfile.role === 'pending_worker') {
                       await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
-                      if (existingProfile.role === 'pending_worker') {
-                        await supabase.from('profiles').delete().eq('id', existingProfile.id);
-                        setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
-                      } else {
-                        // Reuse existing profile for banned users so we don't break foreign keys
-                        finalProfileId = existingProfile.id;
-                      }
+                      await supabase.from('profiles').delete().eq('id', existingProfile.id);
+                      setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
                     } else {
                       alert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
                       return;
