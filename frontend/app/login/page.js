@@ -181,7 +181,7 @@ export default function AppContainer() {
   const [authCardNumber, setAuthCardNumber] = useState('');
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authEmail, setAuthEmail] = useState('ibraheemashshuraim@gmail.com');
+  const [authEmail, setAuthEmail] = useState('');
   const [loginMode, setLoginMode] = useState('admin'); // 'admin' | 'worker'
   
   const addNotification = (text, type = 'info') =>
@@ -981,15 +981,17 @@ export default function AppContainer() {
     if (currentUser) {
       await supabase.from('presence').delete().eq('user_id', currentUser.id);
     }
-    sessionStorage.removeItem('aura_session');
-    if (loginMode === 'admin') {
-      localStorage.removeItem('aura_session');
-    }
+    sessionStorage.clear();
+    localStorage.clear();
     setIsLoggedIn(false);
     setCurrentUser(null);
     setActiveOrg(null);
     setIsInMeeting(false);
     setCurrentMeetingSession(null);
+    setAuthEmail('');
+    setAuthUsername('');
+    setAuthCardNumber('');
+    setAuthPassword('');
     setAuthTab('login');
     if (typeof window !== 'undefined') window.history.replaceState({}, document.title, window.location.pathname);
   };
@@ -1574,8 +1576,8 @@ export default function AppContainer() {
              <h2 className="text-xl font-bold text-white mb-4">Access Revoked</h2>
              <p className="text-sm text-red-400 font-semibold mb-6">{cardError}</p>
              <button onClick={() => {
-                localStorage.removeItem('aura_session');
-                sessionStorage.removeItem('aura_session');
+                localStorage.clear();
+                sessionStorage.clear();
                 window.location.href = 'about:blank';
              }} className="py-2.5 px-6 rounded-xl bg-red-950/30 border border-red-500/30 text-xs font-bold text-white hover:bg-red-900/40 transition-colors">Close Portal</button>
           </div>

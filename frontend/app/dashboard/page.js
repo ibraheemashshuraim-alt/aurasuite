@@ -256,6 +256,8 @@ export default function AppContainer() {
   const [showMeetingParticipants, setShowMeetingParticipants] = useState(false);
   const [showHostTools, setShowHostTools] = useState(false);
   const [customAlert, setCustomAlert] = useState(null);
+  const [kickoutModal, setKickoutModal] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
   const [pinnedUserId, setPinnedUserId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef(null);
@@ -468,7 +470,7 @@ export default function AppContainer() {
               if (!prev) return prev;
               const updated = data.find(p => p.id === prev.id);
               if (updated && (updated.role === 'banned' || updated.role === 'deleted')) {
-                window.location.href = '/login?kickout=true';
+                setKickoutModal(true);
                 return null;
               }
               return updated || prev;
@@ -919,15 +921,17 @@ export default function AppContainer() {
     if (currentUser) {
       await supabase.from('presence').delete().eq('user_id', currentUser.id);
     }
-    sessionStorage.removeItem('aura_session');
-    if (loginMode === 'admin') {
-      localStorage.removeItem('aura_session');
-    }
+    sessionStorage.clear();
+    localStorage.clear();
     setIsLoggedIn(false);
     setCurrentUser(null);
     setActiveOrg(null);
     setIsInMeeting(false);
     setCurrentMeetingSession(null);
+    setAuthEmail('');
+    setAuthUsername('');
+    setAuthCardNumber('');
+    setAuthPassword('');
     setAuthTab('login');
     if (typeof window !== 'undefined') window.history.replaceState({}, document.title, window.location.pathname);
   };
@@ -1339,44 +1343,54 @@ export default function AppContainer() {
   };
 
   const handleSuspendUser = async (userId) => {
-    if (!confirm('Suspend User & Revoke Access?\n\nThis will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.')) return;
-    
-    // Absolute Cascade Delete
-    await supabase.from('group_messages').delete().eq('from_id', userId);
-    await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
-    await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-    await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-    await supabase.from('meetings').delete().eq('host_id', userId);
-    await supabase.from('tasks').delete().eq('assigned_to', userId);
-    await supabase.from('presence').delete().eq('user_id', userId);
-    await supabase.from('digital_cards').delete().eq('profile_id', userId);
-    await supabase.from('profiles').delete().eq('id', userId);
-    setProfiles(prev => prev.filter(u => u.id !== userId));
-    addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
+    setConfirmModal({
+      title: 'Suspend User & Revoke Access?',
+      message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
+      onConfirm: async () => {
+        // Absolute Cascade Delete
+        await supabase.from('group_messages').delete().eq('from_id', userId);
+        await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
+        await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+        await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+        await supabase.from('meetings').delete().eq('host_id', userId);
+        await supabase.from('tasks').delete().eq('assigned_to', userId);
+        await supabase.from('presence').delete().eq('user_id', userId);
+        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('profiles').delete().eq('id', userId);
+        setProfiles(prev => prev.filter(u => u.id !== userId));
+        addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
+        setConfirmModal(null);
+      }
+    });
   };
 
   const handleBanUser = async (userId) => {
-    if (!confirm('Permanently Ban User for 30 Days?\n\nWARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.')) return;
-    
-    const userEmail = profiles.find(p => p.id === userId)?.email;
-    if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
-      const banDate = new Date();
-      banDate.setDate(banDate.getDate() + 30);
-      await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
-    }
-    
-    // Absolute Cascade Delete
-    await supabase.from('group_messages').delete().eq('from_id', userId);
-    await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
-    await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-    await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-    await supabase.from('meetings').delete().eq('host_id', userId);
-    await supabase.from('tasks').delete().eq('assigned_to', userId);
-    await supabase.from('presence').delete().eq('user_id', userId);
-    await supabase.from('digital_cards').delete().eq('profile_id', userId);
-    await supabase.from('profiles').delete().eq('id', userId);
-    setProfiles(prev => prev.filter(u => u.id !== userId));
-    addNotification('User banned (permanently deleted from view).', 'error');
+    setConfirmModal({
+      title: 'Permanently Ban User for 30 Days?',
+      message: 'WARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.',
+      onConfirm: async () => {
+        const userEmail = profiles.find(p => p.id === userId)?.email;
+        if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
+          const banDate = new Date();
+          banDate.setDate(banDate.getDate() + 30);
+          await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
+        }
+        
+        // Absolute Cascade Delete
+        await supabase.from('group_messages').delete().eq('from_id', userId);
+        await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
+        await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+        await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+        await supabase.from('meetings').delete().eq('host_id', userId);
+        await supabase.from('tasks').delete().eq('assigned_to', userId);
+        await supabase.from('presence').delete().eq('user_id', userId);
+        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('profiles').delete().eq('id', userId);
+        setProfiles(prev => prev.filter(u => u.id !== userId));
+        addNotification('User banned (permanently deleted from view).', 'error');
+        setConfirmModal(null);
+      }
+    });
   };
 
   // ─────────────────── Budget ───────────────────
@@ -1945,10 +1959,55 @@ export default function AppContainer() {
             <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4 border border-red-500/30">
               <ShieldAlert size={32} />
             </div>
-            <h3 className="text-lg font-bold text-white mb-2">Access Restricted</h3>
+            <h3 className="text-lg font-bold text-white mb-2">Notice</h3>
             <p className="text-sm text-purple-300 mb-6">{customAlert}</p>
             <button onClick={() => setCustomAlert(null)} className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20">
               Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── CONFIRM MODAL ── */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#11081c] border border-orange-500/30 shadow-[0_0_40px_rgba(249,115,22,0.2)] rounded-3xl p-6 text-center animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center mx-auto mb-4 border border-orange-500/30">
+              <ShieldAlert size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">{confirmModal.title}</h3>
+            <p className="text-sm text-purple-300 mb-6">{confirmModal.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmModal(null)} className="flex-1 py-3 bg-purple-900/40 hover:bg-purple-900/60 text-purple-200 font-bold rounded-xl transition-all border border-purple-500/20">
+                Cancel
+              </button>
+              <button onClick={confirmModal.onConfirm} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20">
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── KICKOUT MODAL ── */}
+      {kickoutModal && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#11081c] border border-red-500/50 shadow-[0_0_80px_rgba(239,68,68,0.3)] rounded-3xl p-8 text-center animate-in zoom-in-95 duration-300 relative overflow-hidden">
+            <div className="absolute inset-0 bg-red-600/5 rounded-3xl pointer-events-none" />
+            <div className="w-20 h-20 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-6 border border-red-500/40 relative z-10 shadow-[0_0_30px_rgba(239,68,68,0.5)]">
+              <ShieldAlert size={40} />
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-3 relative z-10">Access Revoked</h3>
+            <p className="text-sm text-red-300 font-medium mb-8 relative z-10 leading-relaxed">
+              Your card access has been suspended by the Admin.
+            </p>
+            <button onClick={() => {
+              localStorage.clear();
+              sessionStorage.clear();
+              window.close();
+              window.location.href = 'about:blank';
+            }} className="w-full py-3.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] relative z-10 text-sm tracking-wide">
+              Close Portal
             </button>
           </div>
         </div>
@@ -2705,7 +2764,7 @@ export default function AppContainer() {
                 
                 <form onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!genInviteName || !inviteEmail) { alert('Please enter name and email'); return; }
+                  if (!genInviteName || !inviteEmail) { setCustomAlert('Please enter name and email'); return; }
                   
                   // Task A: STRICTLY QUERY banned_emails FIRST
                   const { data: banRecord } = await supabase
@@ -2715,7 +2774,7 @@ export default function AppContainer() {
                     .single();
 
                   if (banRecord && new Date(banRecord.banned_until) > new Date()) {
-                    alert('This email is banned for 30 days.');
+                    setCustomAlert('This email is banned for 30 days.');
                     return;
                   }
                   
@@ -2728,7 +2787,7 @@ export default function AppContainer() {
                       await supabase.from('profiles').delete().eq('id', existingProfile.id);
                       setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
                     } else {
-                      alert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
+                      setCustomAlert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
                       return;
                     }
                   }
@@ -2806,7 +2865,7 @@ export default function AppContainer() {
                     setInviteEmail('');
                     setGenInviteDomain('');
                   } catch (err) {
-                    alert('Error creating card: ' + err.message);
+                    setCustomAlert('Error creating card: ' + err.message);
                   }
                 }} className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
