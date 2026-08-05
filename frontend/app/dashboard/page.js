@@ -1518,28 +1518,22 @@ export default function AppContainer() {
   );
 
   // ── KICKOUT SCREEN FOR RELOAD ──
-  if (kickoutModal) {
+  if (kickoutModal || currentUser?.role === 'suspended') {
     return (
-      <div className="min-h-screen bg-luxury-bg flex items-center justify-center p-4">
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-[#11081c] border border-red-500/50 shadow-[0_0_80px_rgba(239,68,68,0.3)] rounded-3xl p-8 text-center animate-in zoom-in-95 duration-300 relative overflow-hidden">
-            <div className="absolute inset-0 bg-red-600/5 rounded-3xl pointer-events-none" />
-            <div className="w-20 h-20 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-6 border border-red-500/40 relative z-10 shadow-[0_0_30px_rgba(239,68,68,0.5)]">
-              <ShieldAlert size={40} />
-            </div>
-            <h3 className="text-2xl font-bold text-white mb-3 relative z-10">Access Revoked</h3>
-            <p className="text-sm text-red-300 font-medium mb-8 relative z-10 leading-relaxed">
-              Your card access has been suspended by the Admin.
-            </p>
-            <button onClick={() => {
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/95 backdrop-blur-md">
+        <div className="max-w-md w-full p-8 bg-zinc-900 border border-red-500/30 rounded-2xl text-center shadow-2xl">
+          <h2 className="text-2xl font-bold text-red-500 mb-2">Access Revoked</h2>
+          <p className="text-zinc-400 mb-6">Your account has been suspended by the administrator.</p>
+          <button 
+            onClick={() => {
               localStorage.clear();
               sessionStorage.clear();
-              window.close();
-              window.location.href = 'about:blank';
-            }} className="w-full py-3.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] relative z-10 text-sm tracking-wide">
-              Close Portal
-            </button>
-          </div>
+              window.location.href = '/login';
+            }}
+            className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl transition-all"
+          >
+            Return to Login
+          </button>
         </div>
       </div>
     );
@@ -2078,29 +2072,7 @@ export default function AppContainer() {
         </div>
       )}
 
-      {/* ── KICKOUT MODAL ── */}
-      {kickoutModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-[#11081c] border border-red-500/50 shadow-[0_0_80px_rgba(239,68,68,0.3)] rounded-3xl p-8 text-center animate-in zoom-in-95 duration-300 relative overflow-hidden">
-            <div className="absolute inset-0 bg-red-600/5 rounded-3xl pointer-events-none" />
-            <div className="w-20 h-20 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-6 border border-red-500/40 relative z-10 shadow-[0_0_30px_rgba(239,68,68,0.5)]">
-              <ShieldAlert size={40} />
-            </div>
-            <h3 className="text-2xl font-bold text-white mb-3 relative z-10">Access Revoked</h3>
-            <p className="text-sm text-red-300 font-medium mb-8 relative z-10 leading-relaxed">
-              Your card access has been suspended by the Admin.
-            </p>
-            <button onClick={() => {
-              localStorage.clear();
-              sessionStorage.clear();
-              window.close();
-              window.location.href = 'about:blank';
-            }} className="w-full py-3.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] relative z-10 text-sm tracking-wide">
-              Close Portal
-            </button>
-          </div>
-        </div>
-      )}
+
 
       {showEndMeetingModal && (
         <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
