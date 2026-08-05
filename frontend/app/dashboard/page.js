@@ -548,7 +548,7 @@ export default function AppContainer() {
     console.log('📡 MOUNTING KICKOUT LISTENER...');
 
     const channel = supabase
-      .channel('global-kickout')
+      .channel('global-kickout', { config: { broadcast: { self: true } } })
       .on('broadcast', { event: 'user-suspended' }, (payload) => {
         console.log('🚨 KICKOUT BROADCAST RECEIVED ON WORKER:', payload);
 
@@ -1435,7 +1435,7 @@ export default function AppContainer() {
           
           console.log('📢 SENDING KICKOUT BROADCAST FOR:', userId, targetEmail);
           
-          supabase.channel('global-kickout').send({
+          supabase.channel('global-kickout', { config: { broadcast: { self: true } } }).send({
             type: 'broadcast',
             event: 'user-suspended',
             payload: { userId, email: targetEmail }
