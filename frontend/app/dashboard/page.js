@@ -585,6 +585,7 @@ export default function AppContainer() {
     if (!mounted || !isLoggedIn || !currentUser) return;
 
     const updatePresence = async () => {
+      if (!currentUser?.id) return;
       if (['suspended', 'banned', 'deleted'].includes(currentUser.role) || currentUser.status === 'suspended') return;
       
       try {
@@ -592,14 +593,19 @@ export default function AppContainer() {
           user_id: currentUser.id, 
           organization_id: activeOrg?.id, 
           last_seen: Date.now() 
-        }, { onConflict: 'user_id' });
+        }, { onConflict: 'user_id', ignoreDuplicates: false });
         
-        // Only log non-duplicate constraint errors to avoid console spam
-        if (error && error.code !== '23505' && !error.message?.includes('Conflict')) {
+        if (error && (error.code === '23505' || error.message?.includes('Conflict'))) {
+          // Fallback: If upsert fails on constraint, do an explicit update
+          await supabase
+            .from('presence')
+            .update({ last_seen: Date.now() })
+            .eq('user_id', currentUser.id);
+        } else if (error) {
           console.error('Presence Upsert Error:', error);
         }
       } catch (err) {
-        // Silence duplicate conflicts
+        // Catch-all silently
       }
       const { data } = await supabase.from('presence').select('*');
       if (data) {
