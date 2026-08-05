@@ -539,34 +539,31 @@ export default function AppContainer() {
 
   // ─────────────────── Dedicated Kickout Listener ───────────────────
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser?.email) return;
     console.log('🔄 KICKOUT LISTENER MOUNTING FOR USER:', currentUser.id);
 
     const channel = supabase
       .channel('global-kickout')
-      .on(
-        'broadcast',
-        { event: 'user-suspended' },
-        (payload) => {
-          console.log('⚡ BROADCAST KICKOUT EVENT RECEIVED:', payload);
-          
-          const targetId = payload.payload?.userId;
-          const targetEmail = payload.payload?.email;
+      .on('broadcast', { event: 'user-suspended' }, (payload) => {
+        console.log('⚡ KICKOUT BROADCAST RECEIVED:', payload);
+        
+        const targetEmail = payload.payload?.email?.toLowerCase()?.trim();
+        const currentEmail = currentUser.email?.toLowerCase()?.trim();
+        const targetId = payload.payload?.userId;
 
-          if (
-            (targetId && targetId === currentUser.id) || 
-            (targetEmail && targetEmail === currentUser.email)
-          ) {
-            console.log('🚫 KICKOUT MATCH! Forcing modal...');
-            setKickoutModal(true);
-            setIsLoggedIn(false);
-            localStorage.clear();
-            sessionStorage.clear();
-          } else {
-            console.log('ℹ️ Kickout event was for a different user:', targetId);
-          }
+        if (
+          (targetEmail && targetEmail === currentEmail) ||
+          (targetId && targetId === currentUser.id)
+        ) {
+          console.log('🚫 MATCH CONFIRMED! SHOWING ACCESS REVOKED MODAL');
+          setKickoutModal(true);
+          setIsLoggedIn(false);
+          localStorage.clear();
+          sessionStorage.clear();
+        } else {
+          console.log('ℹ️ Kickout event was for a different user:', targetEmail || targetId);
         }
-      )
+      })
       .subscribe((status, err) => {
         console.log('📡 KICKOUT CHANNEL STATUS:', status, err || '');
       });
@@ -575,7 +572,7 @@ export default function AppContainer() {
       console.log('🛑 KICKOUT LISTENER UNMOUNTING');
       supabase.removeChannel(channel);
     };
-  }, [currentUser?.id, currentUser?.email]);
+  }, [currentUser?.email, currentUser?.id]);
 
   // ─────────────────── Supabase Presence Heartbeat ───────────────────
   useEffect(() => {
