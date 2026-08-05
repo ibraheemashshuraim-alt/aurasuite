@@ -539,7 +539,7 @@ export default function AppContainer() {
 
   // ─────────────────── Dedicated Kickout Listener ───────────────────
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (!currentUser) return;
     console.log('🔄 KICKOUT LISTENER MOUNTING FOR USER:', currentUser.id);
 
     const channel = supabase
@@ -549,14 +549,21 @@ export default function AppContainer() {
         { event: 'user-suspended' },
         (payload) => {
           console.log('⚡ BROADCAST KICKOUT EVENT RECEIVED:', payload);
-          if (payload.payload?.userId === currentUser.id) {
+          
+          const targetId = payload.payload?.userId;
+          const targetEmail = payload.payload?.email;
+
+          if (
+            (targetId && targetId === currentUser.id) || 
+            (targetEmail && targetEmail === currentUser.email)
+          ) {
             console.log('🚫 KICKOUT MATCH! Forcing modal...');
             setKickoutModal(true);
             setIsLoggedIn(false);
             localStorage.clear();
             sessionStorage.clear();
           } else {
-            console.log('ℹ️ Kickout event was for a different user:', payload.payload?.userId);
+            console.log('ℹ️ Kickout event was for a different user:', targetId);
           }
         }
       )
@@ -568,7 +575,7 @@ export default function AppContainer() {
       console.log('🛑 KICKOUT LISTENER UNMOUNTING');
       supabase.removeChannel(channel);
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.email]);
 
   // ─────────────────── Supabase Presence Heartbeat ───────────────────
   useEffect(() => {
@@ -577,15 +584,13 @@ export default function AppContainer() {
     const updatePresence = async () => {
       if (['suspended', 'banned', 'deleted'].includes(currentUser.role) || currentUser.status === 'suspended') return;
       
-      const { data: existing } = await supabase.from('presence').select('user_id').eq('user_id', currentUser.id).maybeSingle();
+      const { error } = await supabase.from('presence').upsert({ 
+        user_id: currentUser.id, 
+        organization_id: activeOrg?.id, 
+        last_seen: Date.now() 
+      }, { onConflict: 'user_id' });
       
-      if (existing) {
-        const { error } = await supabase.from('presence').update({ last_seen: Date.now() }).eq('user_id', currentUser.id);
-        if (error) console.error('Presence Update Error:', error);
-      } else {
-        const { error } = await supabase.from('presence').insert({ user_id: currentUser.id, organization_id: activeOrg?.id, last_seen: Date.now() });
-        if (error) console.error('Presence Insert Error:', error);
-      }
+      if (error) console.error('Presence Upsert Error:', error);
       const { data } = await supabase.from('presence').select('*');
       if (data) {
         const now = Date.now();
@@ -1408,10 +1413,11 @@ export default function AppContainer() {
           console.log(`📢 SENDING KICKOUT BROADCAST FOR USER: ${userId}`);
           
           // 1. Broadcast kickout BEFORE deleting from database
+          const targetEmail = profiles.find(p => p.id === userId)?.email;
           const broadcastResp = await supabase.channel('global-kickout').send({
             type: 'broadcast',
             event: 'user-suspended',
-            payload: { userId }
+            payload: { userId, email: targetEmail }
           });
           
           console.log('📢 BROADCAST DISPATCH RESPONSE:', broadcastResp);
