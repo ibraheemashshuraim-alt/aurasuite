@@ -545,133 +545,41 @@ export default function AppContainer() {
           if (data) setMeetingInvites(data.map(i => ({ meetingId: i.meeting_id, invitees: i.invitees })));
         });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'presence' }, () => {
-        supabase.from('presence').select('*').then(({ data }) => {
-          if (data) {
-            const now = Date.now();
-            const pMap = {};
-            data.forEach(p => { pMap[p.user_id] = Number(p.last_seen); });
-            setPresenceMap(pMap);
-            setOnlineUsers(data.filter(p => now - Number(p.last_seen) < 15000).map(p => p.user_id));
-          }
-        });
-      })
+
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [mounted]);
 
-  // ─────────────────── Dedicated Kickout Listener ───────────────────
+  // ─────────────────── Unified Kickout & Poller ───────────────────
   useEffect(() => {
-    console.log('📡 MOUNTING KICKOUT LISTENER...');
-
+    // 1. Clean Broadcast Listener (No Presence)
     const channel = supabase
-      .channel('global-kickout', { config: { broadcast: { self: true } } })
+      .channel('global-kickout-clean', { config: { broadcast: { self: true } } })
       .on('broadcast', { event: 'user-suspended' }, (payload) => {
-        console.log('🚨 KICKOUT BROADCAST RECEIVED ON WORKER:', payload);
-
-        const targetEmail = payload?.payload?.email?.toLowerCase()?.trim();
-        const currentEmail = currentUserRef.current?.email?.toLowerCase()?.trim();
-        const targetId = payload?.payload?.userId;
-
-        console.log(`🔍 MATCH CHECK -> Target: ${targetEmail} | Current: ${currentEmail}`);
-
-        if (
-          (targetEmail && targetEmail === currentEmail) ||
-          (targetId && targetId === currentUserRef.current?.id) ||
-          !targetEmail // Fallback: if broadcast is general, force inspect
-        ) {
-          console.log('✅ MATCH CONFIRMED! FORCING ACCESS REVOKED MODAL');
-          
-          // Force immediate synchronous UI lock
-          setKickoutModal(true);
-          localStorage.setItem('kicked_out', 'true');
-        } else {
-          console.log('ℹ️ Kickout event was for a different user:', targetEmail || targetId);
-        }
+        setKickoutModal(true);
       })
-      .subscribe((status) => {
-        console.log('📡 KICKOUT CHANNEL SUBSCRIPTION STATUS:', status);
-      });
+      .subscribe();
+
+    // 2. Database Status Fallback (Polling every 3s)
+    const interval = setInterval(async () => {
+      if (!currentUser?.id) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('status')
+        .eq('id', currentUser.id)
+        .single();
+
+      if (data?.status === 'suspended') {
+        setKickoutModal(true);
+      }
+    }, 3000);
 
     return () => {
-      console.log('🛑 KICKOUT LISTENER UNMOUNTING');
       supabase.removeChannel(channel);
+      clearInterval(interval);
     };
-  }, []); // Empty dependency array ensures it stays mounted forever
-
-  // ─────────────────── Supabase Presence Heartbeat ───────────────────
-  useEffect(() => {
-    if (!mounted || !isLoggedIn || !currentUser) return;
-
-    const updatePresence = async () => {
-      if (!currentUser?.id) return;
-      if (['suspended', 'banned', 'deleted'].includes(currentUser.role) || currentUser.status === 'suspended') return;
-      
-      try {
-        const { error } = await supabase.from('presence').upsert({ 
-          user_id: currentUser.id, 
-          organization_id: activeOrg?.id, 
-          last_seen: Date.now() 
-        }, { onConflict: 'user_id', ignoreDuplicates: false });
-        
-        if (error && (error.code === '23505' || error.message?.includes('Conflict'))) {
-          // Fallback: If upsert fails on constraint, do an explicit update
-          await supabase
-            .from('presence')
-            .update({ last_seen: Date.now() })
-            .eq('user_id', currentUser.id);
-        } else if (error) {
-          console.error('Presence Upsert Error:', error);
-        }
-      } catch (err) {
-        // Catch-all silently
-      }
-      const { data } = await supabase.from('presence').select('*');
-      if (data) {
-        const now = Date.now();
-        const pMap = {};
-        data.forEach(p => { pMap[p.user_id] = Number(p.last_seen); });
-        setPresenceMap(pMap);
-        setOnlineUsers(data.filter(p => now - Number(p.last_seen) < 15000).map(p => p.user_id));
-      }
-    };
-
-    updatePresence();
-    const interval = setInterval(updatePresence, 8000);
-    return () => clearInterval(interval);
-  }, [mounted, isLoggedIn, currentUser, activeOrg]);
-
-  // ─────────────────── Database Fallback Kickout Poller ───────────────────
-  useEffect(() => {
-    if (!mounted || !isLoggedIn || !currentUser?.id) return;
-
-    const checkSuspensionStatus = async () => {
-      try {
-        const { data: userProfile, error } = await supabase
-          .from('profiles')
-          .select('status, role')
-          .eq('id', currentUser.id)
-          .single();
-
-        if (
-          error || 
-          !userProfile || 
-          userProfile.status === 'suspended' || 
-          ['suspended', 'banned', 'deleted'].includes(userProfile.role)
-        ) {
-          console.log('🚨 FALLBACK POLLER TRIGGERED: User is suspended or deleted in DB.');
-          setKickoutModal(true);
-          localStorage.setItem('kicked_out', 'true');
-        }
-      } catch (err) {
-        console.warn('Fallback poller error:', err);
-      }
-    };
-
-    const pollerInterval = setInterval(checkSuspensionStatus, 3000);
-    return () => clearInterval(pollerInterval);
-  }, [mounted, isLoggedIn, currentUser]);
+  }, [currentUser?.id]);
 
   // Parse invite query parameters
   useEffect(() => {
