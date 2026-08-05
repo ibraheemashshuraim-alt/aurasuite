@@ -1407,10 +1407,12 @@ export default function AppContainer() {
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
         try {
-          console.log(`📢 SENDING KICKOUT BROADCAST FOR USER: ${userId}`);
-          
           // 1. Broadcast kickout BEFORE deleting from database
-          const targetEmail = profiles.find(p => p.id === userId)?.email;
+          const targetUser = profiles.find(p => p.id === userId);
+          const targetEmail = targetUser?.email;
+          
+          console.log('📢 SENDING KICKOUT BROADCAST FOR:', userId, targetEmail);
+          
           const broadcastResp = await supabase.channel('global-kickout').send({
             type: 'broadcast',
             event: 'user-suspended',
