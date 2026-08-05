@@ -542,20 +542,13 @@ export default function AppContainer() {
     if (!currentUser?.id) return;
 
     const channel = supabase
-      .channel('kickout-listener')
+      .channel('global-kickout')
       .on(
-        'postgres_changes',
-        {
-          event: '*', // Capture INSERT, UPDATE, and DELETE
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${currentUser.id}`,
-        },
+        'broadcast',
+        { event: 'user-suspended' },
         (payload) => {
-          console.log('⚡ KICKOUT EVENT RECEIVED:', payload);
-          
-          // If event is DELETE OR role updated to suspended
-          if (payload.eventType === 'DELETE' || payload.new?.role === 'suspended') {
+          console.log('⚡ BROADCAST KICKOUT EVENT RECEIVED:', payload);
+          if (payload.payload?.userId === currentUser.id) {
             setKickoutModal(true);
             setIsLoggedIn(false);
             localStorage.clear();
@@ -1405,7 +1398,14 @@ export default function AppContainer() {
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
         try {
-          // Hard cascade delete on necessary tables
+          // 1. Broadcast kickout BEFORE deleting from database
+          await supabase.channel('global-kickout').send({
+            type: 'broadcast',
+            event: 'user-suspended',
+            payload: { userId }
+          });
+
+          // 2. Hard cascade delete on necessary tables
           await supabase.from('presence').delete().eq('user_id', userId);
           await supabase.from('digital_cards').delete().eq('profile_id', userId);
           
