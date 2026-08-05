@@ -545,33 +545,36 @@ export default function AppContainer() {
 
   // ─────────────────── Dedicated Kickout Listener ───────────────────
   useEffect(() => {
-    console.log('🔄 KICKOUT LISTENER MOUNTING (PERSISTENT)');
+    console.log('📡 MOUNTING KICKOUT LISTENER...');
 
     const channel = supabase
       .channel('global-kickout')
       .on('broadcast', { event: 'user-suspended' }, (payload) => {
-        console.log('⚡ KICKOUT BROADCAST RECEIVED:', payload);
-        
-        const user = currentUserRef.current;
-        const targetEmail = payload.payload?.email?.toLowerCase()?.trim();
-        const currentEmail = user?.email?.toLowerCase()?.trim();
-        const targetId = payload.payload?.userId;
+        console.log('🚨 KICKOUT BROADCAST RECEIVED ON WORKER:', payload);
+
+        const targetEmail = payload?.payload?.email?.toLowerCase()?.trim();
+        const currentEmail = currentUserRef.current?.email?.toLowerCase()?.trim();
+        const targetId = payload?.payload?.userId;
+
+        console.log(`🔍 MATCH CHECK -> Target: ${targetEmail} | Current: ${currentEmail}`);
 
         if (
           (targetEmail && targetEmail === currentEmail) ||
-          (targetId && targetId === user?.id)
+          (targetId && targetId === currentUserRef.current?.id) ||
+          !targetEmail // Fallback: if broadcast is general, force inspect
         ) {
-          console.log('🚫 MATCH CONFIRMED! SHOWING ACCESS REVOKED MODAL');
+          console.log('✅ MATCH CONFIRMED! FORCING ACCESS REVOKED MODAL');
+          
+          // Force immediate synchronous UI lock
           setKickoutModal(true);
           setIsLoggedIn(false);
-          localStorage.clear();
-          sessionStorage.clear();
+          localStorage.setItem('kicked_out', 'true');
         } else {
           console.log('ℹ️ Kickout event was for a different user:', targetEmail || targetId);
         }
       })
-      .subscribe((status, err) => {
-        console.log('📡 KICKOUT CHANNEL STATUS:', status, err || '');
+      .subscribe((status) => {
+        console.log('📡 KICKOUT CHANNEL SUBSCRIPTION STATUS:', status);
       });
 
     return () => {
