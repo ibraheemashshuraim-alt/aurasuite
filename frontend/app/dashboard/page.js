@@ -262,6 +262,12 @@ export default function AppContainer() {
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const currentUserRef = useRef(currentUser);
+  
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+  
   // Audio fix: track previous media-control state to avoid spurious audio toggling
   const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
   const [showReactionsPanel, setShowReactionsPanel] = useState(false);
@@ -539,21 +545,21 @@ export default function AppContainer() {
 
   // ─────────────────── Dedicated Kickout Listener ───────────────────
   useEffect(() => {
-    if (!currentUser?.email) return;
-    console.log('🔄 KICKOUT LISTENER MOUNTING FOR USER:', currentUser.id);
+    console.log('🔄 KICKOUT LISTENER MOUNTING (PERSISTENT)');
 
     const channel = supabase
       .channel('global-kickout')
       .on('broadcast', { event: 'user-suspended' }, (payload) => {
         console.log('⚡ KICKOUT BROADCAST RECEIVED:', payload);
         
+        const user = currentUserRef.current;
         const targetEmail = payload.payload?.email?.toLowerCase()?.trim();
-        const currentEmail = currentUser.email?.toLowerCase()?.trim();
+        const currentEmail = user?.email?.toLowerCase()?.trim();
         const targetId = payload.payload?.userId;
 
         if (
           (targetEmail && targetEmail === currentEmail) ||
-          (targetId && targetId === currentUser.id)
+          (targetId && targetId === user?.id)
         ) {
           console.log('🚫 MATCH CONFIRMED! SHOWING ACCESS REVOKED MODAL');
           setKickoutModal(true);
@@ -572,7 +578,7 @@ export default function AppContainer() {
       console.log('🛑 KICKOUT LISTENER UNMOUNTING');
       supabase.removeChannel(channel);
     };
-  }, [currentUser?.email, currentUser?.id]);
+  }, []); // Empty dependency array ensures it stays mounted forever
 
   // ─────────────────── Supabase Presence Heartbeat ───────────────────
   useEffect(() => {
@@ -1523,6 +1529,28 @@ export default function AppContainer() {
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
   // ─────────────────── Render ───────────────────
+  // ABSOLUTE TOP PRIORITY: KICKOUT SCREEN FOR RELOAD & LIVE SUSPENSION
+  if (kickoutModal || currentUser?.role === 'suspended') {
+    return (
+      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95 backdrop-blur-md">
+        <div className="max-w-md w-full p-8 bg-zinc-900 border border-red-500/30 rounded-2xl text-center shadow-2xl">
+          <h2 className="text-2xl font-bold text-red-500 mb-2">Access Revoked</h2>
+          <p className="text-zinc-400 mb-6">Your account has been suspended by the administrator.</p>
+          <button 
+            onClick={() => {
+              localStorage.clear();
+              sessionStorage.clear();
+              window.location.href = '/login';
+            }}
+            className="w-full py-3 bg-red-950/40 text-red-400 border border-red-500/30 rounded-xl font-bold"
+          >
+            Acknowledge & Exit
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Show loading until: (1) component mounted AND (2) session check done
   if (!mounted || isCheckingSession) return (
     <div className="min-h-screen bg-luxury-bg flex items-center justify-center">
@@ -1534,29 +1562,6 @@ export default function AppContainer() {
       </div>
     </div>
   );
-
-  // ── KICKOUT SCREEN FOR RELOAD ──
-  if (kickoutModal || currentUser?.role === 'suspended') {
-    return (
-      <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/95 backdrop-blur-md">
-        <div className="max-w-md w-full p-8 bg-zinc-900 border border-red-500/30 rounded-2xl text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-red-500 mb-2">Access Revoked</h2>
-          <p className="text-zinc-400 mb-6">Your account has been suspended by the administrator.</p>
-          <button 
-            onClick={() => {
-              localStorage.clear();
-              sessionStorage.clear();
-              window.location.href = '/login';
-            }}
-            className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl transition-all"
-          >
-            Return to Login
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // ── LOGIN SCREEN ──
   if (!isLoggedIn) {
     if (authTab === 'invite_register') {
