@@ -539,39 +539,36 @@ export default function AppContainer() {
 
   // ─────────────────── Dedicated Kickout Listener ───────────────────
   useEffect(() => {
-    console.log('🔄 DASHBOARD MOUNTED, USER ID:', currentUser?.id);
-    if (!mounted || !currentUser?.id) return;
-    
+    if (!currentUser?.id) return;
+
     const channel = supabase
-      .channel('profile-changes')
+      .channel('kickout-listener')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: '*', // Capture INSERT, UPDATE, and DELETE
           schema: 'public',
           table: 'profiles',
-          filter: `id=eq.${currentUser.id}`
+          filter: `id=eq.${currentUser.id}`,
         },
         (payload) => {
-          console.log('⚡ REALTIME EVENT RECEIVED:', payload);
-
-          const newRole = payload.new?.role;
-          if (payload.eventType === 'DELETE' || newRole === 'suspended' || newRole === 'banned' || newRole === 'deleted') {
-            console.log('🚫 FORCING KICKOUT MODAL NOW!');
+          console.log('⚡ KICKOUT EVENT RECEIVED:', payload);
+          
+          // If event is DELETE OR role updated to suspended
+          if (payload.eventType === 'DELETE' || payload.new?.role === 'suspended') {
             setKickoutModal(true);
             setIsLoggedIn(false);
-
             localStorage.clear();
             sessionStorage.clear();
           }
         }
       )
-      .subscribe((status) => {
-        console.log('📡 REALTIME SUBSCRIPTION STATUS:', status);
-      });
-      
-    return () => { supabase.removeChannel(channel); };
-  }, [mounted, currentUser?.id]);
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id]);
 
   // ─────────────────── Supabase Presence Heartbeat ───────────────────
   useEffect(() => {
