@@ -625,6 +625,38 @@ export default function AppContainer() {
     return () => clearInterval(interval);
   }, [mounted, isLoggedIn, currentUser, activeOrg]);
 
+  // ─────────────────── Database Fallback Kickout Poller ───────────────────
+  useEffect(() => {
+    if (!mounted || !isLoggedIn || !currentUser?.id) return;
+
+    const checkSuspensionStatus = async () => {
+      try {
+        const { data: userProfile, error } = await supabase
+          .from('profiles')
+          .select('status, role')
+          .eq('id', currentUser.id)
+          .single();
+
+        if (
+          error || 
+          !userProfile || 
+          userProfile.status === 'suspended' || 
+          ['suspended', 'banned', 'deleted'].includes(userProfile.role)
+        ) {
+          console.log('🚨 FALLBACK POLLER TRIGGERED: User is suspended or deleted in DB.');
+          setKickoutModal(true);
+          setIsLoggedIn(false);
+          localStorage.setItem('kicked_out', 'true');
+        }
+      } catch (err) {
+        console.warn('Fallback poller error:', err);
+      }
+    };
+
+    const pollerInterval = setInterval(checkSuspensionStatus, 3000);
+    return () => clearInterval(pollerInterval);
+  }, [mounted, isLoggedIn, currentUser]);
+
   // Parse invite query parameters
   useEffect(() => {
     if (mounted && typeof window !== 'undefined') {
