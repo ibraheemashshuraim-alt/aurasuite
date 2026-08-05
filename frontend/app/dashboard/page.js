@@ -540,6 +540,7 @@ export default function AppContainer() {
   // ─────────────────── Dedicated Kickout Listener ───────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
+    console.log('🔄 KICKOUT LISTENER MOUNTING FOR USER:', currentUser.id);
 
     const channel = supabase
       .channel('global-kickout')
@@ -549,16 +550,22 @@ export default function AppContainer() {
         (payload) => {
           console.log('⚡ BROADCAST KICKOUT EVENT RECEIVED:', payload);
           if (payload.payload?.userId === currentUser.id) {
+            console.log('🚫 KICKOUT MATCH! Forcing modal...');
             setKickoutModal(true);
             setIsLoggedIn(false);
             localStorage.clear();
             sessionStorage.clear();
+          } else {
+            console.log('ℹ️ Kickout event was for a different user:', payload.payload?.userId);
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log('📡 KICKOUT CHANNEL STATUS:', status, err || '');
+      });
 
     return () => {
+      console.log('🛑 KICKOUT LISTENER UNMOUNTING');
       supabase.removeChannel(channel);
     };
   }, [currentUser?.id]);
@@ -1398,12 +1405,16 @@ export default function AppContainer() {
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
         try {
+          console.log(`📢 SENDING KICKOUT BROADCAST FOR USER: ${userId}`);
+          
           // 1. Broadcast kickout BEFORE deleting from database
-          await supabase.channel('global-kickout').send({
+          const broadcastResp = await supabase.channel('global-kickout').send({
             type: 'broadcast',
             event: 'user-suspended',
             payload: { userId }
           });
+          
+          console.log('📢 BROADCAST DISPATCH RESPONSE:', broadcastResp);
 
           // 2. Hard cascade delete on necessary tables
           await supabase.from('presence').delete().eq('user_id', userId);
