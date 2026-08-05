@@ -1405,20 +1405,21 @@ export default function AppContainer() {
   const handleSuspendUser = async (userId) => {
     setConfirmModal({
       title: 'Suspend User & Revoke Access?',
-      message: 'This will instantly suspend their profile and invalidate their current access card.',
+      message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
-        // Suspend the user to trigger Realtime Kickout Modal immediately
-        const { error } = await supabase
-          .from('profiles')
-          .update({ role: 'suspended' })
-          .eq('id', userId);
-
-        if (error) {
+        try {
+          // Hard cascade delete on necessary tables
+          await supabase.from('presence').delete().eq('user_id', userId);
+          await supabase.from('digital_cards').delete().eq('profile_id', userId);
+          
+          const { error } = await supabase.from('profiles').delete().eq('id', userId);
+          if (error) throw error;
+          
+          setProfiles(prev => prev.filter(u => u.id !== userId));
+          addNotification('User suspended and completely removed. Their access card has been revoked.', 'warning');
+        } catch (error) {
           console.error('Suspend error:', error);
           addNotification('Error suspending user', 'error');
-        } else {
-          setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'suspended' } : u));
-          addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
         }
         setConfirmModal(null);
       }
