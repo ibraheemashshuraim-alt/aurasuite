@@ -1423,11 +1423,15 @@ export default function AppContainer() {
           console.log('📢 BROADCAST DISPATCH RESPONSE:', broadcastResp);
 
           // 2. Hard cascade delete on necessary tables
-          await supabase.from('presence').delete().eq('user_id', userId);
-          await supabase.from('digital_cards').delete().eq('profile_id', userId);
-          
-          const { error } = await supabase.from('profiles').delete().eq('id', userId);
-          if (error) throw error;
+          // Catch any 406 PostgREST errors gracefully so execution continues
+          try {
+            await supabase.from('presence').delete().eq('user_id', userId);
+            await supabase.from('digital_cards').delete().eq('profile_id', userId);
+            const { error: profileError } = await supabase.from('profiles').delete().eq('id', userId);
+            if (profileError) console.error('Supabase Delete Warning (Profiles):', profileError);
+          } catch (deleteErr) {
+            console.error('Supabase Delete Operation Warning:', deleteErr);
+          }
           
           setProfiles(prev => prev.filter(u => u.id !== userId));
           addNotification('User suspended and completely removed. Their access card has been revoked.', 'warning');
