@@ -1426,33 +1426,31 @@ export default function AppContainer() {
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
         try {
-          // 1. Broadcast kickout BEFORE deleting from database
+          // 1. Fire Broadcast immediately (no await to prevent blocking)
           const targetUser = profiles.find(p => p.id === userId);
           const targetEmail = targetUser?.email;
           
           console.log('📢 SENDING KICKOUT BROADCAST FOR:', userId, targetEmail);
           
-          const broadcastResp = await supabase.channel('global-kickout').send({
+          supabase.channel('global-kickout').send({
             type: 'broadcast',
             event: 'user-suspended',
             payload: { userId, email: targetEmail }
           });
-          
-          console.log('📢 BROADCAST DISPATCH RESPONSE:', broadcastResp);
 
-          // 2. Hard cascade delete on necessary tables
-          // Catch any 406 PostgREST errors gracefully so execution continues
+          // 2. Optimistically trigger local UI state update
+          setProfiles(prev => prev.filter(p => p.id !== userId));
+          addNotification('User suspended and completely removed. Their access card has been revoked.', 'warning');
+
+          // 3. Perform DB cleanup inside a completely isolated catch block
           try {
             await supabase.from('presence').delete().eq('user_id', userId);
             await supabase.from('digital_cards').delete().eq('profile_id', userId);
             const { error: profileError } = await supabase.from('profiles').delete().eq('id', userId);
-            if (profileError) console.error('Supabase Delete Warning (Profiles):', profileError);
-          } catch (deleteErr) {
-            console.error('Supabase Delete Operation Warning:', deleteErr);
+            if (profileError) console.warn('Silenced DB deletion error:', profileError);
+          } catch (err) {
+            console.warn('Silenced DB deletion error:', err);
           }
-          
-          setProfiles(prev => prev.filter(u => u.id !== userId));
-          addNotification('User suspended and completely removed. Their access card has been revoked.', 'warning');
         } catch (error) {
           console.error('Suspend error:', error);
           addNotification('Error suspending user', 'error');
