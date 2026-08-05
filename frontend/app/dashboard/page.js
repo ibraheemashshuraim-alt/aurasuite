@@ -172,6 +172,24 @@ function DigitalCardVisual({ cardData }) {
 export default function AppContainer() {
   const [mounted, setMounted] = useState(false);
 
+  useEffect(() => {
+    // Force purge legacy service workers and caches
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        for (let name of names) {
+          caches.delete(name);
+        }
+      });
+    }
+  }, []);
+
   // ── Auth ──
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
