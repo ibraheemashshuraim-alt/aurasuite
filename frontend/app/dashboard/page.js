@@ -587,13 +587,20 @@ export default function AppContainer() {
     const updatePresence = async () => {
       if (['suspended', 'banned', 'deleted'].includes(currentUser.role) || currentUser.status === 'suspended') return;
       
-      const { error } = await supabase.from('presence').upsert({ 
-        user_id: currentUser.id, 
-        organization_id: activeOrg?.id, 
-        last_seen: Date.now() 
-      }, { onConflict: 'user_id' });
-      
-      if (error) console.error('Presence Upsert Error:', error);
+      try {
+        const { error } = await supabase.from('presence').upsert({ 
+          user_id: currentUser.id, 
+          organization_id: activeOrg?.id, 
+          last_seen: Date.now() 
+        }, { onConflict: 'user_id' });
+        
+        // Only log non-duplicate constraint errors to avoid console spam
+        if (error && error.code !== '23505' && !error.message?.includes('Conflict')) {
+          console.error('Presence Upsert Error:', error);
+        }
+      } catch (err) {
+        // Silence duplicate conflicts
+      }
       const { data } = await supabase.from('presence').select('*');
       if (data) {
         const now = Date.now();
