@@ -592,7 +592,8 @@ export default function AppContainer() {
 
     const updatePresence = async () => {
       try {
-        const { data: existing } = await supabase.from('presence').select('id').eq('user_id', currentUser.id).maybeSingle();
+        const { data: existing, error: selErr } = await supabase.from('presence').select('user_id').eq('user_id', currentUser.id).maybeSingle();
+        if (selErr) console.error('Presence select error:', selErr);
         if (existing) {
           await supabase.from('presence').update({ last_seen: Date.now() }).eq('user_id', currentUser.id);
         } else {
@@ -1992,9 +1993,15 @@ export default function AppContainer() {
             <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
             <button
               onClick={() => {
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.href = '/login';
+                localStorage.removeItem('aura_session');
+                sessionStorage.removeItem('aura_session');
+                try {
+                  window.close();
+                } catch (e) {}
+                // Fallback if window.close() is blocked
+                setTimeout(() => {
+                  window.location.href = '/login';
+                }, 150);
               }}
               className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
             >
