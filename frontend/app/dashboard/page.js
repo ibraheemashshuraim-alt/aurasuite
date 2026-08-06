@@ -2959,13 +2959,17 @@ export default function AppContainer() {
                     return;
                   }
                   
-                  // Check if this email exists - if it's a pending_worker, suspended, or banned, allow re-invite by deleting old records
+                  let newProfileId = genId('user');
+                  
+                  // Check if this email exists - if it's a pending_worker, suspended, or banned, allow re-invite
                   const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
+                  let isUpdate = false;
                   if (existingProfile) {
                     if (['pending_worker', 'suspended', 'banned'].includes(existingProfile.role)) {
-                      // Delete old profile and card so we can re-invite
+                      isUpdate = true;
+                      newProfileId = existingProfile.id;
+                      // Delete old card so we can make a new one
                       await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
-                      await supabase.from('profiles').delete().eq('id', existingProfile.id);
                       setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
                     } else {
                       setCustomAlert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
@@ -2976,7 +2980,6 @@ export default function AppContainer() {
                   const cardNumber = `AS-2026-${Math.floor(1000 + Math.random() * 9000)}`;
                   const tempUsername = genInviteName.toLowerCase().replace(/\s+/g, '') + Math.floor(Math.random() * 100);
                   const tempPassword = Math.random().toString(36).slice(-8);
-                  const newProfileId = genId('user');
 
                   // Build the invite link using a single base64 token (no & in URL = no encoding issues)
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
@@ -3012,8 +3015,13 @@ export default function AppContainer() {
                   };
                   
                   try {
-                    const { error: pErr } = await supabase.from('profiles').insert(newProfile);
-                    if (pErr) throw pErr;
+                    if (isUpdate) {
+                      const { error: pUpErr } = await supabase.from('profiles').update(newProfile).eq('id', newProfileId);
+                      if (pUpErr) throw pUpErr;
+                    } else {
+                      const { error: pErr } = await supabase.from('profiles').insert(newProfile);
+                      if (pErr) throw pErr;
+                    }
 
                     const { error: cErr } = await supabase.from('digital_cards').insert(newCard);
                     if (cErr) throw cErr;
