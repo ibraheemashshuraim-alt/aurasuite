@@ -281,6 +281,7 @@ export default function AppContainer() {
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const currentUserRef = useRef(currentUser);
+  const kickoutChannelRef = useRef(null);
   
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -553,26 +554,34 @@ export default function AppContainer() {
 
   // ─────────────────── Unified Kickout & Poller ───────────────────
   useEffect(() => {
-    // 1. Clean Broadcast Listener (No Presence)
+    // 1. Clean Broadcast Listener (subscribed & stored in ref for admin to reuse)
     const channel = supabase
       .channel('global-kickout-clean', { config: { broadcast: { self: true } } })
       .on('broadcast', { event: 'user-suspended' }, (payload) => {
+        console.log('🚨 KICKOUT BROADCAST RECEIVED:', payload);
         setKickoutModal(true);
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Kickout channel status:', status);
+        if (status === 'SUBSCRIBED') {
+          kickoutChannelRef.current = channel;
+        }
+      });
 
     // 2. Database Status Fallback (Polling every 3s)
     const interval = setInterval(async () => {
-      if (!currentUser?.id) return;
+      const uid = currentUserRef.current?.id;
+      if (!uid) return;
       try {
         const { data, error } = await supabase
           .from('profiles')
           .select('status')
-          .eq('id', currentUser.id)
-          .single();
+          .eq('id', uid)
+          .maybeSingle();
 
-        // Trigger kickout if: profile deleted (no data), error, or status is suspended
+        // Trigger kickout if: profile deleted (no data/null), DB error, or status is suspended
         if (!data || error || data?.status === 'suspended') {
+          console.log('🚨 POLLER KICKOUT: profile missing or suspended', { data, error });
           setKickoutModal(true);
         }
       } catch (err) {
@@ -582,9 +591,10 @@ export default function AppContainer() {
 
     return () => {
       supabase.removeChannel(channel);
+      kickoutChannelRef.current = null;
       clearInterval(interval);
     };
-  }, [currentUser?.id]);
+  }, []);
 
   // Parse invite query parameters
   useEffect(() => {
@@ -1390,31 +1400,36 @@ export default function AppContainer() {
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
         try {
-          // 1. Fire Broadcast immediately (no await to prevent blocking)
           const targetUser = profiles.find(p => p.id === userId);
           const targetEmail = targetUser?.email;
-          
-          console.log('📢 SENDING KICKOUT BROADCAST FOR:', userId, targetEmail);
-          
-          supabase.channel('global-kickout-clean', { config: { broadcast: { self: true } } }).send({
-            type: 'broadcast',
-            event: 'user-suspended',
-            payload: { userId, email: targetEmail }
-          });
 
-          // 2. Optimistically trigger local UI state update
+          // 1. UPDATE profile status to 'suspended' FIRST (poller safety net)
+          await supabase.from('profiles').update({ status: 'suspended' }).eq('id', userId);
+
+          // 2. Fire Broadcast on the ALREADY-SUBSCRIBED channel
+          if (kickoutChannelRef.current) {
+            const res = await kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: 'user-suspended',
+              payload: { userId, email: targetEmail }
+            });
+            console.log('📢 BROADCAST RESULT:', res);
+          }
+
+          // 3. Optimistic UI update
           setProfiles(prev => prev.filter(p => p.id !== userId));
           addNotification('User suspended and completely removed. Their access card has been revoked.', 'warning');
 
-          // 3. Perform DB cleanup inside a completely isolated catch block
-          try {
-            await supabase.from('presence').delete().eq('user_id', userId);
-            await supabase.from('digital_cards').delete().eq('profile_id', userId);
-            const { error: profileError } = await supabase.from('profiles').delete().eq('id', userId);
-            if (profileError) console.warn('Silenced DB deletion error:', profileError);
-          } catch (err) {
-            console.warn('Silenced DB deletion error:', err);
-          }
+          // 4. DB cleanup (delayed to let poller catch the 'suspended' status)
+          setTimeout(async () => {
+            try {
+              await supabase.from('presence').delete().eq('user_id', userId);
+              await supabase.from('digital_cards').delete().eq('profile_id', userId);
+              await supabase.from('profiles').delete().eq('id', userId);
+            } catch (err) {
+              console.warn('Silenced DB deletion error:', err);
+            }
+          }, 2000);
         } catch (error) {
           console.error('Suspend error:', error);
           addNotification('Error suspending user', 'error');
@@ -1431,12 +1446,17 @@ export default function AppContainer() {
       onConfirm: async () => {
         const userEmail = profiles.find(p => p.id === userId)?.email;
 
-        // Fire broadcast FIRST so live user sees popup immediately
-        supabase.channel('global-kickout-clean', { config: { broadcast: { self: true } } }).send({
-          type: 'broadcast',
-          event: 'user-suspended',
-          payload: { userId, email: userEmail }
-        });
+        // 1. UPDATE profile status to 'suspended' FIRST (poller safety net)
+        await supabase.from('profiles').update({ status: 'suspended' }).eq('id', userId);
+
+        // 2. Fire broadcast on ALREADY-SUBSCRIBED channel
+        if (kickoutChannelRef.current) {
+          await kickoutChannelRef.current.send({
+            type: 'broadcast',
+            event: 'user-suspended',
+            payload: { userId, email: userEmail }
+          });
+        }
 
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
@@ -1444,16 +1464,23 @@ export default function AppContainer() {
           await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
         }
         
-        // Absolute Cascade Delete
-        await supabase.from('group_messages').delete().eq('from_id', userId);
-        await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
-        await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-        await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-        await supabase.from('meetings').delete().eq('host_id', userId);
-        await supabase.from('tasks').delete().eq('assigned_to', userId);
-        await supabase.from('presence').delete().eq('user_id', userId);
-        await supabase.from('digital_cards').delete().eq('profile_id', userId);
-        await supabase.from('profiles').delete().eq('id', userId);
+        // Delayed Cascade Delete (give poller time to catch suspended status)
+        setTimeout(async () => {
+          try {
+            await supabase.from('group_messages').delete().eq('from_id', userId);
+            await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
+            await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+            await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+            await supabase.from('meetings').delete().eq('host_id', userId);
+            await supabase.from('tasks').delete().eq('assigned_to', userId);
+            await supabase.from('presence').delete().eq('user_id', userId);
+            await supabase.from('digital_cards').delete().eq('profile_id', userId);
+            await supabase.from('profiles').delete().eq('id', userId);
+          } catch (err) {
+            console.warn('Silenced cascade delete error:', err);
+          }
+        }, 2000);
+
         setProfiles(prev => prev.filter(u => u.id !== userId));
         addNotification('User banned (permanently deleted from view).', 'error');
         setConfirmModal(null);
