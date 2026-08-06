@@ -1515,6 +1515,7 @@ export default function AppContainer() {
         
         setProfiles(prev => prev.filter(p => p.id !== userId));
         addNotification('User profile deleted. Ban record (if any) remains active.', 'success');
+        setConfirmModal(null);
       }
     });
   };
@@ -2958,11 +2959,11 @@ export default function AppContainer() {
                     return;
                   }
                   
-                  // Check if this email exists - if it's a pending_worker, allow re-invite by deleting old records
+                  // Check if this email exists - if it's a pending_worker, suspended, or banned, allow re-invite by deleting old records
                   const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
                   if (existingProfile) {
-                    if (existingProfile.role === 'pending_worker') {
-                      // Delete old pending profile and card so we can re-invite
+                    if (['pending_worker', 'suspended', 'banned'].includes(existingProfile.role)) {
+                      // Delete old profile and card so we can re-invite
                       await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
                       await supabase.from('profiles').delete().eq('id', existingProfile.id);
                       setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
