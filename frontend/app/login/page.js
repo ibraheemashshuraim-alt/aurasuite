@@ -265,6 +265,7 @@ export default function AppContainer() {
   const recordedChunksRef = useRef([]);
   const currentUserRef = useRef(currentUser);
   const kickoutChannelRef = useRef(null);
+  const [kickoutModal, setKickoutModal] = useState(false);
   
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -545,9 +546,7 @@ export default function AppContainer() {
         
         if (targetId && currentId && targetId === currentId) {
           console.log('🚨 TARGET MATCHED! Kicking out user:', currentId);
-          sessionStorage.removeItem('aura_session');
-          localStorage.removeItem('aura_session');
-          window.location.href = '/login?kickout=true';
+          setKickoutModal(true);
         } else {
           console.log('ℹ️ Broadcast ignored. Target ID:', targetId, 'Current ID:', currentId);
         }
@@ -573,9 +572,7 @@ export default function AppContainer() {
         // Trigger kickout if: profile deleted (no data and no error), or role is suspended/banned/deleted
         if ((!data && !error) || (data && ['suspended', 'banned', 'deleted'].includes(data.role))) {
           console.log('🚨 POLLER KICKOUT: profile missing or suspended', { data, error });
-          sessionStorage.removeItem('aura_session');
-          localStorage.removeItem('aura_session');
-          window.location.href = '/login?kickout=true';
+          setKickoutModal(true);
         }
       } catch (err) {
         // Silence errors
@@ -588,6 +585,37 @@ export default function AppContainer() {
       clearInterval(interval);
     };
   }, []);
+
+  // ─────────────────── Custom Presence Heartbeat ───────────────────
+  useEffect(() => {
+    if (!mounted || !isLoggedIn || !currentUser) return;
+
+    const updatePresence = async () => {
+      try {
+        const { data: existing } = await supabase.from('presence').select('id').eq('user_id', currentUser.id).maybeSingle();
+        if (existing) {
+          await supabase.from('presence').update({ last_seen: Date.now() }).eq('user_id', currentUser.id);
+        } else {
+          await supabase.from('presence').insert({ user_id: currentUser.id, organization_id: activeOrg?.id, last_seen: Date.now() });
+        }
+        
+        const { data } = await supabase.from('presence').select('*');
+        if (data) {
+          const now = Date.now();
+          const pMap = {};
+          data.forEach(p => { pMap[p.user_id] = Number(p.last_seen); });
+          setPresenceMap(pMap);
+          setOnlineUsers(data.filter(p => now - Number(p.last_seen) < 15000).map(p => p.user_id));
+        }
+      } catch (err) {
+        // ignore network errors
+      }
+    };
+
+    updatePresence();
+    const interval = setInterval(updatePresence, 8000);
+    return () => clearInterval(interval);
+  }, [mounted, isLoggedIn, currentUser, activeOrg]);
 
   // Parse invite query parameters
   useEffect(() => {
@@ -1955,6 +1983,27 @@ export default function AppContainer() {
   // ══════════════════ MAIN APP ══════════════════
   return (
     <div className="flex min-h-screen bg-luxury-bg text-[#f3f1f5] relative">
+      
+      {/* 1. TOP-LEVEL KICKOUT OVERLAY (FORCED FULLSCREEN OVER EVERYTHING) */}
+      {(kickoutModal || currentUser?.role === 'suspended' || currentUser?.role === 'banned') && (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+          <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+            <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
+            <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = '/login';
+              }}
+              className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
+            >
+              Close Portal
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* ── MEETING INVITE MODAL ── */}
       {meetingInviteModal && (

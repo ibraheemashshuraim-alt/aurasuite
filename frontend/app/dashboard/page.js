@@ -605,6 +605,37 @@ export default function AppContainer() {
     };
   }, []);
 
+  // ─────────────────── Custom Presence Heartbeat ───────────────────
+  useEffect(() => {
+    if (!mounted || !isLoggedIn || !currentUser) return;
+
+    const updatePresence = async () => {
+      try {
+        const { data: existing } = await supabase.from('presence').select('id').eq('user_id', currentUser.id).maybeSingle();
+        if (existing) {
+          await supabase.from('presence').update({ last_seen: Date.now() }).eq('user_id', currentUser.id);
+        } else {
+          await supabase.from('presence').insert({ user_id: currentUser.id, organization_id: activeOrg?.id, last_seen: Date.now() });
+        }
+        
+        const { data } = await supabase.from('presence').select('*');
+        if (data) {
+          const now = Date.now();
+          const pMap = {};
+          data.forEach(p => { pMap[p.user_id] = Number(p.last_seen); });
+          setPresenceMap(pMap);
+          setOnlineUsers(data.filter(p => now - Number(p.last_seen) < 15000).map(p => p.user_id));
+        }
+      } catch (err) {
+        // ignore network errors
+      }
+    };
+
+    updatePresence();
+    const interval = setInterval(updatePresence, 8000);
+    return () => clearInterval(interval);
+  }, [mounted, isLoggedIn, currentUser, activeOrg]);
+
   // Parse invite query parameters
   useEffect(() => {
     if (mounted && typeof window !== 'undefined') {
