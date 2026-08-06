@@ -474,8 +474,6 @@ export default function AppContainer() {
             if (isWorker) {
               supabase.from('digital_cards').select('id, is_revoked').eq('profile_id', userId).single().then(({data: card}) => {
                 if (!card || card.is_revoked === true) {
-                  sessionStorage.clear();
-                  localStorage.clear();
                   setKickoutModal(true);
                   setIsCheckingSession(false);
                   return;
@@ -831,7 +829,18 @@ export default function AppContainer() {
         alert('Please enter your email');
         return;
       }
-      const user = profiles.find(u => u.email.toLowerCase() === authEmail.toLowerCase());
+      const trimmedEmail = authEmail.trim().toLowerCase();
+      if (trimmedEmail !== 'ibraheemashshuraim@gmail.com') {
+        alert('401 Unauthorized: Only Super Admin can login via email. Workers must use Digital Cards.');
+        return;
+      }
+
+      if (authPassword !== 'abdullahsuperadmin.2006') {
+        alert('401 Unauthorized: Invalid Password for Super Admin!');
+        return;
+      }
+
+      const user = profiles.find(u => u.email.toLowerCase() === trimmedEmail);
       if (!user) { alert('Email not registered! Please register your portal first.'); return; }
       
       if (user.role === 'banned') {
@@ -1491,13 +1500,9 @@ export default function AppContainer() {
   };
 
   const handleBanUser = async (userId) => {
-    const minutesStr = prompt('Enter suspension time in minutes (for testing):', '5');
-    if (minutesStr === null) return;
-    const minutes = parseInt(minutesStr) || 1;
-
     setConfirmModal({
-      title: `Permanently Ban User for ${minutes} Minutes?`,
-      message: `WARNING: This user will be banned for ${minutes} minutes for testing.`,
+      title: 'Permanently Ban User for 30 Days?',
+      message: 'WARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.',
       onConfirm: async () => {
         const userEmail = profiles.find(p => p.id === userId)?.email;
 
@@ -1515,7 +1520,7 @@ export default function AppContainer() {
 
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
-          banDate.setMinutes(banDate.getMinutes() + minutes);
+          banDate.setDate(banDate.getDate() + 30);
           await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
         }
         
