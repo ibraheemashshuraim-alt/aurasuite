@@ -1541,8 +1541,8 @@ export default function AppContainer() {
 
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
-          banDate.setDate(banDate.getDate() + 30);
-          const newBanRecord = { email: userEmail.toLowerCase(), banned_until: banDate.toISOString() };
+          banDate.setMonth(banDate.getMonth() + 1);
+          const newBanRecord = { email: userEmail.toLowerCase(), banned_until: banDate.toISOString(), created_at: new Date().toISOString() };
           await supabase.from('banned_emails').upsert(newBanRecord, { onConflict: 'email' });
           setBannedEmails(prev => {
              const existing = prev.find(b => b.email === newBanRecord.email);
@@ -3237,7 +3237,7 @@ export default function AppContainer() {
                     <tbody>
                       {suspendedOrgUsers.map((user, i) => {
                         const banRecord = bannedEmails.find(b => b.email === user.email?.toLowerCase());
-                        const banDate = banRecord ? new Date(new Date(banRecord.banned_until).getTime() - (30 * 24 * 60 * 60 * 1000)) : null;
+                        const banDate = banRecord ? new Date(banRecord.created_at) : null;
                         const expiryDate = banRecord ? new Date(banRecord.banned_until) : null;
                         
                         return (
