@@ -559,7 +559,16 @@ export default function AppContainer() {
       .channel('global-kickout-clean', { config: { broadcast: { self: true } } })
       .on('broadcast', { event: 'user-suspended' }, (payload) => {
         console.log('🚨 KICKOUT BROADCAST RECEIVED:', payload);
-        setKickoutModal(true);
+        const targetId = payload?.payload?.userId;
+        const currentId = currentUserRef.current?.id;
+        
+        // Only kick out if the broadcast was targeted at the currently logged-in user
+        if (targetId && currentId && targetId === currentId) {
+          console.log('🚨 TARGET MATCHED! Kicking out user:', currentId);
+          setKickoutModal(true);
+        } else {
+          console.log('ℹ️ Broadcast ignored. Target ID:', targetId, 'Current ID:', currentId);
+        }
       })
       .subscribe((status) => {
         console.log('📡 Kickout channel status:', status);

@@ -540,9 +540,17 @@ export default function AppContainer() {
       .channel('global-kickout-clean', { config: { broadcast: { self: true } } })
       .on('broadcast', { event: 'user-suspended' }, (payload) => {
         console.log('🚨 KICKOUT BROADCAST RECEIVED:', payload);
-        sessionStorage.removeItem('aura_session');
-        localStorage.removeItem('aura_session');
-        window.location.href = '/login?kickout=true';
+        const targetId = payload?.payload?.userId;
+        const currentId = currentUserRef.current?.id;
+        
+        if (targetId && currentId && targetId === currentId) {
+          console.log('🚨 TARGET MATCHED! Kicking out user:', currentId);
+          sessionStorage.removeItem('aura_session');
+          localStorage.removeItem('aura_session');
+          window.location.href = '/login?kickout=true';
+        } else {
+          console.log('ℹ️ Broadcast ignored. Target ID:', targetId, 'Current ID:', currentId);
+        }
       })
       .subscribe((status) => {
         console.log('📡 Kickout channel status:', status);
