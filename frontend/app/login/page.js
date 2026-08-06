@@ -263,6 +263,12 @@ export default function AppContainer() {
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const currentUserRef = useRef(currentUser);
+  const kickoutChannelRef = useRef(null);
+  
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
   // Audio fix: track previous media-control state to avoid spurious audio toggling
   const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
   const [showReactionsPanel, setShowReactionsPanel] = useState(false);
@@ -522,42 +528,58 @@ export default function AppContainer() {
           if (data) setMeetingInvites(data.map(i => ({ meetingId: i.meeting_id, invitees: i.invitees })));
         });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'presence' }, () => {
-        supabase.from('presence').select('*').then(({ data }) => {
-          if (data) {
-            const now = Date.now();
-            const pMap = {};
-            data.forEach(p => { pMap[p.user_id] = Number(p.last_seen); });
-            setPresenceMap(pMap);
-            setOnlineUsers(data.filter(p => now - Number(p.last_seen) < 15000).map(p => p.user_id));
-          }
-        });
-      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [mounted]);
 
-  // ─────────────────── Supabase Presence Heartbeat ───────────────────
+  // ─────────────────── Unified Kickout & Poller ───────────────────
   useEffect(() => {
-    if (!mounted || !isLoggedIn || !currentUser) return;
+    // 1. Clean Broadcast Listener (subscribed & stored in ref for admin to reuse)
+    const channel = supabase
+      .channel('global-kickout-clean', { config: { broadcast: { self: true } } })
+      .on('broadcast', { event: 'user-suspended' }, (payload) => {
+        console.log('🚨 KICKOUT BROADCAST RECEIVED:', payload);
+        sessionStorage.removeItem('aura_session');
+        localStorage.removeItem('aura_session');
+        window.location.href = '/login?kickout=true';
+      })
+      .subscribe((status) => {
+        console.log('📡 Kickout channel status:', status);
+        if (status === 'SUBSCRIBED') {
+          kickoutChannelRef.current = channel;
+        }
+      });
 
-    const updatePresence = async () => {
-      await supabase.from('presence').upsert({ user_id: currentUser.id, organization_id: activeOrg?.id, last_seen: Date.now() }, { onConflict: 'user_id' });
-      const { data } = await supabase.from('presence').select('*');
-      if (data) {
-        const now = Date.now();
-        const pMap = {};
-        data.forEach(p => { pMap[p.user_id] = Number(p.last_seen); });
-        setPresenceMap(pMap);
-        setOnlineUsers(data.filter(p => now - Number(p.last_seen) < 15000).map(p => p.user_id));
+    // 2. Database Status Fallback (Polling every 3s)
+    const interval = setInterval(async () => {
+      const uid = currentUserRef.current?.id;
+      if (!uid) return;
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('status')
+          .eq('id', uid)
+          .maybeSingle();
+
+        // Trigger kickout if: profile deleted (no data/null), DB error, or status is suspended
+        if (!data || error || data?.status === 'suspended') {
+          console.log('🚨 POLLER KICKOUT: profile missing or suspended', { data, error });
+          sessionStorage.removeItem('aura_session');
+          localStorage.removeItem('aura_session');
+          window.location.href = '/login?kickout=true';
+        }
+      } catch (err) {
+        // Silence errors
       }
-    };
+    }, 3000);
 
-    updatePresence();
-    const interval = setInterval(updatePresence, 8000);
-    return () => clearInterval(interval);
-  }, [mounted, isLoggedIn, currentUser, activeOrg]);
+    return () => {
+      supabase.removeChannel(channel);
+      kickoutChannelRef.current = null;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Parse invite query parameters
   useEffect(() => {
@@ -1421,18 +1443,47 @@ export default function AppContainer() {
       title: 'Suspend User & Revoke Access?',
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
       onConfirm: async () => {
-        // Absolute Cascade Delete
-        await supabase.from('group_messages').delete().eq('from_id', userId);
-        await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
-        await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-        await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-        await supabase.from('meetings').delete().eq('host_id', userId);
-        await supabase.from('tasks').delete().eq('assigned_to', userId);
-        await supabase.from('presence').delete().eq('user_id', userId);
-        await supabase.from('digital_cards').delete().eq('profile_id', userId);
-        await supabase.from('profiles').delete().eq('id', userId);
-        setProfiles(prev => prev.filter(u => u.id !== userId));
-        addNotification('User suspended and removed. Their access card has been revoked.', 'warning');
+        try {
+          const targetUser = profiles.find(p => p.id === userId);
+          const targetEmail = targetUser?.email;
+
+          // 1. UPDATE profile status to 'suspended' FIRST (poller safety net)
+          await supabase.from('profiles').update({ status: 'suspended' }).eq('id', userId);
+
+          // 2. Fire Broadcast on the ALREADY-SUBSCRIBED channel
+          if (kickoutChannelRef.current) {
+            const res = await kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: 'user-suspended',
+              payload: { userId, email: targetEmail }
+            });
+            console.log('📢 BROADCAST RESULT:', res);
+          }
+
+          // 3. Optimistic UI update
+          setProfiles(prev => prev.filter(p => p.id !== userId));
+          addNotification('User suspended and completely removed. Their access card has been revoked.', 'warning');
+
+          // 4. DB cleanup (delayed to let poller catch the 'suspended' status)
+          setTimeout(async () => {
+            try {
+              await supabase.from('group_messages').delete().eq('from_id', userId);
+              await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
+              await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+              await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+              await supabase.from('meetings').delete().eq('host_id', userId);
+              await supabase.from('tasks').delete().eq('assigned_to', userId);
+              await supabase.from('presence').delete().eq('user_id', userId);
+              await supabase.from('digital_cards').delete().eq('profile_id', userId);
+              await supabase.from('profiles').delete().eq('id', userId);
+            } catch (err) {
+              console.warn('Silenced DB deletion error:', err);
+            }
+          }, 2000);
+        } catch (error) {
+          console.error('Suspend error:', error);
+          addNotification('Error suspending user', 'error');
+        }
         setConfirmModal(null);
       }
     });
@@ -1444,13 +1495,35 @@ export default function AppContainer() {
       message: 'WARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.',
       onConfirm: async () => {
         const userEmail = profiles.find(p => p.id === userId)?.email;
+
+        // 1. UPDATE profile status to 'suspended' FIRST (poller safety net)
+        await supabase.from('profiles').update({ status: 'suspended' }).eq('id', userId);
+
+        // 2. Fire broadcast on ALREADY-SUBSCRIBED channel
+        if (kickoutChannelRef.current) {
+          await kickoutChannelRef.current.send({
+            type: 'broadcast',
+            event: 'user-suspended',
+            payload: { userId, email: userEmail }
+          });
+        }
+
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
           banDate.setDate(banDate.getDate() + 30);
           await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
         }
-        await supabase.from('digital_cards').update({ is_revoked: true, is_pending: false }).eq('profile_id', userId);
-        await supabase.from('profiles').update({ role: 'banned', last_seen: new Date().toISOString(), email: `${userId}_banned@aurasuite.com` }).eq('id', userId);
+        
+        // Delayed Cascade Delete (give poller time to catch suspended status)
+        setTimeout(async () => {
+          try {
+            await supabase.from('digital_cards').update({ is_revoked: true, is_pending: false }).eq('profile_id', userId);
+            await supabase.from('profiles').update({ role: 'banned', last_seen: new Date().toISOString(), email: `${userId}_banned@aurasuite.com` }).eq('id', userId);
+          } catch (err) {
+            console.warn('Silenced cascade delete error:', err);
+          }
+        }, 2000);
+
         setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned', last_seen: new Date().toISOString() } : u));
         addNotification('User permanently banned for 30 days.', 'error');
         setConfirmModal(null);
