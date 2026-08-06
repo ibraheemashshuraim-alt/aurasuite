@@ -564,14 +564,19 @@ export default function AppContainer() {
     // 2. Database Status Fallback (Polling every 3s)
     const interval = setInterval(async () => {
       if (!currentUser?.id) return;
-      const { data } = await supabase
-        .from('profiles')
-        .select('status')
-        .eq('id', currentUser.id)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('status')
+          .eq('id', currentUser.id)
+          .single();
 
-      if (data?.status === 'suspended') {
-        setKickoutModal(true);
+        // Trigger kickout if: profile deleted (no data), error, or status is suspended
+        if (!data || error || data?.status === 'suspended') {
+          setKickoutModal(true);
+        }
+      } catch (err) {
+        // Silence errors
       }
     }, 3000);
 
@@ -1391,7 +1396,7 @@ export default function AppContainer() {
           
           console.log('📢 SENDING KICKOUT BROADCAST FOR:', userId, targetEmail);
           
-          supabase.channel('global-kickout', { config: { broadcast: { self: true } } }).send({
+          supabase.channel('global-kickout-clean', { config: { broadcast: { self: true } } }).send({
             type: 'broadcast',
             event: 'user-suspended',
             payload: { userId, email: targetEmail }
@@ -1425,6 +1430,14 @@ export default function AppContainer() {
       message: 'WARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.',
       onConfirm: async () => {
         const userEmail = profiles.find(p => p.id === userId)?.email;
+
+        // Fire broadcast FIRST so live user sees popup immediately
+        supabase.channel('global-kickout-clean', { config: { broadcast: { self: true } } }).send({
+          type: 'broadcast',
+          event: 'user-suspended',
+          payload: { userId, email: userEmail }
+        });
+
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
           banDate.setDate(banDate.getDate() + 30);
@@ -1856,22 +1869,17 @@ export default function AppContainer() {
       {(kickoutModal || currentUser?.role === 'suspended' || currentUser?.status === 'suspended') && (
         <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
           <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-            <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/20">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Access Revoked</h2>
-            <p className="text-slate-400 text-sm mb-6">Your account has been suspended by the Super Admin.</p>
+            <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
+            <p className="text-red-400 text-sm mb-6">Access Revoked: Your access card has been suspended by the Admin.</p>
             <button
               onClick={() => {
                 localStorage.clear();
                 sessionStorage.clear();
                 window.location.href = '/login';
               }}
-              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-all"
+              className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
             >
-              Return to Login
+              Close Portal
             </button>
           </div>
         </div>
