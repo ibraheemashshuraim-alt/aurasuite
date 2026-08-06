@@ -227,6 +227,8 @@ export default function AppContainer() {
   // ── Global data ──
   const [organizations, setOrganizations] = useState([]);
   const [profiles, setProfiles] = useState([]);
+  const [bannedEmails, setBannedEmails] = useState([]);
+  const [showSuspendedUsers, setShowSuspendedUsers] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [activeMeetings, setActiveMeetings] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -368,7 +370,7 @@ export default function AppContainer() {
     setMounted(true);
     const loadAll = async () => {
       try {
-        const [orgs, profs, tsk, meets, scheds, msgs, dms, invites, mStates, fin] = await Promise.all([
+        const [orgs, profs, tsk, meets, scheds, msgs, dms, invites, mStates, fin, bans] = await Promise.all([
           supabase.from('organizations').select('*'),
           supabase.from('profiles').select('*'),
           supabase.from('tasks').select('*'),
@@ -379,9 +381,11 @@ export default function AppContainer() {
           supabase.from('meeting_invites').select('*'),
           supabase.from('meeting_states').select('*'),
           supabase.from('financials').select('*'),
+          supabase.from('banned_emails').select('*'),
         ]);
         if (orgs.data) setOrganizations(orgs.data);
         if (profs.data) setProfiles(profs.data);
+        if (bans.data) setBannedEmails(bans.data);
         if (tsk.data) setTasks(tsk.data);
         if (meets.data) setActiveMeetings(meets.data);
         if (scheds.data) setSchedules(scheds.data);
@@ -1477,7 +1481,7 @@ export default function AppContainer() {
           }
 
           // 3. Optimistic UI update
-          setProfiles(prev => prev.filter(p => p.id !== userId));
+          setProfiles(prev => prev.map(p => p.id === userId ? { ...p, role: 'suspended' } : p));
           addNotification('User suspended and completely removed. Their access card has been revoked.', 'warning');
 
           // 4. DB cleanup (delayed to let poller catch the 'suspended' status)
@@ -1485,7 +1489,7 @@ export default function AppContainer() {
             try {
               await supabase.from('presence').delete().eq('user_id', userId);
               await supabase.from('digital_cards').delete().eq('profile_id', userId);
-              await supabase.from('profiles').delete().eq('id', userId);
+              // We NO LONGER delete the profile here, so it can show in the Suspended tab!
             } catch (err) {
               console.warn('Silenced DB deletion error:', err);
             }
@@ -1495,6 +1499,22 @@ export default function AppContainer() {
           addNotification('Error suspending user', 'error');
         }
         setConfirmModal(null);
+      }
+    });
+  };
+
+  const handleDeletePermanentlyFromDB = async (userId, userEmail) => {
+    setConfirmModal({
+      title: 'Delete User Profile Only?',
+      message: 'This will delete the user profile and card. However, if they are banned, their 30-day ban record will REMAIN active in the system.',
+      onConfirm: async () => {
+        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('presence').delete().eq('user_id', userId);
+        await supabase.from('tasks').delete().eq('assigned_to', userId);
+        await supabase.from('profiles').delete().eq('id', userId);
+        
+        setProfiles(prev => prev.filter(p => p.id !== userId));
+        addNotification('User profile deleted. Ban record (if any) remains active.', 'success');
       }
     });
   };
@@ -1535,13 +1555,13 @@ export default function AppContainer() {
             await supabase.from('tasks').delete().eq('assigned_to', userId);
             await supabase.from('presence').delete().eq('user_id', userId);
             await supabase.from('digital_cards').delete().eq('profile_id', userId);
-            await supabase.from('profiles').delete().eq('id', userId);
+            // We NO LONGER delete the profile here, so it can show in the Suspended tab!
           } catch (err) {
             console.warn('Silenced cascade delete error:', err);
           }
         }, 2000);
 
-        setProfiles(prev => prev.filter(u => u.id !== userId));
+        setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned' } : u));
         addNotification('User banned (permanently deleted from view).', 'error');
         setConfirmModal(null);
       }
@@ -1595,6 +1615,7 @@ export default function AppContainer() {
 
   // ─────────────────── Derived ───────────────────
   const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'pending_worker' && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
+  const suspendedOrgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && ['banned', 'suspended'].includes(p.role));
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
@@ -1612,6 +1633,28 @@ export default function AppContainer() {
       </div>
     </div>
   );
+
+  // ── KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) ──
+  if (kickoutModal || currentUser?.role === 'suspended' || currentUser?.status === 'suspended') {
+    return (
+      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
+          <p className="text-red-400 text-sm mb-6">Access Revoked: Your access card has been suspended by the Admin.</p>
+          <button
+            onClick={() => {
+              try {
+                window.close();
+              } catch (e) {}
+            }}
+            className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
+          >
+            Close Portal
+          </button>
+        </div>
+      </div>
+    );
+  }
   // ── LOGIN SCREEN ──
   if (!isLoggedIn) {
     if (authTab === 'invite_register') {
@@ -1954,26 +1997,6 @@ export default function AppContainer() {
   // ══════════════════ MAIN APP ══════════════════
   return (
     <main className="relative min-h-screen">
-      {/* 1. TOP-LEVEL KICKOUT OVERLAY (FORCED FULLSCREEN OVER EVERYTHING) */}
-      {(kickoutModal || currentUser?.role === 'suspended' || currentUser?.status === 'suspended') && (
-        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-          <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-            <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
-            <p className="text-red-400 text-sm mb-6">Access Revoked: Your access card has been suspended by the Admin.</p>
-            <button
-              onClick={() => {
-                try {
-                  window.close();
-                } catch (e) {}
-              }}
-              className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
-            >
-              Close Portal
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="flex min-h-screen bg-luxury-bg text-[#f3f1f5] relative">
 
       {/* ── MEETING INVITE MODAL ── */}
@@ -3091,24 +3114,31 @@ export default function AppContainer() {
             <div className="max-w-7xl mx-auto space-y-6">
               {/* User Management Table */}
               <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-purple-500/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 border-b border-purple-500/10 gap-3">
                   <div className="flex items-center gap-2">
                     <Users size={16} className="text-purple-400" />
                     <h3 className="text-sm font-bold text-white">User Management</h3>
                   </div>
-                  <span className="text-[10px] text-purple-400">{orgUsers.length} members in {activeOrg.name}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex bg-purple-950/30 rounded-lg p-1 border border-purple-500/10">
+                      <button onClick={() => setShowSuspendedUsers(false)} className={`px-3 py-1 text-[10px] font-bold rounded transition-colors ${!showSuspendedUsers ? 'bg-purple-600/40 text-white' : 'text-purple-400 hover:text-white'}`}>Active</button>
+                      <button onClick={() => setShowSuspendedUsers(true)} className={`px-3 py-1 text-[10px] font-bold rounded transition-colors ${showSuspendedUsers ? 'bg-red-600/40 text-white' : 'text-red-400 hover:text-white'}`}>Suspended & Banned</button>
+                    </div>
+                    <span className="text-[10px] text-purple-400">{!showSuspendedUsers ? orgUsers.length : suspendedOrgUsers.length} members</span>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-purple-500/10 text-left">
-                        {['User', 'Role', 'Category', 'AI Domain', 'Skills', 'Status', 'Actions'].map(h => (
-                          <th key={h} className="px-4 py-3 text-[10px] text-purple-400 uppercase font-bold tracking-wide">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orgUsers.map((user, i) => (
+                  {!showSuspendedUsers ? (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-purple-500/10 text-left">
+                          {['User', 'Role', 'Category', 'AI Domain', 'Skills', 'Status', 'Actions'].map(h => (
+                            <th key={h} className="px-4 py-3 text-[10px] text-purple-400 uppercase font-bold tracking-wide">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orgUsers.map((user, i) => (
                         <tr key={user.id} className={`border-b border-purple-500/5 hover:bg-purple-950/10 transition-colors ${i % 2 === 0 ? '' : 'bg-[#0c0818]/40'}`}>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
@@ -3178,6 +3208,65 @@ export default function AppContainer() {
                       ))}
                     </tbody>
                   </table>
+                  ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-purple-500/10 text-left">
+                        {['User', 'Role', 'Status', 'Suspended On', 'Eligible For Reactivation', 'Actions'].map(h => (
+                          <th key={h} className="px-4 py-3 text-[10px] text-red-400 uppercase font-bold tracking-wide">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {suspendedOrgUsers.map((user, i) => {
+                        const banRecord = bannedEmails.find(b => b.email === user.email?.toLowerCase());
+                        const banDate = banRecord ? new Date(new Date(banRecord.banned_until).getTime() - (30 * 24 * 60 * 60 * 1000)) : null;
+                        const expiryDate = banRecord ? new Date(banRecord.banned_until) : null;
+                        
+                        return (
+                          <tr key={user.id} className={`border-b border-purple-500/5 hover:bg-red-950/10 transition-colors ${i % 2 === 0 ? '' : 'bg-[#0c0818]/40'}`}>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-red-950/60 flex items-center justify-center text-xs font-bold text-red-400 border border-red-500/20">
+                                  {user.full_name?.[0] || '?'}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-white">{user.full_name}</div>
+                                  <div className="text-[9px] text-red-400/70">{user.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase border bg-red-950/40 border-red-500/30 text-red-300">
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-[9px] font-semibold text-red-400">Access Revoked</span>
+                            </td>
+                            <td className="px-4 py-3 text-[10px] text-purple-300">
+                              {banDate ? banDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
+                            </td>
+                            <td className="px-4 py-3 text-[10px] font-mono text-yellow-400/80">
+                              {expiryDate ? expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <button onClick={() => handleDeletePermanentlyFromDB(user.id, user.email)} title="Permanently Delete From DB"
+                                className="px-3 py-1.5 bg-red-950/50 hover:bg-red-600/80 text-red-200 hover:text-white text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1">
+                                <UserX size={11} /> Delete Record
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {suspendedOrgUsers.length === 0 && (
+                        <tr>
+                          <td colSpan="6" className="text-center py-6 text-xs text-purple-400">No suspended or banned users found.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  )}
                 </div>
               </div>
 

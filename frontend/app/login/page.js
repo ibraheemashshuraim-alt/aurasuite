@@ -1645,6 +1645,28 @@ export default function AppContainer() {
     </div>
   );
 
+  // ── KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) ──
+  if (kickoutModal || currentUser?.role === 'suspended' || currentUser?.role === 'banned') {
+    return (
+      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
+          <p className="text-red-400 text-sm mb-6">Access Revoked: Your access card has been suspended by the Admin.</p>
+          <button
+            onClick={() => {
+              try {
+                window.close();
+              } catch (e) {}
+            }}
+            className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
+          >
+            Close Portal
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── LOGIN SCREEN ──
   if (!isLoggedIn) {
     if (authTab === 'invite_register') {
@@ -1999,25 +2021,7 @@ export default function AppContainer() {
   return (
     <div className="flex min-h-screen bg-luxury-bg text-[#f3f1f5] relative">
       
-      {/* 1. TOP-LEVEL KICKOUT OVERLAY (FORCED FULLSCREEN OVER EVERYTHING) */}
-      {(kickoutModal || currentUser?.role === 'suspended' || currentUser?.role === 'banned') && (
-        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-          <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-            <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
-            <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
-            <button
-              onClick={() => {
-                try {
-                  window.close();
-                } catch (e) {}
-              }}
-              className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
-            >
-              Close Portal
-            </button>
-          </div>
-        </div>
-      )}
+      {/* 1. TOP-LEVEL KICKOUT OVERLAY ALREADY HANDLED ABOVE */}
 
 
       {/* ── MEETING INVITE MODAL ── */}
