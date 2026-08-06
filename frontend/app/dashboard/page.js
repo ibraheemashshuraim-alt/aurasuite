@@ -1542,7 +1542,7 @@ export default function AppContainer() {
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
           banDate.setDate(banDate.getDate() + 30);
-          await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
+          await supabase.from('banned_emails').upsert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() }, { onConflict: 'email' });
         }
         
         // Delayed Cascade Delete (give poller time to catch suspended status)
