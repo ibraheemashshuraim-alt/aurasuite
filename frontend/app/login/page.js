@@ -558,12 +558,12 @@ export default function AppContainer() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('status')
+          .select('role')
           .eq('id', uid)
           .maybeSingle();
 
-        // Trigger kickout if: profile deleted (no data/null), DB error, or status is suspended
-        if (!data || error || data?.status === 'suspended') {
+        // Trigger kickout if: profile deleted (no data and no error), or role is suspended/banned/deleted
+        if ((!data && !error) || (data && ['suspended', 'banned', 'deleted'].includes(data.role))) {
           console.log('🚨 POLLER KICKOUT: profile missing or suspended', { data, error });
           sessionStorage.removeItem('aura_session');
           localStorage.removeItem('aura_session');
@@ -1447,8 +1447,8 @@ export default function AppContainer() {
           const targetUser = profiles.find(p => p.id === userId);
           const targetEmail = targetUser?.email;
 
-          // 1. UPDATE profile status to 'suspended' FIRST (poller safety net)
-          await supabase.from('profiles').update({ status: 'suspended' }).eq('id', userId);
+          // 1. UPDATE profile role to 'suspended' FIRST (poller safety net)
+          await supabase.from('profiles').update({ role: 'suspended' }).eq('id', userId);
 
           // 2. Fire Broadcast on the ALREADY-SUBSCRIBED channel
           if (kickoutChannelRef.current) {
@@ -1496,8 +1496,8 @@ export default function AppContainer() {
       onConfirm: async () => {
         const userEmail = profiles.find(p => p.id === userId)?.email;
 
-        // 1. UPDATE profile status to 'suspended' FIRST (poller safety net)
-        await supabase.from('profiles').update({ status: 'suspended' }).eq('id', userId);
+        // 1. UPDATE profile role to 'suspended' FIRST (poller safety net)
+        await supabase.from('profiles').update({ role: 'suspended' }).eq('id', userId);
 
         // 2. Fire broadcast on ALREADY-SUBSCRIBED channel
         if (kickoutChannelRef.current) {
