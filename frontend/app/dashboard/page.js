@@ -436,12 +436,22 @@ export default function AppContainer() {
           else setLoginMode(loadedMode);
 
           supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser, error: pError}) => {
-            if (pError || !savedUser || ['banned', 'deleted', 'suspended'].includes(savedUser.role) || savedUser.status === 'suspended') {
-              sessionStorage.clear();
-              localStorage.clear();
-              setKickoutModal(true);
+            if (pError) {
+              console.warn('Session check error (network?):', pError);
+              // Do NOT delete session on network error! Just show login to be safe.
               setIsCheckingSession(false);
               return;
+            }
+            if (!savedUser) {
+              sessionStorage.clear();
+              localStorage.clear();
+              setIsCheckingSession(false);
+              return;
+            }
+            
+            if (['banned', 'deleted', 'suspended'].includes(savedUser.role) || savedUser.status === 'suspended') {
+              // DON'T clear storage! Keep them permanently stuck on the modal.
+              setKickoutModal(true);
             }
 
             // 🚨 STRICT ISOLATION: If localStorage was corrupted with a worker session from an older bug, reject it!
@@ -1481,9 +1491,13 @@ export default function AppContainer() {
   };
 
   const handleBanUser = async (userId) => {
+    const minutesStr = prompt('Enter suspension time in minutes (for testing):', '5');
+    if (minutesStr === null) return;
+    const minutes = parseInt(minutesStr) || 1;
+
     setConfirmModal({
-      title: 'Permanently Ban User for 30 Days?',
-      message: 'WARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.',
+      title: `Permanently Ban User for ${minutes} Minutes?`,
+      message: `WARNING: This user will be banned for ${minutes} minutes for testing.`,
       onConfirm: async () => {
         const userEmail = profiles.find(p => p.id === userId)?.email;
 
@@ -1501,7 +1515,7 @@ export default function AppContainer() {
 
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
-          banDate.setDate(banDate.getDate() + 30);
+          banDate.setMinutes(banDate.getMinutes() + minutes);
           await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
         }
         
@@ -1656,6 +1670,17 @@ export default function AppContainer() {
       <div className="min-h-screen bg-luxury-bg text-[#f3f1f5] flex items-center justify-center p-4">
         <div className="w-full max-w-md glass-panel-glow p-8 rounded-2xl border border-[#9333ea]/20 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-40 h-40 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+          {/* TOP TABS PERMANENTLY HIDDEN FOR CLEAN UI */}
+          {false && !isInviteFlow && !isCardLoginOnly && (
+            <div className="flex flex-col sm:flex-row bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6 gap-1">
+              {['login', 'signup'].map(tab => (
+                <button key={tab} onClick={() => setAuthTab(tab)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authTab === tab ? 'bg-[#9333ea] text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
+                  {tab === 'login' ? 'Sign In' : 'Register Portal'}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="absolute bottom-0 left-0 w-32 h-32 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
           <div className="text-center mb-8 relative">
             <div className="w-14 h-14 rounded-2xl accent-gradient flex items-center justify-center shadow-lg shadow-purple-500/30 mx-auto mb-3">
@@ -1670,16 +1695,7 @@ export default function AppContainer() {
             </p>
           </div>
 
-          {!isInviteFlow && (
-            <div className="flex bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6">
-              {['login', 'signup'].map(tab => (
-                <button key={tab} onClick={() => setAuthTab(tab)}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authTab === tab ? 'bg-[#9333ea] text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
-                  {tab === 'login' ? 'Sign In' : 'Register Portal'}
-                </button>
-              ))}
-            </div>
-          )}
+
 
           {forcePasswordChange ? (
             <form onSubmit={handleSetPermanentPassword} className="space-y-4">
@@ -1707,7 +1723,7 @@ export default function AppContainer() {
             </form>
           ) : authTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
-              {!isInviteFlow && (
+              {false && !isInviteFlow && (
                 <div className="flex bg-[#11081c] p-1 rounded-xl mb-4 border border-purple-500/20">
                   <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='admin'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Admin Login</button>
                   <button type="button" onClick={() => setLoginMode('worker')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='worker'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Digital Card</button>
@@ -1941,15 +1957,9 @@ export default function AppContainer() {
             <p className="text-red-400 text-sm mb-6">Access Revoked: Your access card has been suspended by the Admin.</p>
             <button
               onClick={() => {
-                localStorage.removeItem('aura_session');
-                sessionStorage.removeItem('aura_session');
                 try {
                   window.close();
                 } catch (e) {}
-                // Fallback if window.close() is blocked
-                setTimeout(() => {
-                  window.location.href = '/login';
-                }, 150);
               }}
               className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
             >

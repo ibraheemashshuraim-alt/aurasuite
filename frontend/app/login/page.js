@@ -418,7 +418,13 @@ export default function AppContainer() {
           if (parsed.loginMode) setLoginMode(parsed.loginMode);
           else setLoginMode(loadedMode);
 
-          supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser}) => {
+          supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser, error: pError}) => {
+            if (pError) {
+              console.warn('Session check error (network?):', pError);
+              // Do NOT delete session on network error! Just show login to be safe but keep storage.
+              setIsCheckingSession(false);
+              return;
+            }
             if (savedUser) {
               // 🚨 STRICT ISOLATION: If localStorage was corrupted with a worker session from an older bug, reject it!
               const isWorker = ['worker', 'client'].includes(savedUser.role);
@@ -433,14 +439,21 @@ export default function AppContainer() {
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
                 setIsCheckingSession(false);
+                
+                // Trigger kickout modal IF suspended (but DON'T clear storage!)
+                if (['suspended', 'banned', 'deleted'].includes(savedUser.role) || savedUser.status === 'suspended') {
+                  setKickoutModal(true);
+                }
               });
             } else {
+              // User deleted from DB
               sessionStorage.removeItem('aura_session');
               localStorage.removeItem('aura_session');
               setIsCheckingSession(false);
             }
           });
         } catch(e) {
+          console.error('Session parse error:', e);
           sessionStorage.removeItem('aura_session');
           localStorage.removeItem('aura_session');
           setIsCheckingSession(false);
@@ -530,6 +543,7 @@ export default function AppContainer() {
         });
       })
       .subscribe();
+
 
     return () => { supabase.removeChannel(channel); };
   }, [mounted]);
@@ -1993,15 +2007,9 @@ export default function AppContainer() {
             <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
             <button
               onClick={() => {
-                localStorage.removeItem('aura_session');
-                sessionStorage.removeItem('aura_session');
                 try {
                   window.close();
                 } catch (e) {}
-                // Fallback if window.close() is blocked
-                setTimeout(() => {
-                  window.location.href = '/login';
-                }, 150);
               }}
               className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
             >
