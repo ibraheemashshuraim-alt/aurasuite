@@ -10,7 +10,7 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2
+  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getRandomQuestions } from '../../lib/questionBank';
@@ -1969,6 +1969,10 @@ export default function AppContainer() {
             setQuizFailed(false);
         } else {
             // FAIL
+            const cooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            await supabase.from('profiles').update({ quiz_cooldown_until: cooldownUntil }).eq('id', currentUser.id);
+            setCurrentUser(prev => ({ ...prev, quiz_cooldown_until: cooldownUntil }));
+            setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, quiz_cooldown_until: cooldownUntil } : p));
             setQuizFailed(true);
         }
         
