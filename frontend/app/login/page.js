@@ -10,7 +10,7 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square
+  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -230,6 +230,9 @@ export default function AppContainer() {
   // ── Session ──
   const [currentUser, setCurrentUser] = useState(null);
   const [activeOrg, setActiveOrg] = useState(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isSettingPassword, setIsSettingPassword] = useState(false);
+  const [isEnteringDashboard, setIsEnteringDashboard] = useState(false);
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'AuraSuite loaded. Welcome!', type: 'info' }
   ]);
@@ -787,6 +790,8 @@ export default function AppContainer() {
   // ─────────────────── Auth ───────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
+    setIsLoggingIn(true);
+    try {
     if (loginMode === 'worker') {
       if (!authCardNumber || !authUsername || !authPassword) {
         alert('Please fill all fields');
@@ -902,6 +907,8 @@ export default function AppContainer() {
     if (!newPermanentPassword || newPermanentPassword.length < 6) {
       alert('Password must be at least 6 characters.'); return;
     }
+    setIsSettingPassword(true);
+    try {
 
     // Update card: set permanent password, clear pending status
     const { error: cardErr } = await supabase.from('digital_cards').update({
@@ -971,6 +978,9 @@ export default function AppContainer() {
       setForcePasswordChange(false);
       setTempDigitalCard(null);
       addNotification(`Welcome ${user.full_name}!`, 'success');
+    }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -1794,8 +1804,9 @@ export default function AppContainer() {
                 <button type="button" onClick={handleSkipPasswordChange} className="flex-1 py-3 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs font-bold text-purple-300 hover:bg-purple-900/40">
                   Skip for Now
                 </button>
-                <button type="submit" className="flex-1 py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn flex items-center justify-center gap-2">
-                  <Lock size={14} /> Set &amp; Enter
+                <button type="submit" disabled={isSettingPassword} className={`flex-1 py-3 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 ${isSettingPassword ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
+                  {isSettingPassword ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />} 
+                  {isSettingPassword ? 'Setting Password...' : 'Set & Enter'}
                 </button>
               </div>
             </form>
@@ -1840,9 +1851,9 @@ export default function AppContainer() {
                 </>
               )}
 
-              <button type="submit" className="w-full py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn mt-4 flex items-center justify-center gap-2">
-                {loginMode === 'admin' ? <Lock size={14} /> : <Unlock size={14} />} 
-                {loginMode === 'admin' ? 'Login as Admin' : 'Validate Credentials'}
+              <button type="submit" disabled={isLoggingIn} className={`w-full py-3 rounded-xl text-xs font-bold text-white mt-4 flex items-center justify-center gap-2 ${isLoggingIn ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
+                {isLoggingIn ? <Loader2 size={14} className="animate-spin" /> : (loginMode === 'admin' ? <Lock size={14} /> : <Unlock size={14} />)} 
+                {isLoggingIn ? 'Validating...' : (loginMode === 'admin' ? 'Login as Admin' : 'Validate Credentials')}
               </button>
               
               <button type="button" onClick={() => {
@@ -2010,8 +2021,15 @@ export default function AppContainer() {
                 <h3 className="text-xl font-bold text-white">Assessment Complete</h3>
                 <p className="text-sm text-purple-200 mt-2">You have been assigned to <strong className="text-purple-400 border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 rounded">Tier {currentUser.category || 'C'}</strong></p>
               </div>
-              <button onClick={() => setShowQuiz(false)} className="w-full py-3 rounded-xl accent-gradient text-sm font-bold text-white glow-btn">
-                Enter AuraSuite Dashboard
+              <button onClick={() => {
+                  setIsEnteringDashboard(true);
+                  setTimeout(() => {
+                      setIsEnteringDashboard(false);
+                      setShowQuiz(false);
+                  }, 800);
+              }} disabled={isEnteringDashboard} className={`w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 ${isEnteringDashboard ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
+                {isEnteringDashboard ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isEnteringDashboard ? 'Redirecting...' : 'Enter AuraSuite Dashboard'}
               </button>
             </div>
           )}

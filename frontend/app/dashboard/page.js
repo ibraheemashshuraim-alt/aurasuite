@@ -304,6 +304,7 @@ export default function AppContainer() {
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [isSavingUserEdit, setIsSavingUserEdit] = useState(false);
   const [isApprovingPayout, setIsApprovingPayout] = useState(false);
+  const [isSendingMeetingInvites, setIsSendingMeetingInvites] = useState(false);
   const [isEndingMeeting, setIsEndingMeeting] = useState(false);
   const [isSendingLiveChat, setIsSendingLiveChat] = useState(false);
 
@@ -1326,44 +1327,49 @@ export default function AppContainer() {
 
   const handleSendMeetingInvites = async () => {
     if (!meetingInviteModal || selectedInvitees.length === 0) { setMeetingInviteModal(null); return; }
-    const existing = meetingInvites.find(inv => inv.meetingId === meetingInviteModal.id);
-    const newInvitees = existing ? [...new Set([...existing.invitees, ...selectedInvitees])] : selectedInvitees;
-    await supabase.from('meeting_invites').upsert({ meeting_id: meetingInviteModal.id, invitees: newInvitees }, { onConflict: 'meeting_id' });
-    setMeetingInvites(prev => {
-      if (existing) return prev.map(i => i.meetingId === meetingInviteModal.id ? { ...i, invitees: newInvitees } : i);
-      return [...prev, { meetingId: meetingInviteModal.id, invitees: newInvitees }];
-    });
-    
-    if (selectedInvitees.includes('__all__')) {
-      const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
-        text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
-        msg_time: now() };
-      await supabase.from('group_messages').insert(inviteMsg);
-    } else {
-      const dmMessages = selectedInvitees.map(inviteeId => {
-        const key = [currentUser.id, inviteeId].sort().join('_');
-        return {
-           id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
-           text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
-           msg_time: now()
-        };
+    setIsSendingMeetingInvites(true);
+    try {
+      const existing = meetingInvites.find(inv => inv.meetingId === meetingInviteModal.id);
+      const newInvitees = existing ? [...new Set([...existing.invitees, ...selectedInvitees])] : selectedInvitees;
+      await supabase.from('meeting_invites').upsert({ meeting_id: meetingInviteModal.id, invitees: newInvitees }, { onConflict: 'meeting_id' });
+      setMeetingInvites(prev => {
+        if (existing) return prev.map(i => i.meetingId === meetingInviteModal.id ? { ...i, invitees: newInvitees } : i);
+        return [...prev, { meetingId: meetingInviteModal.id, invitees: newInvitees }];
       });
-      if (dmMessages.length > 0) {
-        await supabase.from('dm_messages').insert(dmMessages);
-        // Also update local state so sender sees it immediately
-        setDmThreads(prev => {
-          const next = { ...prev };
-          dmMessages.forEach(m => {
-            if (!next[m.thread_key]) next[m.thread_key] = [];
-            next[m.thread_key] = [...next[m.thread_key], { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time }];
-          });
-          return next;
+      
+      if (selectedInvitees.includes('__all__')) {
+        const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
+          text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
+          msg_time: now() };
+        await supabase.from('group_messages').insert(inviteMsg);
+      } else {
+        const dmMessages = selectedInvitees.map(inviteeId => {
+          const key = [currentUser.id, inviteeId].sort().join('_');
+          return {
+             id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
+             text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
+             msg_time: now()
+          };
         });
+        if (dmMessages.length > 0) {
+          await supabase.from('dm_messages').insert(dmMessages);
+          // Also update local state so sender sees it immediately
+          setDmThreads(prev => {
+            const next = { ...prev };
+            dmMessages.forEach(m => {
+              if (!next[m.thread_key]) next[m.thread_key] = [];
+              next[m.thread_key] = [...next[m.thread_key], { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time }];
+            });
+            return next;
+          });
+        }
       }
+      
+      addNotification(`Invited ${selectedInvitees.length} member(s) to the meeting.`, 'success');
+      setMeetingInviteModal(null); setSelectedInvitees([]);
+    } finally {
+      setIsSendingMeetingInvites(false);
     }
-    
-    addNotification(`Invited ${selectedInvitees.length} member(s) to the meeting.`, 'success');
-    setMeetingInviteModal(null); setSelectedInvitees([]);
   };
 
   const isInvitedToMeeting = (meet) => {
@@ -2087,9 +2093,10 @@ export default function AppContainer() {
                 className="flex-1 py-2 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs text-purple-300 font-semibold hover:bg-purple-900/40 transition-all">
                 Skip for Now
               </button>
-              <button onClick={handleSendMeetingInvites}
-                className="flex-1 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
-                Send Invites ({selectedInvitees.includes('__all__') ? 'All' : selectedInvitees.length})
+              <button onClick={handleSendMeetingInvites} disabled={isSendingMeetingInvites}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 ${isSendingMeetingInvites ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
+                {isSendingMeetingInvites ? <Loader2 size={14} className="animate-spin" /> : null}
+                {isSendingMeetingInvites ? 'Sending...' : `Send Invites (${selectedInvitees.includes('__all__') ? 'All' : selectedInvitees.length})`}
               </button>
             </div>
           </div>
