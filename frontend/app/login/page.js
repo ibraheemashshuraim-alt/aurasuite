@@ -1468,7 +1468,7 @@ export default function AppContainer() {
       setIsRecordingAudio(true);
     } catch (err) {
       console.error("Error accessing microphone:", err);
-      alert("Microphone access denied or unavailable.");
+      alert(`Microphone error: ${err.name}. If 'NotReadableError', close other tabs using the mic!`);
     }
   };
 
@@ -3797,7 +3797,7 @@ const handleReactMessage = async (msg, emoji) => {
                                 {msg.text.replace(/ \| \[MEET_ID:.*\]/, '')}
                                 {msg.attachmentUrl && (
                                   <div className="mt-2">
-                                    {msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png)$/) ? (
+                                    {msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i) ? (
                                       <img src={msg.attachmentUrl} alt="attachment" className="max-w-[150px] rounded border border-purple-500/30" />
                                     ) : (
                                       <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-purple-300 underline"><Pin size={10}/> View Attachment</a>
@@ -3862,9 +3862,13 @@ const handleReactMessage = async (msg, emoji) => {
                         className="w-full bg-[#11081c] border border-purple-500/20 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
                       {(attachmentFile || audioBlob) && (
                         <div className="absolute -top-10 left-0 right-0 bg-[#150e25] p-2 rounded-lg border border-purple-500/30 flex justify-between items-center z-10">
-                           <span className="text-xs text-purple-300">
-                             {attachmentFile ? `Attachment: ${attachmentFile.name}` : 'Audio Note recorded'}
-                           </span>
+                           {attachmentFile && attachmentFile.type.startsWith('image/') ? (
+          <img src={URL.createObjectURL(attachmentFile)} alt="preview" className="h-12 max-w-[100px] object-contain rounded border border-purple-500/50" />
+        ) : attachmentFile ? (
+          <span className="text-xs text-purple-300 flex items-center gap-1"><Paperclip size={14}/> {attachmentFile.name}</span>
+        ) : audioBlob ? (
+          <span className="text-xs text-purple-300 flex items-center gap-1"><Mic size={14}/> Audio Note recorded</span>
+        ) : null}
                            <button type="button" onClick={() => { setAttachmentFile(null); setAudioBlob(null); }} className="text-red-400 hover:text-red-300"><X size={14}/></button>
                         </div>
                       )}
