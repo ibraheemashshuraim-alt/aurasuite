@@ -10,7 +10,7 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square
+  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -302,6 +302,8 @@ export default function AppContainer() {
   const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
   const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
   const [isSendingChat, setIsSendingChat] = useState(false);
+  const [isSavingUserEdit, setIsSavingUserEdit] = useState(false);
+  const [isApprovingPayout, setIsApprovingPayout] = useState(false);
   const [isEndingMeeting, setIsEndingMeeting] = useState(false);
   const [isSendingLiveChat, setIsSendingLiveChat] = useState(false);
 
@@ -1465,12 +1467,17 @@ export default function AppContainer() {
   };
 
   const handleSaveUserEdit = async () => {
-    const updated = { category: editCategory, domain: editDomain, role: editRole };
-    await supabase.from('profiles').update(updated).eq('id', editingUser.id);
-    setProfiles(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
-    if (currentUser.id === editingUser.id) setCurrentUser(prev => ({ ...prev, ...updated }));
-    setEditingUser(null);
-    addNotification(`User "${editingUser.full_name}" profile updated.`, 'success');
+    setIsSavingUserEdit(true);
+    try {
+      const updated = { category: editCategory, domain: editDomain, role: editRole };
+      await supabase.from('profiles').update(updated).eq('id', editingUser.id);
+      setProfiles(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
+      if (currentUser.id === editingUser.id) setCurrentUser(prev => ({ ...prev, ...updated }));
+      setEditingUser(null);
+      addNotification(`User "${editingUser.full_name}" profile updated.`, 'success');
+    } finally {
+      setIsSavingUserEdit(false);
+    }
   };
 
   const handleSuspendUser = async (userId) => {
@@ -1607,11 +1614,16 @@ export default function AppContainer() {
   };
 
   const handleApprovePayout = async () => {
-    const finalAmount = parseFloat(overrideBudget);
-    await supabase.from('tasks').update({ suggested_payout: suggestedBudget, final_payout: finalAmount, payout_approved: true, status: 'done' }).eq('id', budgetTaskId);
-    setTasks(prev => prev.map(t => t.id === budgetTaskId ? { ...t, suggested_payout: suggestedBudget, final_payout: finalAmount, payout_approved: true, status: 'done' } : t));
-    addNotification(`Budget approved: Rs. ${finalAmount.toLocaleString()}`, 'success');
-    setSuggestedBudget(null);
+    setIsApprovingPayout(true);
+    try {
+      const finalAmount = parseFloat(overrideBudget);
+      await supabase.from('tasks').update({ suggested_payout: suggestedBudget, final_payout: finalAmount, payout_approved: true, status: 'done' }).eq('id', budgetTaskId);
+      setTasks(prev => prev.map(t => t.id === budgetTaskId ? { ...t, suggested_payout: suggestedBudget, final_payout: finalAmount, payout_approved: true, status: 'done' } : t));
+      addNotification(`Budget approved: Rs. ${finalAmount.toLocaleString()}`, 'success');
+      setSuggestedBudget(null);
+    } finally {
+      setIsApprovingPayout(false);
+    }
   };
 
   const handleMoveTask = async (taskId, status) => {
@@ -2170,8 +2182,11 @@ export default function AppContainer() {
             <div className="flex gap-3 pt-2 border-t border-purple-500/10">
               <button onClick={() => setEditingUser(null)}
                 className="flex-1 py-2 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs text-purple-300 font-semibold">Cancel</button>
-              <button onClick={handleSaveUserEdit}
-                className="flex-1 py-2 rounded-xl accent-gradient text-xs font-bold text-white">Save Changes</button>
+              <button onClick={handleSaveUserEdit} disabled={isSavingUserEdit}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 ${isSavingUserEdit ? 'bg-purple-800 opacity-70' : 'accent-gradient'}`}>
+                {isSavingUserEdit ? <Loader2 size={14} className="animate-spin" /> : null}
+                {isSavingUserEdit ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>
@@ -3403,9 +3418,10 @@ export default function AppContainer() {
                         <input type="number" value={overrideBudget} onChange={e => setOverrideBudget(e.target.value)}
                           className="w-full bg-[#1d142d] border border-purple-500/20 rounded-xl p-1.5 text-xs text-white focus:outline-none" />
                       </div>
-                      <button onClick={handleApprovePayout}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold mt-4">
-                        Approve Payout
+                      <button onClick={handleApprovePayout} disabled={isApprovingPayout}
+                        className={`px-4 py-2 text-white rounded-xl text-xs font-bold mt-4 flex items-center justify-center gap-2 ${isApprovingPayout ? 'bg-emerald-800 opacity-70' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                        {isApprovingPayout ? <Loader2 size={14} className="animate-spin" /> : null}
+                        {isApprovingPayout ? 'Approving...' : 'Approve Payout'}
                       </button>
                     </div>
                   </div>
