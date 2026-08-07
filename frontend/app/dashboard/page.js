@@ -278,6 +278,7 @@ export default function AppContainer() {
   const [customAlert, setCustomAlert] = useState(null);
   const [kickoutModal, setKickoutModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [pinnedUserId, setPinnedUserId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef(null);
@@ -298,6 +299,11 @@ export default function AppContainer() {
   const [onboardSkills, setOnboardSkills] = useState('React, Next.js, Node.js, CSS');
   const [onboardBio, setOnboardBio] = useState('Full Stack Engineer interested in dashboard systems.');
   const [onboardLoading, setOnboardLoading] = useState(false);
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
+  const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const [isEndingMeeting, setIsEndingMeeting] = useState(false);
+  const [isSendingLiveChat, setIsSendingLiveChat] = useState(false);
 
   // ── Admin edit ──
   const [editingUser, setEditingUser] = useState(null);
@@ -1056,6 +1062,7 @@ export default function AppContainer() {
   const handleStartMeeting = async (e) => {
     e.preventDefault();
     if (!newMeetingTitle) return;
+    setIsCreatingMeeting(true);
     const meetingId = `${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}`;
     const passcode = newMeetingPasscode || `${Math.floor(1000 + Math.random() * 9000)}`;
     const meet = {
@@ -1075,6 +1082,7 @@ export default function AppContainer() {
     addNotification(`Meeting "${meet.title}" created! ID: ${meetingId}`, 'success');
     setMeetingInviteModal(meet);
     setSelectedInvitees([]);
+    setIsCreatingMeeting(false);
   };
 
   const handleJoinMeeting = async (meet) => {
@@ -1384,10 +1392,15 @@ export default function AppContainer() {
     const newMsg = { id: Date.now(), sender: currentUser.full_name, text: newChatMessage, time: now() };
     const mState = meetingStates[currentMeetingSession.id];
     if (!mState) return;
-    const nextChat = [...mState.chat, newMsg];
-    await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: mState.participants, chat: nextChat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
-    setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, chat: nextChat } }));
-    setNewChatMessage('');
+    setIsSendingLiveChat(true);
+    try {
+      const nextChat = [...mState.chat, newMsg];
+      await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: mState.participants, chat: nextChat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
+      setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, chat: nextChat } }));
+      setNewChatMessage('');
+    } finally {
+      setIsSendingLiveChat(false);
+    }
   };
 
   // ─────────────────── Chat ───────────────────
@@ -1396,6 +1409,7 @@ export default function AppContainer() {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
+    setIsSendingChat(true);
     const msgId = genId('msg');
     const msgTime = now();
     if (activeChat === 'group') {
@@ -1407,6 +1421,7 @@ export default function AppContainer() {
       await supabase.from('dm_messages').insert(row);
     }
     setChatInput('');
+    setIsSendingChat(false);
   };
 
   const getDmKey = (userId) => [currentUser?.id, userId].sort().join('_');
@@ -2189,11 +2204,19 @@ export default function AppContainer() {
             <h3 className="text-lg font-bold text-white mb-2">{confirmModal.title}</h3>
             <p className="text-sm text-purple-300 mb-6">{confirmModal.message}</p>
             <div className="flex gap-3">
-              <button onClick={() => setConfirmModal(null)} className="flex-1 py-3 bg-purple-900/40 hover:bg-purple-900/60 text-purple-200 font-bold rounded-xl transition-all border border-purple-500/20">
+              <button onClick={() => setConfirmModal(null)} disabled={isConfirming} className="flex-1 py-3 bg-purple-900/40 hover:bg-purple-900/60 text-purple-200 font-bold rounded-xl transition-all border border-purple-500/20 disabled:opacity-50">
                 Cancel
               </button>
-              <button onClick={confirmModal.onConfirm} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20">
-                Confirm
+              <button onClick={async () => {
+                setIsConfirming(true);
+                try {
+                  await confirmModal.onConfirm();
+                } finally {
+                  setIsConfirming(false);
+                }
+              }} disabled={isConfirming} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 disabled:bg-red-500/50">
+                {isConfirming ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isConfirming ? 'Processing...' : 'Confirm'}
               </button>
             </div>
           </div>
@@ -2210,16 +2233,21 @@ export default function AppContainer() {
               <p className="text-xs text-purple-300 mt-1">Do you want to end the meeting for everyone or just leave?</p>
             </div>
             <div className="space-y-3">
-              <button onClick={() => { setShowEndMeetingModal(false); handleEndMeeting(true); }}
-                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-bold text-white transition-all">
-                End Meeting for All
+              <button onClick={async () => { setIsEndingMeeting(true); try { await handleEndMeeting(true); } finally { setIsEndingMeeting(false); setShowEndMeetingModal(false); } }}
+                disabled={isEndingMeeting}
+                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 disabled:bg-red-600/50">
+                {isEndingMeeting ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isEndingMeeting ? 'Ending...' : 'End Meeting for All'}
               </button>
-              <button onClick={() => { setShowEndMeetingModal(false); handleEndMeeting(false); }}
-                className="w-full py-3 rounded-xl bg-[#150e1f] border border-purple-500/20 hover:border-purple-500/40 text-sm font-bold text-purple-200 transition-all">
-                Just Leave Meeting
+              <button onClick={async () => { setIsEndingMeeting(true); try { await handleEndMeeting(false); } finally { setIsEndingMeeting(false); setShowEndMeetingModal(false); } }}
+                disabled={isEndingMeeting}
+                className="w-full py-3 rounded-xl bg-[#150e1f] border border-purple-500/20 hover:border-purple-500/40 text-sm font-bold text-purple-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                {isEndingMeeting ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isEndingMeeting ? 'Leaving...' : 'Just Leave Meeting'}
               </button>
               <button onClick={() => setShowEndMeetingModal(false)}
-                className="w-full py-2 text-xs font-bold text-purple-400 hover:text-white transition-all mt-2">
+                disabled={isEndingMeeting}
+                className="w-full py-2 text-xs font-bold text-purple-400 hover:text-white transition-all mt-2 disabled:opacity-50">
                 Cancel
               </button>
             </div>
@@ -2407,10 +2435,10 @@ export default function AppContainer() {
                 </div>
                 <form onSubmit={handleSendLiveChat} className="p-3 border-t border-purple-500/10 flex gap-2 shrink-0 bg-[#07040d]">
                   <input type="text" placeholder={isChatLocked && currentUser.role !== 'admin' ? 'Chat locked' : 'Type message...'} value={newChatMessage}
-                    onChange={e => setNewChatMessage(e.target.value)} disabled={isChatLocked && currentUser.role !== 'admin'}
+                    onChange={e => setNewChatMessage(e.target.value)} disabled={isChatLocked && currentUser.role !== 'admin' || isSendingLiveChat}
                     className="bg-[#150e1f] border border-purple-500/20 rounded-xl p-2 text-xs text-white flex-1 focus:outline-none focus:border-purple-500/50" />
-                  <button type="submit" className="px-3 py-2 bg-purple-700 hover:bg-purple-600 rounded-xl text-xs font-bold text-white">
-                    <Send size={12} />
+                  <button type="submit" disabled={isSendingLiveChat} className={`px-3 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1 ${isSendingLiveChat ? 'bg-purple-800 opacity-70' : 'bg-purple-700 hover:bg-purple-600'}`}>
+                    {isSendingLiveChat ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
                   </button>
                 </form>
               </div>
@@ -2954,6 +2982,7 @@ export default function AppContainer() {
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   if (!genInviteName || !inviteEmail) { setCustomAlert('Please enter name and email'); return; }
+                  setIsGeneratingInvite(true);
                   
                   // Task A: STRICTLY QUERY banned_emails FIRST
                   const { data: banRecord } = await supabase
@@ -3063,6 +3092,8 @@ export default function AppContainer() {
                     setGenInviteDomain('');
                   } catch (err) {
                     setCustomAlert('Error creating card: ' + err.message);
+                  } finally {
+                    setIsGeneratingInvite(false);
                   }
                 }} className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
@@ -3106,8 +3137,9 @@ export default function AppContainer() {
                       className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none" />
                   </div>
                   <div className="md:col-span-4 flex justify-end items-center pt-2">
-                    <button type="submit" className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn flex items-center gap-2">
-                      <Send size={14} /> Send Digital Access Card
+                    <button type="submit" disabled={isGeneratingInvite} className={`px-5 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-2 ${isGeneratingInvite ? 'bg-purple-800 opacity-70' : 'accent-gradient glow-btn'}`}>
+                      {isGeneratingInvite ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} 
+                      {isGeneratingInvite ? 'Sending...' : 'Send Digital Access Card'}
                     </button>
                   </div>
                 </form>
@@ -3404,8 +3436,9 @@ export default function AppContainer() {
                       className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none" />
                   </div>
                   <div className="flex items-end">
-                    <button type="submit" className="w-full py-2.5 rounded-xl accent-gradient text-xs font-bold text-white glow-btn flex items-center justify-center gap-2">
-                      <Video size={14} /> Create Meeting
+                    <button type="submit" disabled={isCreatingMeeting} className={`w-full py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 ${isCreatingMeeting ? 'bg-purple-800 opacity-70' : 'accent-gradient glow-btn'}`}>
+                      {isCreatingMeeting ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />} 
+                      {isCreatingMeeting ? 'Creating...' : 'Create Meeting'}
                     </button>
                   </div>
                 </form>
@@ -3651,9 +3684,10 @@ export default function AppContainer() {
                     <input type="text" placeholder={`Message ${activeChat === 'group' ? '#team-general' : activeDmUser?.full_name || '...'}`}
                       value={chatInput} onChange={e => setChatInput(e.target.value)}
                       className="flex-1 bg-[#11081c] border border-purple-500/20 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
-                    <button type="submit"
-                      className="px-4 py-2.5 accent-gradient rounded-xl text-white font-bold hover:opacity-90 transition-all flex items-center gap-1.5 text-xs">
-                      <Send size={14} /> Send
+                    <button type="submit" disabled={isSendingChat}
+                      className={`px-4 py-2.5 rounded-xl text-white font-bold transition-all flex items-center gap-1.5 text-xs ${isSendingChat ? 'bg-purple-800 opacity-70' : 'accent-gradient hover:opacity-90'}`}>
+                      {isSendingChat ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} 
+                      {isSendingChat ? 'Sending...' : 'Send'}
                     </button>
                   </form>
                 </div>
