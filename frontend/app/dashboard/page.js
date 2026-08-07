@@ -246,7 +246,7 @@ export default function AppContainer() {
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [attachmentFile, setAttachmentFile] = useState(null);
-  const mediaRecorderRef = useRef(null);
+  const audioRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
   // ── Session ──
@@ -1527,20 +1527,20 @@ export default function AppContainer() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
       
-      mediaRecorderRef.current.ondataavailable = (e) => {
+      audioRecorderRef.current.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       
-      mediaRecorderRef.current.onstop = () => {
+      audioRecorderRef.current.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
         stream.getTracks().forEach(track => track.stop());
       };
       
-      mediaRecorderRef.current.start();
+      audioRecorderRef.current.start();
       setIsRecordingAudio(true);
     } catch (err) {
       console.error("Error accessing microphone:", err);
@@ -1549,8 +1549,8 @@ export default function AppContainer() {
   };
   
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecordingAudio) {
-      mediaRecorderRef.current.stop();
+    if (audioRecorderRef.current && isRecordingAudio) {
+      audioRecorderRef.current.stop();
       setIsRecordingAudio(false);
     }
   };
