@@ -1490,6 +1490,7 @@ export default function AppContainer() {
         const fileExt = 'webm';
         const fileName = `${msgId}_audio.${fileExt}`;
         const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, audioBlob);
+        if (error) throw error;
         if (data) {
            audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
         }
@@ -1499,15 +1500,16 @@ export default function AppContainer() {
         const fileExt = attachmentFile.name.split('.').pop();
         const fileName = `${msgId}_file.${fileExt}`;
         const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, attachmentFile);
+        if (error) throw error;
         if (data) {
            attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
         }
       }
     } catch (uploadErr) {
       console.error("Upload error (Bucket may not exist):", uploadErr);
-      // Fallback for demo purposes if bucket doesn't exist
-      if (audioBlob) audioUrl = URL.createObjectURL(audioBlob);
-      if (attachmentFile) attachmentUrl = URL.createObjectURL(attachmentFile);
+      alert("Failed to upload attachment. Make sure 'chat_attachments' bucket exists and is public.");
+      setIsSendingChat(false);
+      return;
     }
     
     if (activeChat === 'group') {
@@ -3844,7 +3846,7 @@ export default function AppContainer() {
                                   <button className="text-purple-500/50 hover:text-purple-300 transition-colors p-1" title="Options">
                                     <Edit3 size={12} />
                                   </button>
-                                  <div className={`absolute bottom-full ${isMine ? 'right-0' : 'left-0'} mb-1 hidden group-hover/del:flex flex-col bg-[#1a0e2a] border border-purple-500/30 rounded-lg p-1 z-10 w-36 shadow-xl`}>
+                                  <div className={`absolute top-full mt-1 ${isMine ? 'right-0' : 'left-0'} hidden group-hover/del:flex flex-col bg-[#1a0e2a] border border-purple-500/30 rounded-lg p-1 z-50 w-36 shadow-xl`}>
                                     <div className="flex gap-2 justify-center p-1 border-b border-purple-500/20 mb-1">
                                       {['👍', '❤️', '😂', '🔥', '👀'].map(emoji => (
                                         <button key={emoji} onClick={() => handleReactMessage(msg, emoji)} className="hover:scale-125 transition-transform text-sm">{emoji}</button>

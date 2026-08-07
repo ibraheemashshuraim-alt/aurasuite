@@ -282,6 +282,11 @@ export default function AppContainer() {
   // Audio fix: track previous media-control state to avoid spurious audio toggling
   const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
   const [showReactionsPanel, setShowReactionsPanel] = useState(false);
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const audioRecorderRef = useRef(null);
+  const [isSendingChat, setIsSendingChat] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState([]); // [{id, emoji, userId, name}]
 
   // ── AI Onboarding ──
@@ -1443,20 +1448,129 @@ export default function AppContainer() {
   // ─────────────────── Chat ───────────────────
   const orgMembers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id);
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      
+      audioRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      
+      audioRecorderRef.current.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      audioRecorderRef.current.start();
+      setIsRecordingAudio(true);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Microphone access denied or unavailable.");
+    }
+  };
+
+const stopRecording = () => {
+    if (audioRecorderRef.current && isRecordingAudio) {
+      audioRecorderRef.current.stop();
+      setIsRecordingAudio(false);
+    }
+  };
+
+const handleDeleteMessage = async (msg, type, action) => {
+    try {
+      const table = type === 'group' || activeChat === 'group' ? 'group_messages' : 'dm_messages';
+      
+      if (action === 'everyone') {
+        if (msg.from === currentUser.id || (currentUser.role === 'super_admin' && table === 'group_messages')) {
+          await supabase.from(table).delete().eq('id', msg.id);
+        } else {
+          alert("You do not have permission to delete this message for everyone.");
+        }
+      } else if (action === 'me') {
+        const currentDeletedFor = msg.deletedFor || [];
+        if (!currentDeletedFor.includes(currentUser.id)) {
+          const newDeletedFor = [...currentDeletedFor, currentUser.id];
+          await supabase.from(table).update({ deleted_for: newDeletedFor }).eq('id', msg.id);
+        }
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
+  };
+
+const handleReactMessage = async (msg, emoji) => {
+    try {
+      const table = activeChat === 'group' ? 'group_messages' : 'dm_messages';
+      const currentReactions = msg.reactions || {};
+      
+      // Toggle logic: if already reacted with this emoji by this user, remove it
+      if (currentReactions[emoji] && currentReactions[emoji].includes(currentUser.id)) {
+        currentReactions[emoji] = currentReactions[emoji].filter(id => id !== currentUser.id);
+        if (currentReactions[emoji].length === 0) delete currentReactions[emoji];
+      } else {
+        if (!currentReactions[emoji]) currentReactions[emoji] = [];
+        currentReactions[emoji].push(currentUser.id);
+      }
+      
+      await supabase.from(table).update({ reactions: currentReactions }).eq('id', msg.id);
+    } catch (err) {
+      console.error('Reaction failed:', err);
+    }
+  };
+
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() && !audioBlob && !attachmentFile) return;
+    setIsSendingChat(true);
     const msgId = genId('msg');
     const msgTime = now();
+    
+    let audioUrl = null;
+    let attachmentUrl = null;
+    
+    try {
+      if (audioBlob) {
+        const fileExt = 'webm';
+        const fileName = `${msgId}_audio.${fileExt}`;
+        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, audioBlob);
+        if (error) throw error;
+        if (data) {
+           audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+        }
+      }
+      
+      if (attachmentFile) {
+        const fileExt = attachmentFile.name.split('.').pop();
+        const fileName = `${msgId}_file.${fileExt}`;
+        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, attachmentFile);
+        if (error) throw error;
+        if (data) {
+           attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+        }
+      }
+    } catch (uploadErr) {
+      console.error("Upload error (Bucket may not exist):", uploadErr);
+      alert("Failed to upload attachment. Make sure 'chat_attachments' bucket exists and is public.");
+      setIsSendingChat(false);
+      return;
+    }
+    
     if (activeChat === 'group') {
-      const row = { id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: chatInput, msg_time: msgTime, type: 'chat' };
+      const row = { id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: chatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: attachmentUrl };
       await supabase.from('group_messages').insert(row);
     } else if (activeChat === 'dm' && activeDmUser) {
       const key = [currentUser.id, activeDmUser.id].sort().join('_');
-      const row = { id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: chatInput, msg_time: msgTime };
+      const row = { id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: chatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: attachmentUrl };
       await supabase.from('dm_messages').insert(row);
     }
     setChatInput('');
+    setAudioBlob(null);
+    setAttachmentFile(null);
+    setIsSendingChat(false);
   };
 
   const getDmKey = (userId) => [currentUser?.id, userId].sort().join('_');
@@ -3645,15 +3759,34 @@ export default function AppContainer() {
                           <p className="text-xs text-purple-500">No messages yet. Say hello!</p>
                         </div>
                       );
-                      return msgs.map(msg => {
+                      return msgs.filter(m => !(m.deletedFor && m.deletedFor.includes(currentUser.id))).map(msg => {
                         const isMine = msg.from === currentUser.id;
+                        const canDeleteEveryone = isMine || (currentUser.role === 'super_admin' && activeChat === 'group');
                         return (
                           <div key={msg.id} className={`flex gap-3 ${isMine ? 'flex-row-reverse' : ''}`}>
                             <div className="w-7 h-7 rounded-full bg-purple-700/40 flex items-center justify-center text-xs font-bold text-white border border-purple-500/20 shrink-0">
                               {(msg.fromName || 'S')[0]}
                             </div>
-                            <div className={`max-w-[70%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-                              <span className="text-[9px] text-purple-400">{msg.fromName} · {msg.time}</span>
+                            <div className={`max-w-[70%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-1 group/msg`}>
+                              <div className="flex items-center gap-2">
+                                <div className="relative group/del opacity-0 group-hover/msg:opacity-100 transition-opacity">
+                                  <button className="text-purple-500/50 hover:text-purple-300 transition-colors p-1" title="Options">
+                                    <Edit3 size={12} />
+                                  </button>
+                                  <div className={`absolute top-full mt-1 ${isMine ? 'right-0' : 'left-0'} hidden group-hover/del:flex flex-col bg-[#1a0e2a] border border-purple-500/30 rounded-lg p-1 z-50 w-36 shadow-xl`}>
+                                    <div className="flex gap-2 justify-center p-1 border-b border-purple-500/20 mb-1">
+                                      {['👍', '❤️', '😂', '🔥', '👀'].map(emoji => (
+                                        <button key={emoji} onClick={() => handleReactMessage(msg, emoji)} className="hover:scale-125 transition-transform text-sm">{emoji}</button>
+                                      ))}
+                                    </div>
+                                    <button onClick={() => handleDeleteMessage(msg, activeChat, 'me')} className="text-[10px] text-left px-2 py-1.5 hover:bg-purple-900/40 rounded text-purple-200">Delete for Me</button>
+                                    {canDeleteEveryone && (
+                                       <button onClick={() => handleDeleteMessage(msg, activeChat, 'everyone')} className="text-[10px] text-left px-2 py-1.5 hover:bg-red-900/40 rounded text-red-400">Delete for Everyone</button>
+                                    )}
+                                  </div>
+                                </div>
+                                <span className="text-[9px] text-purple-400">{msg.fromName} · {msg.time}</span>
+                              </div>
                               <div className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
                                 msg.type === 'meeting_invite' || msg.text.includes('[MEET_ID:')
                                   ? 'bg-purple-900/60 border border-purple-500/40 text-purple-100'
@@ -3662,6 +3795,20 @@ export default function AppContainer() {
                                     : 'bg-[#150e25] border border-purple-500/15 text-white'
                               }`}>
                                 {msg.text.replace(/ \| \[MEET_ID:.*\]/, '')}
+                                {msg.attachmentUrl && (
+                                  <div className="mt-2">
+                                    {msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png)$/) ? (
+                                      <img src={msg.attachmentUrl} alt="attachment" className="max-w-[150px] rounded border border-purple-500/30" />
+                                    ) : (
+                                      <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-purple-300 underline"><Pin size={10}/> View Attachment</a>
+                                    )}
+                                  </div>
+                                )}
+                                {msg.audioUrl && (
+                                  <div className="mt-2">
+                                    <audio controls src={msg.audioUrl} className="h-8 w-48" />
+                                  </div>
+                                )}
                                 {(msg.type === 'meeting_invite' || msg.text.includes('[MEET_ID:')) && (
                                   <button onClick={() => {
                                     const meetIdMatch = msg.text.match(/\[MEET_ID:(.*?)\]/);
@@ -3674,6 +3821,16 @@ export default function AppContainer() {
                                   </button>
                                 )}
                               </div>
+                              {/* Reactions */}
+                              {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                                <div className={`flex gap-1 -mt-2 z-10 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                                  {Object.entries(msg.reactions).map(([emoji, userIds]) => (
+                                    <button key={emoji} onClick={() => handleReactMessage(msg, emoji)} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
+                                      {emoji} {userIds.length > 1 && <span className="text-purple-300 ml-0.5">{userIds.length}</span>}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -3683,13 +3840,39 @@ export default function AppContainer() {
                   </div>
 
                   {/* Input */}
-                  <form onSubmit={handleSendMessage} className="p-4 border-t border-purple-500/10 flex gap-3 shrink-0">
-                    <input type="text" placeholder={`Message ${activeChat === 'group' ? '#team-general' : activeDmUser?.full_name || '...'}`}
-                      value={chatInput} onChange={e => setChatInput(e.target.value)}
-                      className="flex-1 bg-[#11081c] border border-purple-500/20 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
-                    <button type="submit"
-                      className="px-4 py-2.5 accent-gradient rounded-xl text-white font-bold hover:opacity-90 transition-all flex items-center gap-1.5 text-xs">
-                      <Send size={14} /> Send
+                  <form onSubmit={handleSendMessage} className="p-4 border-t border-purple-500/10 flex gap-3 shrink-0 items-center">
+                    <div className="flex gap-1">
+                      <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors">
+                        <Pin size={18} />
+                        <input type="file" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
+                      </label>
+                      {isRecordingAudio ? (
+                        <button type="button" onClick={stopRecording} className="p-2 rounded-xl text-red-400 hover:bg-red-900/30 transition-colors">
+                          <Square size={18} className="fill-current" />
+                        </button>
+                      ) : (
+                        <button type="button" onClick={startRecording} className="p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors">
+                          <Mic size={18} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex-1 relative">
+                      <input type="text" placeholder={`Message ${activeChat === 'group' ? '#team-general' : activeDmUser?.full_name || '...'}`}
+                        value={chatInput} onChange={e => setChatInput(e.target.value)}
+                        className="w-full bg-[#11081c] border border-purple-500/20 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
+                      {(attachmentFile || audioBlob) && (
+                        <div className="absolute -top-10 left-0 right-0 bg-[#150e25] p-2 rounded-lg border border-purple-500/30 flex justify-between items-center z-10">
+                           <span className="text-xs text-purple-300">
+                             {attachmentFile ? `Attachment: ${attachmentFile.name}` : 'Audio Note recorded'}
+                           </span>
+                           <button type="button" onClick={() => { setAttachmentFile(null); setAudioBlob(null); }} className="text-red-400 hover:text-red-300"><X size={14}/></button>
+                        </div>
+                      )}
+                    </div>
+                    <button type="submit" disabled={isSendingChat}
+                      className={`px-4 py-2.5 rounded-xl text-white font-bold transition-all flex items-center gap-1.5 text-xs ${isSendingChat ? 'bg-purple-800 opacity-70' : 'accent-gradient hover:opacity-90'}`}>
+                      {isSendingChat ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} 
+                      {isSendingChat ? 'Sending...' : 'Send'}
                     </button>
                   </form>
                 </div>
