@@ -931,7 +931,7 @@ export default function AppContainer() {
       setActiveOrg(org);
       setIsLoggedIn(true);
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-      if ((user.role === 'worker' || user.role === 'student') && !user.category) {
+      if ((user.role === 'worker' || user.role === 'student') && !user.skills?.includes('assessment_completed')) {
         setShowQuiz(true);
       } else {
         setShowQuiz(false);
@@ -966,7 +966,7 @@ export default function AppContainer() {
       setActiveOrg(org);
       setIsLoggedIn(true);
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-      if ((user.role === 'worker' || user.role === 'student') && !user.category) setShowQuiz(true);
+      if ((user.role === 'worker' || user.role === 'student') && !user.skills?.includes('assessment_completed')) setShowQuiz(true);
       else setShowQuiz(false);
       setForcePasswordChange(false);
       setTempDigitalCard(null);
@@ -1628,7 +1628,7 @@ export default function AppContainer() {
   };
 
   // ─────────────────── Derived ───────────────────
-  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'pending_worker' && p.role !== 'deleted' && p.role !== 'banned');
+  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'pending_worker' && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
@@ -1942,10 +1942,13 @@ export default function AppContainer() {
           }
         }
 
-        await supabase.from('profiles').update({ category: newCategory, domain: newDomain }).eq('id', currentUser.id);
+        const newSkills = [...(currentUser?.skills || [])];
+        if (!newSkills.includes('assessment_completed')) newSkills.push('assessment_completed');
         
-        setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain }));
-        setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain } : p));
+        await supabase.from('profiles').update({ category: newCategory, domain: newDomain, skills: newSkills }).eq('id', currentUser.id);
+        
+        setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain, skills: newSkills }));
+        setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain, skills: newSkills } : p));
         setQuizLoading(false);
         setQuizStep(2); // result step
       }, 2000);
