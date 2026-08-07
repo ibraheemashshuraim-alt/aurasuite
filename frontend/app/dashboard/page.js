@@ -3001,9 +3001,9 @@ export default function AppContainer() {
                     email: inviteEmail,
                     full_name: genInviteName,
                     role: 'pending_worker',
-                    category: genInviteCategory || null,
-                    domain: genInviteDomain || '',
-                    skills: [],
+                    category: isUpdate ? existingProfile.category : (genInviteCategory || null),
+                    domain: isUpdate ? existingProfile.domain : (genInviteDomain || ''),
+                    skills: isUpdate ? (existingProfile.skills || []) : [],
                     last_seen: now()
                   };
 

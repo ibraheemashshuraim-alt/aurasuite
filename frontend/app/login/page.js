@@ -931,7 +931,7 @@ export default function AppContainer() {
       setActiveOrg(org);
       setIsLoggedIn(true);
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-      if (user.role === 'worker' || user.role === 'student') {
+      if ((user.role === 'worker' || user.role === 'student') && !user.category) {
         setShowQuiz(true);
       } else {
         setShowQuiz(false);
@@ -966,7 +966,7 @@ export default function AppContainer() {
       setActiveOrg(org);
       setIsLoggedIn(true);
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-      if (user.role === 'worker' || user.role === 'student') setShowQuiz(true);
+      if ((user.role === 'worker' || user.role === 'student') && !user.category) setShowQuiz(true);
       else setShowQuiz(false);
       setForcePasswordChange(false);
       setTempDigitalCard(null);
