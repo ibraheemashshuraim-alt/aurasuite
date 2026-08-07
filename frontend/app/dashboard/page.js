@@ -379,14 +379,13 @@ export default function AppContainer() {
     setMounted(true);
     const loadAll = async () => {
       try {
-        const [orgs, profs, tsk, meets, scheds, msgs, dms, invites, mStates, fin, bans] = await Promise.all([
+        const [orgs, profs, tsk, meets, scheds, msgs, invites, mStates, fin, bans] = await Promise.all([
           supabase.from('organizations').select('*'),
           supabase.from('profiles').select('*'),
           supabase.from('tasks').select('*'),
           supabase.from('meetings').select('*').eq('is_active', true),
           supabase.from('schedules').select('*'),
           supabase.from('group_messages').select('*').order('created_at', { ascending: true }),
-          supabase.from('dm_messages').select('*').order('created_at', { ascending: true }),
           supabase.from('meeting_invites').select('*'),
           supabase.from('meeting_states').select('*'),
           supabase.from('financials').select('*'),
@@ -399,14 +398,6 @@ export default function AppContainer() {
         if (meets.data) setActiveMeetings(meets.data);
         if (scheds.data) setSchedules(scheds.data);
         if (msgs.data) setGroupMessages(msgs.data.map(m => ({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id })));
-        if (dms.data) {
-          const threads = {};
-          dms.data.forEach(m => {
-            if (!threads[m.thread_key]) threads[m.thread_key] = [];
-            threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id });
-          });
-          setDmThreads(threads);
-        }
         if (invites.data) setMeetingInvites(invites.data.map(i => ({ meetingId: i.meeting_id, invitees: i.invitees })));
         if (mStates.data) {
           const statesMap = {};
@@ -553,11 +544,13 @@ export default function AppContainer() {
           }
         });
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, ({ new: m }) => {
-        setGroupMessages(prev => [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id }]);
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages' }, ({ new: m }) => {
-        setDmThreads(prev => ({ ...prev, [m.thread_key]: [...(prev[m.thread_key] || []), { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id }] }));
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          const m = payload.new;
+          setGroupMessages(prev => [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id }]);
+        } else if (payload.eventType === 'DELETE') {
+          setGroupMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => {
         supabase.from('schedules').select('*').then(({ data }) => { if (data) setSchedules(data); });
@@ -572,6 +565,57 @@ export default function AppContainer() {
 
     return () => { supabase.removeChannel(channel); };
   }, [mounted]);
+
+  // Fetch DMs securely only for the logged-in user
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const loadDMs = async () => {
+      try {
+        const { data, error } = await supabase.from('dm_messages')
+          .select('*')
+          .like('thread_key', `%${currentUser.id}%`)
+          .order('created_at', { ascending: true });
+        
+        if (data) {
+          const threads = {};
+          data.forEach(m => {
+            if (!threads[m.thread_key]) threads[m.thread_key] = [];
+            threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted });
+          });
+          setDmThreads(threads);
+        }
+      } catch (err) {
+        console.error('Failed to load DMs', err);
+      }
+    };
+    loadDMs();
+    
+    // Listen for incoming DMs or DELETES specifically for this user
+    const dmChannel = supabase.channel(`dm-chat-${currentUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages', filter: `thread_key=like.%${currentUser.id}%` }, payload => {
+        if (payload.eventType === 'INSERT') {
+          const m = payload.new;
+          if (m.from_id === currentUser.id) return;
+          setDmThreads(prev => ({ ...prev, [m.thread_key]: [...(prev[m.thread_key] || []), { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted }] }));
+          if (activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
+        } else if (payload.eventType === 'DELETE') {
+          const m = payload.old;
+          setDmThreads(prev => {
+             const next = {...prev};
+             for (const k in next) {
+               next[k] = next[k].filter(msg => msg.id !== m.id);
+             }
+             return next;
+          });
+        }
+      }).subscribe();
+
+    return () => {
+      supabase.removeChannel(dmChannel);
+    };
+  }, [currentUser]);
+
 
   // ─────────────────── Unified Kickout & Poller ───────────────────
   useEffect(() => {
@@ -1430,6 +1474,18 @@ export default function AppContainer() {
     }
     setChatInput('');
     setIsSendingChat(false);
+  };
+
+  const handleDeleteMessage = async (msgId, type) => {
+    try {
+      if (type === 'group' || activeChat === 'group') {
+        await supabase.from('group_messages').delete().eq('id', msgId).eq('from_id', currentUser.id);
+      } else {
+        await supabase.from('dm_messages').delete().eq('id', msgId).eq('from_id', currentUser.id);
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+    }
   };
 
   const getDmKey = (userId) => [currentUser?.id, userId].sort().join('_');
@@ -3673,7 +3729,14 @@ export default function AppContainer() {
                               {(msg.fromName || 'S')[0]}
                             </div>
                             <div className={`max-w-[70%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-                              <span className="text-[9px] text-purple-400">{msg.fromName} · {msg.time}</span>
+                              <div className="flex items-center gap-2">
+                                {isMine && (
+                                  <button onClick={() => handleDeleteMessage(msg.id, activeChat)} className="text-purple-500/50 hover:text-red-400 transition-colors" title="Delete for everyone">
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                                <span className="text-[9px] text-purple-400">{msg.fromName} · {msg.time}</span>
+                              </div>
                               <div className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
                                 msg.type === 'meeting_invite' || msg.text.includes('[MEET_ID:')
                                   ? 'bg-purple-900/60 border border-purple-500/40 text-purple-100'

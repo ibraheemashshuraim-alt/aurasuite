@@ -13,6 +13,7 @@ import {
   BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getRandomQuestions } from '../../lib/questionBank';
 
 // ─── Utility ────────────────────────────────────────────────────
 const genId = (prefix = 'id') => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
@@ -200,6 +201,11 @@ export default function AppContainer() {
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizStep, setQuizStep] = useState(0);
   const [quizLoading, setQuizLoading] = useState(false);
+  const [quizLang, setQuizLang] = useState('en');
+  const [actualQuizQuestions, setActualQuizQuestions] = useState([]);
+  const [actualQuizAnswers, setActualQuizAnswers] = useState({});
+  const [quizFailed, setQuizFailed] = useState(false);
+  const [quizScore, setQuizScore] = useState(0);
   const [cardError, setCardError] = useState(null);
 
   const [signUpName, setSignUpName] = useState('');
@@ -1915,56 +1921,59 @@ export default function AppContainer() {
   // ══════════════════ AI QUIZ (ONBOARDING) ══════════════════
   if (showQuiz) {
     const handleQuizStart = () => {
-      if (currentUser?.role === 'student') {
-        setQuizQuestions([
-          { id: 1, question: 'What is your current education level?', options: ['High School', 'Undergraduate', 'Postgraduate', 'Other'] },
-          { id: 2, question: 'Which field are you most interested in?', options: ['Computer Science', 'Business/Management', 'Arts/Design', 'Engineering'] },
-          { id: 3, question: 'How much time can you dedicate weekly?', options: ['< 5 Hours', '5-10 Hours', '10-20 Hours', '20+ Hours'] }
-        ]);
-      } else {
-        setQuizQuestions([
-          { id: 1, question: 'What is your primary domain of expertise?', options: ['Software Development', 'Design/Creative', 'Management', 'Operations'] },
-          { id: 2, question: 'Which programming languages are you most comfortable with?', options: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'Not Applicable'] },
-          { id: 3, question: 'How many years of experience do you have?', options: ['0-2 Years', '3-5 Years', '5-10 Years', '10+ Years'] }
-        ]);
-      }
+      setQuizQuestions([
+        { id: 1, question: 'What is your primary domain of expertise?', question_ur: 'آپ کی مہارت کا بنیادی شعبہ کون سا ہے؟', options: ['Software Development', 'Design/Creative', 'Management', 'Operations'], options_ur: ['سافٹ ویئر ڈیولپمنٹ', 'ڈیزائن/کریئیٹو', 'مینجمنٹ', 'آپریشنز'] },
+        { id: 2, question: 'Which programming languages are you most comfortable with?', question_ur: 'آپ کون سی پروگرامنگ زبانوں میں زیادہ مہارت رکھتے ہیں؟', options: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'Not Applicable'], options_ur: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'قابل اطلاق نہیں'] },
+        { id: 3, question: 'How many years of experience do you have?', question_ur: 'آپ کا کتنا تجربہ ہے؟', options: ['0-2 Years', '3-5 Years', '5-10 Years', '10+ Years'], options_ur: ['0-2 سال', '3-5 سال', '5-10 سال', '10+ سال'] }
+      ]);
       setQuizStep(1);
     };
 
-    const handleQuizSubmit = async () => {
+    const handleDemographicSubmit = () => {
       setQuizLoading(true);
-      // Simulate AI Processing
+      setTimeout(() => {
+         const domainAnswer = quizAnswers[1] || 'Software Development';
+         const questions = getRandomQuestions(domainAnswer, 5);
+         setActualQuizQuestions(questions);
+         setActualQuizAnswers({});
+         setQuizLoading(false);
+         setQuizStep(2); // Move to actual quiz
+      }, 1000);
+    };
+
+    const handleActualQuizSubmit = async () => {
+      setQuizLoading(true);
       setTimeout(async () => {
-        let newCategory = 'C';
-        let newDomain = currentUser?.domain || '';
+        let correctCount = 0;
+        actualQuizQuestions.forEach(q => {
+           if (actualQuizAnswers[q.id] === q.correctAnswerIndex) {
+              correctCount++;
+           }
+        });
+        
+        setQuizScore(correctCount);
 
-        if (currentUser?.role === 'student') {
-          if (quizAnswers[3] === '20+ Hours') newCategory = 'A';
-          else if (quizAnswers[3] === '10-20 Hours') newCategory = 'B';
-          newDomain = quizAnswers[2] || 'Student';
+        if (correctCount >= 3) {
+            // PASS
+            let newCategory = 'C';
+            if (correctCount === 5) newCategory = 'A';
+            else if (correctCount === 4) newCategory = 'B';
+            
+            const newDomain = quizAnswers[1] || currentUser?.domain || 'Software Engineer';
+            const newSkills = [...(currentUser?.skills || [])];
+            if (!newSkills.includes('assessment_completed')) newSkills.push('assessment_completed');
+            
+            await supabase.from('profiles').update({ category: newCategory, domain: newDomain, skills: newSkills }).eq('id', currentUser.id);
+            setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain, skills: newSkills }));
+            setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain, skills: newSkills } : p));
+            setQuizFailed(false);
         } else {
-          const score = Object.keys(quizAnswers).length;
-          if (score >= 3 && quizAnswers[3] === '10+ Years') newCategory = 'A';
-          else if (score >= 3 && quizAnswers[3] === '5-10 Years') newCategory = 'B';
-          
-          if (quizAnswers[1] === 'Software Development') {
-             if (quizAnswers[2] === 'JavaScript/TypeScript') newDomain = 'Frontend/Fullstack Dev';
-             else if (quizAnswers[2] === 'Python') newDomain = 'Backend/AI Dev';
-             else newDomain = 'Software Engineer';
-          } else if (quizAnswers[1]) {
-             newDomain = quizAnswers[1];
-          }
+            // FAIL
+            setQuizFailed(true);
         }
-
-        const newSkills = [...(currentUser?.skills || [])];
-        if (!newSkills.includes('assessment_completed')) newSkills.push('assessment_completed');
         
-        await supabase.from('profiles').update({ category: newCategory, domain: newDomain, skills: newSkills }).eq('id', currentUser.id);
-        
-        setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain, skills: newSkills }));
-        setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain, skills: newSkills } : p));
         setQuizLoading(false);
-        setQuizStep(2); // result step
+        setQuizStep(3); // result step
       }, 2000);
     };
 
@@ -1974,19 +1983,23 @@ export default function AppContainer() {
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-purple-900/20 blur-[120px] rounded-full pointer-events-none"></div>
         
         <div className="w-full max-w-lg glass-panel-glow border border-purple-500/30 rounded-3xl p-8 relative z-10">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center shadow-lg shadow-purple-500/30 mx-auto mb-4">
+          <div className="text-center mb-8 relative">
+            <div className="absolute right-0 top-0 flex gap-2 bg-black/40 p-1 rounded-lg border border-purple-500/20">
+              <button onClick={() => setQuizLang('en')} className={`px-2 py-1 text-[10px] font-bold rounded ${quizLang === 'en' ? 'bg-purple-600 text-white' : 'text-purple-300 hover:text-white'}`}>EN</button>
+              <button onClick={() => setQuizLang('ur')} className={`px-2 py-1 text-[10px] font-bold rounded ${quizLang === 'ur' ? 'bg-purple-600 text-white' : 'text-purple-300 hover:text-white'}`}>UR</button>
+            </div>
+            <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center shadow-lg shadow-purple-500/30 mx-auto mb-4 mt-6">
               <BrainCircuit className="text-white" size={32} />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">AI Skills Assessment</h2>
-            <p className="text-xs text-purple-300">Let AuraSuite AI tailor your workspace experience.</p>
+            <h2 className="text-2xl font-bold text-white mb-2">{quizLang === 'ur' ? 'اے آئی اسکلز اسسمنٹ' : 'AI Skills Assessment'}</h2>
+            <p className="text-xs text-purple-300">{quizLang === 'ur' ? 'AuraSuite AI کو آپ کا پروفائل تیار کرنے دیں۔' : 'Let AuraSuite AI tailor your workspace experience.'}</p>
           </div>
 
           {quizStep === 0 && (
             <div className="text-center space-y-6">
-              <p className="text-sm text-white/80">Welcome to AuraSuite! As part of our onboarding, our AI needs to assess your skill level to properly tag your profile and assign you to relevant tasks.</p>
+              <p className="text-sm text-white/80">{quizLang === 'ur' ? 'AuraSuite میں خوش آمدید! ہمارے AI کو آپ کی مہارتوں کا اندازہ لگانا ہے تاکہ آپ کو درست ٹاسکس دیے جا سکیں۔' : 'Welcome to AuraSuite! As part of our onboarding, our AI needs to assess your skill level to properly tag your profile and assign you to relevant tasks.'}</p>
               <button onClick={handleQuizStart} className="px-6 py-3 rounded-xl accent-gradient text-sm font-bold text-white glow-btn inline-flex items-center gap-2">
-                Begin Assessment <ArrowRight size={16}/>
+                {quizLang === 'ur' ? 'اسسمنٹ شروع کریں' : 'Begin Assessment'} <ArrowRight size={16}/>
               </button>
             </div>
           )}
@@ -1995,11 +2008,44 @@ export default function AppContainer() {
             <div className="space-y-6">
               {quizQuestions.map((q, idx) => (
                 <div key={q.id} className="space-y-2">
-                  <p className="text-xs font-bold text-purple-200">{idx + 1}. {q.question}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {q.options.map(opt => (
-                      <button key={opt} onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt }))}
-                        className={`p-2 rounded-lg text-[10px] font-bold border transition-all ${quizAnswers[q.id] === opt ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
+                  <p className="text-xs font-bold text-purple-200">{idx + 1}. {quizLang === 'ur' ? q.question_ur : q.question}</p>
+                  <div className="relative">
+                    <input 
+                      list={`opts-${q.id}`}
+                      value={quizAnswers[q.id] || ''}
+                      onChange={(e) => setQuizAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      placeholder={quizLang === 'ur' ? 'منتخب کریں یا ٹائپ کریں...' : 'Select or type...'}
+                      className="w-full bg-[#11081c] border border-purple-500/30 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 focus:shadow-[0_0_15px_rgba(168,85,247,0.3)] transition-all placeholder-purple-500/50"
+                    />
+                    <datalist id={`opts-${q.id}`}>
+                      {(quizLang === 'ur' ? q.options_ur : q.options).map((opt, i) => (
+                        <option key={i} value={opt} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+              ))}
+              <div className="pt-4 flex justify-end">
+                <button onClick={handleDemographicSubmit} disabled={quizLoading || Object.keys(quizAnswers).length < quizQuestions.length}
+                  className={`px-6 py-3 rounded-xl text-sm font-bold text-white flex items-center gap-2 transition-all ${quizLoading || Object.keys(quizAnswers).length < quizQuestions.length ? 'bg-purple-900/50 cursor-not-allowed opacity-50' : 'accent-gradient glow-btn'}`}>
+                  {quizLoading ? <><Loader2 size={16} className="animate-spin" /> {quizLang === 'ur' ? 'تیار ہو رہا ہے...' : 'Preparing...'}</> : (quizLang === 'ur' ? 'آگے بڑھیں' : 'Next Step')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {quizStep === 2 && (
+            <div className="space-y-6">
+              <div className="bg-purple-900/20 border border-purple-500/20 rounded-xl p-4 mb-4">
+                <p className="text-xs text-purple-300 text-center">{quizLang === 'ur' ? 'یہ آپ کی مہارت کا اصل ٹیسٹ ہے۔ اسے پاس کرنے کے لیے کم از کم 3 درست جوابات درکار ہیں۔' : 'This is your actual skill test. You need at least 3 correct answers to pass.'}</p>
+              </div>
+              {actualQuizQuestions.map((q, idx) => (
+                <div key={q.id} className="space-y-2">
+                  <p className="text-xs font-bold text-purple-200">{idx + 1}. {quizLang === 'ur' ? q.question_ur : q.question}</p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {(quizLang === 'ur' ? q.options_ur : q.options).map((opt, i) => (
+                      <button key={i} onClick={() => setActualQuizAnswers(prev => ({ ...prev, [q.id]: i }))}
+                        className={`p-3 rounded-xl text-[11px] font-bold border transition-all text-left ${actualQuizAnswers[q.id] === i ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
                         {opt}
                       </button>
                     ))}
@@ -2007,33 +2053,58 @@ export default function AppContainer() {
                 </div>
               ))}
               <div className="pt-4 flex justify-end">
-                <button onClick={handleQuizSubmit} disabled={quizLoading || Object.keys(quizAnswers).length < quizQuestions.length}
-                  className={`px-6 py-3 rounded-xl text-sm font-bold text-white flex items-center gap-2 transition-all ${quizLoading || Object.keys(quizAnswers).length < quizQuestions.length ? 'bg-purple-900/50 cursor-not-allowed opacity-50' : 'accent-gradient glow-btn'}`}>
-                  {quizLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> AI Analyzing...</> : 'Complete Assessment'}
+                <button onClick={handleActualQuizSubmit} disabled={quizLoading || Object.keys(actualQuizAnswers).length < actualQuizQuestions.length}
+                  className={`px-6 py-3 rounded-xl text-sm font-bold text-white flex items-center gap-2 transition-all ${quizLoading || Object.keys(actualQuizAnswers).length < actualQuizQuestions.length ? 'bg-purple-900/50 cursor-not-allowed opacity-50' : 'accent-gradient glow-btn'}`}>
+                  {quizLoading ? <><Loader2 size={16} className="animate-spin" /> {quizLang === 'ur' ? 'جانچ ہو رہی ہے...' : 'Analyzing...'}</> : (quizLang === 'ur' ? 'مکمل کریں' : 'Complete Assessment')}
                 </button>
               </div>
             </div>
           )}
 
-          {quizStep === 2 && (
+          {quizStep === 3 && (
             <div className="text-center space-y-6">
-              <div className="w-20 h-20 rounded-full bg-green-500/20 border border-green-500 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.3)]">
-                <Check className="text-green-400" size={40} />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">Assessment Complete</h3>
-                <p className="text-sm text-purple-200 mt-2">You have been assigned to <strong className="text-purple-400 border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 rounded">Tier {currentUser.category || 'C'}</strong></p>
-              </div>
-              <button onClick={() => {
-                  setIsEnteringDashboard(true);
-                  setTimeout(() => {
-                      setIsEnteringDashboard(false);
-                      setShowQuiz(false);
-                  }, 800);
-              }} disabled={isEnteringDashboard} className={`w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 ${isEnteringDashboard ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
-                {isEnteringDashboard ? <Loader2 size={16} className="animate-spin" /> : null}
-                {isEnteringDashboard ? 'Redirecting...' : 'Enter AuraSuite Dashboard'}
-              </button>
+              {quizFailed ? (
+                <>
+                  <div className="w-20 h-20 rounded-full bg-red-500/20 border border-red-500 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(239,68,68,0.3)]">
+                    <X className="text-red-400" size={40} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">{quizLang === 'ur' ? 'اسسمنٹ فیل' : 'Assessment Failed'}</h3>
+                    <p className="text-sm text-red-300 mt-2">{quizLang === 'ur' ? `آپ نے ${actualQuizQuestions.length} میں سے ${quizScore} کا صحیح جواب دیا۔ پاس ہونے کے لیے 3 درکار ہیں۔` : `You answered ${quizScore} out of ${actualQuizQuestions.length} correctly. Minimum 3 required to pass.`}</p>
+                  </div>
+                  <button onClick={() => {
+                      setQuizStep(1);
+                      setQuizAnswers({});
+                  }} className="w-full py-3 rounded-xl text-sm font-bold text-white bg-[#11081c] border border-purple-500/30 hover:bg-purple-900/40 transition-colors">
+                    {quizLang === 'ur' ? 'دوبارہ کوشش کریں' : 'Try Again'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="w-20 h-20 rounded-full bg-green-500/20 border border-green-500 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.3)]">
+                    <Check className="text-green-400" size={40} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">{quizLang === 'ur' ? 'اسسمنٹ مکمل' : 'Assessment Complete'}</h3>
+                    <p className="text-sm text-purple-200 mt-2">
+                       {quizLang === 'ur' ? `اسکور: ${quizScore}/5۔ آپ کو تفویض کیا گیا ہے ` : `Score: ${quizScore}/5. You have been assigned to `}
+                       <strong className="text-purple-400 border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 rounded">
+                         {quizLang === 'ur' ? 'ٹیئر' : 'Tier'} {currentUser.category || 'C'}
+                       </strong>
+                    </p>
+                  </div>
+                  <button onClick={() => {
+                      setIsEnteringDashboard(true);
+                      setTimeout(() => {
+                          setIsEnteringDashboard(false);
+                          setShowQuiz(false);
+                      }, 800);
+                  }} disabled={isEnteringDashboard} className={`w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 ${isEnteringDashboard ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
+                    {isEnteringDashboard ? <Loader2 size={16} className="animate-spin" /> : null}
+                    {isEnteringDashboard ? (quizLang === 'ur' ? 'ری ڈائریکٹ ہو رہا ہے...' : 'Redirecting...') : (quizLang === 'ur' ? 'ڈیش بورڈ میں داخل ہوں' : 'Enter AuraSuite Dashboard')}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
