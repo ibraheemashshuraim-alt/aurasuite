@@ -3058,17 +3058,25 @@ export default function AppContainer() {
                     }
                   }
 
-                  // Check if this email exists (active user)
-                  const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.trim().toLowerCase() && !p.email.includes('_deleted@') && !p.email.includes('_banned@'));
-                  let finalProfileId = genId('user');
+                  const cleanEmail = inviteEmail.trim().toLowerCase();
 
-                  if (existingProfile) {
-                    if (existingProfile.role === 'pending_worker') {
+                  // Check if this email exists in DB (more robust than local state)
+                  const { data: existingDbProfiles } = await supabase.from('profiles').select('*').eq('email', cleanEmail).limit(1);
+                  const existingProfile = existingDbProfiles && existingDbProfiles.length > 0 ? existingDbProfiles[0] : null;
+                  
+                  let finalProfileId = genId('user');
+                  let isUpdate = false;
+
+                  if (existingProfile && !existingProfile.email.includes('_deleted@') && !existingProfile.email.includes('_banned@')) {
+                    if (existingProfile.role === 'pending_worker' || existingProfile.role === 'worker') {
+                      // Reuse existing profile if they are pending or already a worker (re-inviting them to get a new card)
+                      finalProfileId = existingProfile.id;
+                      isUpdate = true;
+                      
+                      // Delete old digital card if exists
                       await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
-                      await supabase.from('profiles').delete().eq('id', existingProfile.id);
-                      setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
                     } else {
-                      alert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
+                      alert('This email is already fully registered with a higher role in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
                       return;
                     }
                   }
@@ -3082,16 +3090,16 @@ export default function AppContainer() {
                   const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername, orgType: activeOrg.type || 'software_house' }));
                   const inviteLink = `${baseUrl}/?t=${loginToken}`;
 
-                  // 1. Create Profile (as 'pending_worker' to hide from UI until they login)
+                  // 1. Create/Update Profile (as 'pending_worker' to hide from UI until they login)
                   const newProfile = {
                     id: finalProfileId,
                     organization_id: activeOrg.id,
-                    email: inviteEmail,
-                    full_name: genInviteName,
-                    role: 'pending_worker',
+                    email: cleanEmail,
+                    full_name: genInviteName.trim(),
+                    role: isUpdate ? existingProfile.role : 'pending_worker',
                     category: genInviteCategory || null,
                     domain: genInviteDomain || '',
-                    skills: [],
+                    skills: existingProfile ? existingProfile.skills : [],
                     last_seen: now()
                   };
 
@@ -3102,8 +3110,8 @@ export default function AppContainer() {
                     temp_password: tempPassword,
                     profile_id: finalProfileId,
                     organization_id: activeOrg.id,
-                    email: inviteEmail,
-                    full_name: genInviteName,
+                    email: cleanEmail,
+                    full_name: genInviteName.trim(),
                     role: genInviteRole, // store real role here
                     category: genInviteCategory || null,
                     domain: genInviteDomain || '',
@@ -3111,13 +3119,14 @@ export default function AppContainer() {
                   };
                   
                   try {
-                    if (finalProfileId === existingProfile?.id) {
+                    if (isUpdate) {
                       const { error: pErr } = await supabase.from('profiles').update(newProfile).eq('id', finalProfileId);
                       if (pErr) throw pErr;
-                      setProfiles(prev => prev.map(p => p.id === finalProfileId ? newProfile : p));
+                      setProfiles(prev => prev.map(p => p.id === finalProfileId ? { ...p, ...newProfile } : p));
                     } else {
                       const { error: pErr } = await supabase.from('profiles').insert(newProfile);
                       if (pErr) throw pErr;
+                      setProfiles(prev => [...prev, newProfile]);
                     }
 
                     const { error: cErr } = await supabase.from('digital_cards').insert(newCard);
