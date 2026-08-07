@@ -900,6 +900,9 @@ export default function AppContainer() {
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
       addNotification(`Welcome back, ${user.full_name}!`, 'success');
     }
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const handleSetPermanentPassword = async (e) => {
@@ -949,6 +952,9 @@ export default function AppContainer() {
     } else {
       alert('Profile not found. Contact your admin.');
     }
+    } finally {
+      setIsSettingPassword(false);
+    }
   };
 
   const handleSkipPasswordChange = async () => {
@@ -978,9 +984,6 @@ export default function AppContainer() {
       setForcePasswordChange(false);
       setTempDigitalCard(null);
       addNotification(`Welcome ${user.full_name}!`, 'success');
-    }
-    } finally {
-      setIsLoggingIn(false);
     }
   };
 
