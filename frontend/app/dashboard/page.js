@@ -3881,7 +3881,7 @@ export default function AppContainer() {
                                 {renderTextWithLinks(msg.text.replace(/ \| \[MEET_ID:.*\]/, ''))}
                                 {msg.attachmentUrl && (
                                   <div className="mt-2">
-                                    {msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i) ? (
+                                    {(msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i) || msg.attachmentUrl.startsWith('blob:')) ? (
                                       <img src={msg.attachmentUrl} alt="attachment" className="max-w-[200px] min-h-[100px] object-cover rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(msg.attachmentUrl)} loading="lazy" />
                                     ) : (
                                       <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-purple-300 underline"><Pin size={10}/> View Attachment</a>
@@ -4313,6 +4313,29 @@ export default function AppContainer() {
         </div>
       </main>
     </div>
+  
+      {lightboxImage && (
+        <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setLightboxImage(null)}>
+          <div className="relative max-w-full max-h-full flex flex-col items-center">
+            <button 
+              className="absolute -top-12 right-0 text-white hover:text-red-400 bg-white/10 hover:bg-white/20 transition-all rounded-full p-2"
+              onClick={(e) => { e.stopPropagation(); setLightboxImage(null); }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+            <img 
+              src={lightboxImage} 
+              alt="Enlarged view" 
+              className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-[0_0_50px_rgba(168,85,247,0.2)] border border-purple-500/30"
+              onClick={(e) => e.stopPropagation()}
+            />
+            {/* Provide a distinct download button just in case, though the image itself is visible */}
+            <a href={lightboxImage} target="_blank" download className="mt-4 px-4 py-2 bg-purple-600/50 hover:bg-purple-600/80 border border-purple-500/50 rounded-xl text-white text-sm font-medium transition-colors" onClick={e => e.stopPropagation()}>
+              Open / Download
+            </a>
+          </div>
+        </div>
+      )}
   </main>
   );
 }
