@@ -1524,7 +1524,38 @@ const handleReactMessage = async (msg, emoji) => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!chatInput.trim() && !audioBlob && !attachmentFile) return;
+    if (!chatInput.trim() && !currentAudioBlob && !currentAttachmentFile) return;
+    // OPTIMISTIC UI: Instantly add the message to the chat locally
+    const tempAudioUrl = currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null;
+    const tempAttachmentUrl = currentAttachmentFile && currentAttachmentFile.type.startsWith('image/') ? URL.createObjectURL(currentAttachmentFile) : (currentAttachmentFile ? 'file_placeholder' : null);
+    
+    const optimisticMsg = {
+       id: msgId, 
+       from: currentUser?.id, 
+       fromName: currentUser?.full_name, 
+       text: currentChatInput, 
+       time: msgTime, 
+       type: 'chat', 
+       audioUrl: tempAudioUrl, 
+       attachmentUrl: tempAttachmentUrl, 
+       reactions: {} 
+    };
+    
+    if (activeChat === 'group') {
+       setGroupMessages(prev => [...prev, optimisticMsg]);
+    } else if (activeChat === 'dm' && activeDmUser) {
+       const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
+       setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] }));
+    }
+
+    // Capture state for background task
+    const currentChatInput = chatInput;
+    const currentAudioBlob = currentAudioBlob;
+    const currentAttachmentFile = currentAttachmentFile;
+    
+    setChatInput('');
+    setAudioBlob(null);
+    setAttachmentFile(null);
     setIsSendingChat(true);
     const msgId = genId('msg');
     const msgTime = now();
@@ -1533,20 +1564,20 @@ const handleReactMessage = async (msg, emoji) => {
     let attachmentUrl = null;
     
     try {
-      if (audioBlob) {
+      if (currentAudioBlob) {
         const fileExt = 'webm';
         const fileName = `${msgId}_audio.${fileExt}`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, audioBlob);
+        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAudioBlob);
         if (error) throw error;
         if (data) {
            audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
         }
       }
       
-      if (attachmentFile) {
-        const fileExt = attachmentFile.name.split('.').pop();
+      if (currentAttachmentFile) {
+        const fileExt = currentAttachmentFile.name.split('.').pop();
         const fileName = `${msgId}_file.${fileExt}`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, attachmentFile);
+        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAttachmentFile);
         if (error) throw error;
         if (data) {
            attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
@@ -1560,7 +1591,7 @@ const handleReactMessage = async (msg, emoji) => {
     }
     
     if (activeChat === 'group') {
-      const row = { id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: chatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: attachmentUrl };
+      const row = { id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: attachmentUrl };
       await supabase.from('group_messages').insert(row);
     } else if (activeChat === 'dm' && activeDmUser) {
       const key = [currentUser.id, activeDmUser.id].sort().join('_');

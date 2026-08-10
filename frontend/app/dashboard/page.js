@@ -285,6 +285,8 @@ export default function AppContainer() {
   const [confirmModal, setConfirmModal] = useState(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [pinnedUserId, setPinnedUserId] = useState(null);
+  const [lightboxImage, setLightboxImage] = useState(null);
+  const [reactionDetails, setReactionDetails] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
@@ -1475,9 +1477,48 @@ export default function AppContainer() {
   // ─────────────────── Chat ───────────────────
   const orgMembers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id);
 
+  const renderTextWithLinks = (text) => {
+    if (!text) return text;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.split(urlRegex).map((part, i) => 
+      urlRegex.test(part) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">{part}</a> : part
+    );
+  };
+  
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!chatInput.trim() && !audioBlob && !attachmentFile) return;
+    if (!chatInput.trim() && !currentAudioBlob && !currentAttachmentFile) return;
+    // OPTIMISTIC UI: Instantly add the message to the chat locally
+    const tempAudioUrl = currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null;
+    const tempAttachmentUrl = currentAttachmentFile && currentAttachmentFile.type.startsWith('image/') ? URL.createObjectURL(currentAttachmentFile) : (currentAttachmentFile ? 'file_placeholder' : null);
+    
+    const optimisticMsg = {
+       id: msgId, 
+       from: currentUser?.id, 
+       fromName: currentUser?.full_name, 
+       text: currentChatInput, 
+       time: msgTime, 
+       type: 'chat', 
+       audioUrl: tempAudioUrl, 
+       attachmentUrl: tempAttachmentUrl, 
+       reactions: {} 
+    };
+    
+    if (activeChat === 'group') {
+       setGroupMessages(prev => [...prev, optimisticMsg]);
+    } else if (activeChat === 'dm' && activeDmUser) {
+       const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
+       setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] }));
+    }
+
+    // Capture state for background task
+    const currentChatInput = chatInput;
+    const currentAudioBlob = currentAudioBlob;
+    const currentAttachmentFile = currentAttachmentFile;
+    
+    setChatInput('');
+    setAudioBlob(null);
+    setAttachmentFile(null);
     setIsSendingChat(true);
     const msgId = genId('msg');
     const msgTime = now();
@@ -1486,20 +1527,20 @@ export default function AppContainer() {
     let attachmentUrl = null;
     
     try {
-      if (audioBlob) {
+      if (currentAudioBlob) {
         const fileExt = 'webm';
         const fileName = `${msgId}_audio.${fileExt}`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, audioBlob);
+        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAudioBlob);
         if (error) throw error;
         if (data) {
            audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
         }
       }
       
-      if (attachmentFile) {
-        const fileExt = attachmentFile.name.split('.').pop();
+      if (currentAttachmentFile) {
+        const fileExt = currentAttachmentFile.name.split('.').pop();
         const fileName = `${msgId}_file.${fileExt}`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, attachmentFile);
+        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAttachmentFile);
         if (error) throw error;
         if (data) {
            attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
@@ -1513,7 +1554,7 @@ export default function AppContainer() {
     }
     
     if (activeChat === 'group') {
-      const row = { id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: chatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: attachmentUrl };
+      const row = { id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: attachmentUrl };
       await supabase.from('group_messages').insert(row);
     } else if (activeChat === 'dm' && activeDmUser) {
       const key = [currentUser.id, activeDmUser.id].sort().join('_');
@@ -3867,13 +3908,13 @@ export default function AppContainer() {
                                     ? 'accent-gradient text-white'
                                     : 'bg-[#150e25] border border-purple-500/15 text-white'
                               }`}>
-                                {msg.text.replace(/ \| \[MEET_ID:.*\]/, '')}
+                                {renderTextWithLinks(msg.text.replace(/ \| \[MEET_ID:.*\]/, ''))}
                                 {msg.attachmentUrl && (
                                   <div className="mt-2">
                                     {msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i) ? (
-                                      <img src={msg.attachmentUrl} alt="attachment" className="max-w-[150px] rounded border border-purple-500/30" />
+                                      <img src={msg.attachmentUrl} alt="attachment" className="max-w-[200px] min-h-[100px] object-cover rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(msg.attachmentUrl)} loading="lazy" />
                                     ) : (
-                                      <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-purple-300 underline"><Pin size={10}/> View Attachment</a>
+                                      <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-purple-900/40 rounded-lg text-purple-300 hover:text-purple-100 hover:bg-purple-900/60 transition-colors border border-purple-500/20"><Paperclip size={14}/> <span>View Attachment</span></a>
                                     )}
                                   </div>
                                 )}
@@ -3940,7 +3981,7 @@ export default function AppContainer() {
         ) : attachmentFile ? (
           <span className="text-xs text-purple-300 flex items-center gap-1"><Paperclip size={14}/> {attachmentFile.name}</span>
         ) : audioBlob ? (
-          <span className="text-xs text-purple-300 flex items-center gap-1"><Mic size={14}/> Audio Note recorded</span>
+          <audio controls src={URL.createObjectURL(audioBlob)} className="h-8 max-w-[200px]" />
         ) : null}
                            <button type="button" onClick={() => { setAttachmentFile(null); setAudioBlob(null); }} className="text-red-400 hover:text-red-300"><X size={14}/></button>
                         </div>
