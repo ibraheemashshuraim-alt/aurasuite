@@ -247,6 +247,7 @@ export default function AppContainer() {
   const [audioBlob, setAudioBlob] = useState(null);
   const [attachmentFile, setAttachmentFile] = useState(null);
   const audioRecorderRef = useRef(null);
+  const audioShouldSendRef = useRef(false);
   const audioChunksRef = useRef([]);
 
   // ── Session ──
@@ -554,7 +555,13 @@ export default function AppContainer() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, payload => {
         if (payload.eventType === 'INSERT') {
           const m = payload.new;
-          setGroupMessages(prev => [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }]);
+          setGroupMessages(prev => {
+            const exists = prev.find(msg => msg.id === m.id);
+            if (exists) {
+              return prev.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg);
+            }
+            return [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }];
+          });
         } else if (payload.eventType === 'DELETE') {
           setGroupMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
         } else if (payload.eventType === 'UPDATE') {
@@ -606,9 +613,15 @@ export default function AppContainer() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages', filter: `thread_key=like.%${currentUser.id}%` }, payload => {
         if (payload.eventType === 'INSERT') {
           const m = payload.new;
-          if (m.from_id === currentUser.id) return;
-          setDmThreads(prev => ({ ...prev, [m.thread_key]: [...(prev[m.thread_key] || []), { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }] }));
-          if (activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
+          setDmThreads(prev => {
+            const thread = prev[m.thread_key] || [];
+            const exists = thread.find(msg => msg.id === m.id);
+            if (exists) {
+              return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg) };
+            }
+            if (m.from_id !== currentUser.id && activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
+            return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }] };
+          });
         } else if (payload.eventType === 'DELETE') {
           const m = payload.old;
           setDmThreads(prev => {
@@ -3881,7 +3894,7 @@ export default function AppContainer() {
                                 {renderTextWithLinks(msg.text.replace(/ \| \[MEET_ID:.*\]/, ''))}
                                 {msg.attachmentUrl && (
                                   <div className="mt-2">
-                                    {(msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i) || msg.attachmentUrl.startsWith('blob:')) ? (
+                                    {(msg.attachmentUrl && typeof msg.attachmentUrl === 'string' && (msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) || msg.attachmentUrl.startsWith('blob:'))) ? (
                                       <img src={msg.attachmentUrl} alt="attachment" className="max-w-[200px] min-h-[100px] object-cover rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(msg.attachmentUrl)} loading="lazy" />
                                     ) : (
                                       <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-purple-300 underline"><Pin size={10}/> View Attachment</a>
