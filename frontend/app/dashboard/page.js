@@ -1502,50 +1502,76 @@ export default function AppContainer() {
     const msgId = genId('msg');
     const msgTime = now();
     const tempAudioUrl = URL.createObjectURL(blob);
+    
     const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: '', time: msgTime, type: 'chat', audioUrl: tempAudioUrl, attachmentUrl: null, reactions: {} };
-    if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
+    if (activeChat === 'group') setGroupMessages(prev => { const exists = prev.find(m=>m.id===msgId); if(exists) return prev; return [...prev, optimisticMsg]; });
     else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
     
+    setIsSendingChat(true);
+    setAudioBlob(null);
+    let audioUrl = null;
     try {
-        const fileName = `${msgId}_audio.webm`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, blob);
-        if (error) throw error;
-        const audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
-        if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl });
-        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl }); }
-    } catch(err) { console.error(err); }
+      const fileName = `${msgId}_audio.webm`;
+      const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, blob);
+      if (error) throw error;
+      audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+    } catch(err) { console.error(err); setIsSendingChat(false); return; }
+    
+    if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
+    setIsSendingChat(false);
   };
 
   const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!chatInput.trim() && !attachmentFile) return;
+    e?.preventDefault();
+    if (isRecordingAudio) {
+      audioShouldSendRef.current = true;
+      stopRecording();
+      return;
+    }
+    const currentChatInput = chatInput;
+    const currentAttachmentFile = attachmentFile;
+    const currentAudioBlob = audioBlob;
+    
+    if (!currentChatInput.trim() && !currentAttachmentFile && !currentAudioBlob) return;
     
     const msgId = genId('msg');
     const msgTime = now();
-    const tempAttachmentUrl = attachmentFile && attachmentFile.type.startsWith('image/') ? URL.createObjectURL(attachmentFile) : (attachmentFile ? 'file_placeholder' : null);
     
-    const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: chatInput, time: msgTime, type: 'chat', audioUrl: null, attachmentUrl: tempAttachmentUrl, reactions: {} };
-    if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
-    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
+    const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: currentAttachmentFile ? URL.createObjectURL(currentAttachmentFile) : null, audioUrl: currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null, reactions: {} };
     
-    const currentChatInput = chatInput;
-    const currentAttachmentFile = attachmentFile;
-    setChatInput(''); setAttachmentFile(null);
+    if (activeChat === 'group') {
+      setGroupMessages(prev => [...prev, optimisticMsg]);
+    } else if (activeChat === 'dm' && activeDmUser) {
+      const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
+      setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] }));
+    }
+    
+    setChatInput('');
+    setAttachmentFile(null);
+    setAudioBlob(null);
     setIsSendingChat(true);
     
     let attachmentUrl = null;
+    let audioUrl = null;
     try {
       if (currentAttachmentFile) {
         const fileExt = currentAttachmentFile.name.split('.').pop();
-        const fileName = `${msgId}_file.${fileExt}`;
+        const fileName = `${msgId}_${Date.now()}.${fileExt}`;
         const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAttachmentFile);
         if (error) throw error;
         attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
       }
+      if (currentAudioBlob) {
+        const fileName = `${msgId}_audio.webm`;
+        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAudioBlob);
+        if (error) throw error;
+        audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+      }
     } catch(err) { console.error(err); setIsSendingChat(false); return; }
     
-    if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: attachmentUrl });
-    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: null, attachment_url: attachmentUrl }); }
+    if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: attachmentUrl });
+    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: attachmentUrl }); }
     
     setIsSendingChat(false);
   };
@@ -3937,45 +3963,69 @@ export default function AppContainer() {
                   </div>
 
                   {/* Input */}
-                  <form onSubmit={handleSendMessage} className="p-4 border-t border-purple-500/10 flex gap-3 shrink-0 items-center">
-                    <div className="flex gap-1">
-                      <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors">
-                        <Pin size={18} />
-                        <input type="file" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
-                      </label>
-                      {isRecordingAudio ? (
-                        <button type="button" onClick={stopRecording} className="p-2 rounded-xl text-red-400 hover:bg-red-900/30 transition-colors">
-                          <Square size={18} className="fill-current" />
+                  <div className="p-4 border-t border-purple-500/10 shrink-0">
+                    {isRecordingAudio ? (
+                      <div className="flex items-center gap-3 bg-[#11081c] border border-purple-500/20 rounded-xl px-4 py-2 w-full">
+                        <button type="button" onClick={() => { audioShouldSendRef.current = false; stopRecording(); setAudioBlob(null); }} className="p-2 rounded-full text-red-400 hover:bg-red-900/30 transition-colors">
+                          <Trash2 size={18} />
                         </button>
-                      ) : (
-                        <button type="button" onClick={startRecording} className="p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors">
-                          <Mic size={18} />
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex-1 relative">
-                      <input type="text" placeholder={`Message ${activeChat === 'group' ? '#team-general' : activeDmUser?.full_name || '...'}`}
-                        value={chatInput} onChange={e => setChatInput(e.target.value)}
-                        className="w-full bg-[#11081c] border border-purple-500/20 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors" />
-                      {(attachmentFile || audioBlob) && (
-                        <div className="absolute -top-10 left-0 right-0 bg-[#150e25] p-2 rounded-lg border border-purple-500/30 flex justify-between items-center z-10">
-                           {attachmentFile && attachmentFile.type.startsWith('image/') ? (
-          <img src={URL.createObjectURL(attachmentFile)} alt="preview" className="h-12 max-w-[100px] object-contain rounded border border-purple-500/50" />
-        ) : attachmentFile ? (
-          <span className="text-xs text-purple-300 flex items-center gap-1"><Paperclip size={14}/> {attachmentFile.name}</span>
-        ) : audioBlob ? (
-          <span className="text-xs text-purple-300 flex items-center gap-1"><Mic size={14}/> Audio Note recorded</span>
-        ) : null}
-                           <button type="button" onClick={() => { setAttachmentFile(null); setAudioBlob(null); }} className="text-red-400 hover:text-red-300"><X size={14}/></button>
+                        <div className="flex-1 flex items-center justify-center gap-3">
+                           <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
+                           <span className="text-red-400 text-xs font-medium tracking-wider">Recording...</span>
+                           <div className="flex items-end gap-1 h-5 ml-2">
+                             {[1, 2, 3, 2, 1, 3, 2, 4, 2, 1].map((h, i) => (
+                               <div key={i} className="w-1 bg-purple-500 rounded-full animate-pulse" style={{height: `${h*25}%`, animationDelay: `${i*100}ms`}}></div>
+                             ))}
+                           </div>
                         </div>
-                      )}
-                    </div>
-                    <button type="submit" disabled={isSendingChat}
-                      className={`px-4 py-2.5 rounded-xl text-white font-bold transition-all flex items-center gap-1.5 text-xs ${isSendingChat ? 'bg-purple-800 opacity-70' : 'accent-gradient hover:opacity-90'}`}>
-                      {isSendingChat ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} 
-                      {isSendingChat ? 'Sending...' : 'Send'}
-                    </button>
-                  </form>
+                        <button type="button" disabled={isSendingChat} onClick={() => { audioShouldSendRef.current = true; stopRecording(); }} className="p-2.5 rounded-full accent-gradient hover:opacity-90 transition-all text-white shadow-lg shadow-purple-500/20">
+                          {isSendingChat ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                        </button>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleSendMessage} className="flex gap-3 items-end">
+                        <div className="flex gap-1 mb-1">
+                          <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Attach File">
+                            <Pin size={18} />
+                            <input type="file" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
+                          </label>
+                          <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Gallery">
+                            <ImageIcon size={18} />
+                            <input type="file" accept="image/*" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
+                          </label>
+                          <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Camera">
+                            <Camera size={18} />
+                            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
+                          </label>
+                        </div>
+                        <div className="flex-1 relative">
+                          {(attachmentFile || audioBlob) && (
+                            <div className="absolute -top-14 left-0 right-0 bg-[#150e25] p-2 rounded-lg border border-purple-500/30 flex justify-between items-center z-10 shadow-lg">
+                               {attachmentFile && attachmentFile.type.startsWith('image/') ? (
+                                  <img src={URL.createObjectURL(attachmentFile)} alt="preview" className="h-10 max-w-[100px] object-cover rounded border border-purple-500/50" />
+                               ) : attachmentFile ? (
+                                  <span className="text-xs text-purple-300 flex items-center gap-1"><FileText size={14}/> {attachmentFile.name}</span>
+                               ) : audioBlob ? (
+                                  <span className="text-xs text-purple-300 flex items-center gap-1"><Mic size={14}/> Audio Note ready to send</span>
+                               ) : null}
+                               <button type="button" onClick={() => { setAttachmentFile(null); setAudioBlob(null); }} className="p-1 text-red-400 hover:bg-red-500/20 rounded-full transition-colors"><X size={14}/></button>
+                            </div>
+                          )}
+                          <input type="text" placeholder={`Message ${activeChat === 'group' ? '#team-general' : activeDmUser?.full_name || '...'}`}
+                            value={chatInput} onChange={e => setChatInput(e.target.value)}
+                            className="w-full bg-[#11081c] border border-purple-500/20 rounded-2xl px-5 py-3 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors" />
+                        </div>
+                        <div className="flex gap-2 mb-1">
+                          <button type="button" onClick={() => { audioShouldSendRef.current = false; startRecording(); }} className="p-2.5 rounded-full bg-purple-900/30 text-purple-300 hover:bg-purple-900/60 hover:text-white transition-colors">
+                            <Mic size={18} />
+                          </button>
+                          <button type="submit" disabled={isSendingChat} className={`p-2.5 rounded-full text-white font-bold transition-all flex items-center justify-center ${isSendingChat ? 'bg-purple-800 opacity-70' : 'accent-gradient hover:opacity-90 shadow-lg shadow-purple-500/20'}`}>
+                            {isSendingChat ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />} 
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
