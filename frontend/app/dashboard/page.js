@@ -245,6 +245,9 @@ export default function AppContainer() {
   const chatBottomRef = useRef(null);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
+  const [isDictating, setIsDictating] = useState(false);
+  const recognitionRef = useRef(null);
+  const [reactionModalData, setReactionModalData] = useState(null);
   const [attachmentFile, setAttachmentFile] = useState(null);
   const audioRecorderRef = useRef(null);
   const audioShouldSendRef = useRef(false);
@@ -1577,20 +1580,73 @@ export default function AppContainer() {
     setIsSendingChat(false);
   };
   
+  const toggleDictation = () => {
+    if (isDictating) {
+      recognitionRef.current?.stop();
+      setIsDictating(false);
+      return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech to text is not supported in this browser. Please use Chrome.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ur-PK';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+        }
+      }
+      if (finalTranscript) {
+         setChatInput(prev => prev + ' ' + finalTranscript.trim());
+      }
+    };
+    
+    recognition.onerror = (e) => {
+      console.error(e);
+      setIsDictating(false);
+    };
+    recognition.onend = () => { setIsDictating(false); };
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsDictating(true);
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioRecorderRef.current = new MediaRecorder(stream);
+      audioRecorderRef.current.stream = stream;
       audioChunksRef.current = [];
       
       audioRecorderRef.current.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       
-      audioRecorderRef.current.onstop = () => {
+      audioRecorderRef.current.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
+        if (audioRecorderRef.current.stream) {
+            audioRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
+        
+        if (audioDiscardRef.current) {
+          audioDiscardRef.current = false;
+          setAudioBlob(null);
+          return;
+        }
+        
+        if (audioShouldSendRef.current) {
+          audioShouldSendRef.current = false;
+          await handleDirectAudioSend(blob);
+        } else {
+          setAudioBlob(blob);
+        }
       };
       
       audioRecorderRef.current.start();
@@ -1604,6 +1660,9 @@ export default function AppContainer() {
   const stopRecording = () => {
     if (audioRecorderRef.current && isRecordingAudio) {
       audioRecorderRef.current.stop();
+      if (audioRecorderRef.current.stream) {
+        audioRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      }
       setIsRecordingAudio(false);
     }
   };
@@ -3996,7 +4055,7 @@ export default function AppContainer() {
                           </label>
                           <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Camera">
                             <Camera size={18} />
-                            <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
+                            <input type="file" accept="image/*" capture="camera" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
                           </label>
                         </div>
                         <div className="flex-1 relative">
@@ -4017,6 +4076,9 @@ export default function AppContainer() {
                             className="w-full bg-[#11081c] border border-purple-500/20 rounded-2xl px-5 py-3 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors" />
                         </div>
                         <div className="flex gap-2 mb-1">
+                          <button type="button" onClick={toggleDictation} className={`p-2.5 rounded-full transition-colors ${isDictating ? 'text-green-400 bg-green-900/30 animate-pulse' : 'bg-purple-900/30 text-purple-300 hover:text-green-400 hover:bg-green-900/30'}`} title="Speech to Text">
+                            <Type size={18} />
+                          </button>
                           <button type="button" onClick={() => { audioShouldSendRef.current = false; startRecording(); }} className="p-2.5 rounded-full bg-purple-900/30 text-purple-300 hover:bg-purple-900/60 hover:text-white transition-colors">
                             <Mic size={18} />
                           </button>
@@ -4398,7 +4460,40 @@ export default function AppContainer() {
               Open / Download
             </a>
           </div>
+              {reactionModalData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setReactionModalData(null)}>
+          <div className="bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-semibold">Reactions</h3>
+              <button onClick={() => setReactionModalData(null)} className="text-gray-400 hover:text-white"><X size={20}/></button>
+            </div>
+            <div className="space-y-3">
+              {Object.entries(reactionModalData.reactions).map(([emoji, users]) => 
+                  users.map(uid => {
+                    const user = orgUsers?.find(u => u.id === uid);
+                    const isMe = uid === currentUser?.id;
+                    return (
+                      <div key={`${emoji}-${uid}`} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-purple-900/30 flex items-center justify-center text-xl">
+                            {emoji}
+                          </div>
+                          <span className="text-sm text-gray-200">{isMe ? 'You' : (user?.full_name || 'Unknown')}</span>
+                        </div>
+                        {isMe && (
+                          <button onClick={() => { toggleReaction(reactionModalData.msgId, emoji); setReactionModalData(null); }} className="text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-1 transition-colors">
+                            Tap to remove
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          </div>
         </div>
+      )}
+    </div>
       )}
   </main>
   );
