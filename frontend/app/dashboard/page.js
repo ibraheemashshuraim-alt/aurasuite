@@ -11,6 +11,7 @@ import {
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
   BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer, Camera, FileText, Image as ImageIcon, PlayCircle
+, Type
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
