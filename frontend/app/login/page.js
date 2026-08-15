@@ -290,6 +290,31 @@ export default function AppContainer() {
   const [isDictating, setIsDictating] = useState(false);
   const recognitionRef = useRef(null);
   const [reactionModalData, setReactionModalData] = useState(null);
+
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const cameraVideoRef = useRef(null);
+  const cameraStreamRef = useRef(null);
+
+  useEffect(() => {
+    if (isCameraOpen) {
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+          cameraStreamRef.current = stream;
+          if (cameraVideoRef.current) cameraVideoRef.current.srcObject = stream;
+        })
+        .catch(err => {
+          console.error("Camera error:", err);
+          alert("Could not access camera. Please check permissions.");
+          setIsCameraOpen(false);
+        });
+    } else {
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach(t => t.stop());
+        cameraStreamRef.current = null;
+      }
+    }
+  }, [isCameraOpen]);
+
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const audioRecorderRef = useRef(null);
   const audioShouldSendRef = useRef(false);
@@ -3970,10 +3995,9 @@ const handleReactMessage = async (msg, emoji) => {
                             <ImageIcon size={18} />
                             <input type="file" accept="image/*" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
                           </label>
-                          <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Camera">
+                          <button type="button" onClick={() => setIsCameraOpen(true)} className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Camera">
                             <Camera size={18} />
-                            <input type="file" accept="image/*" capture="camera" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
-                          </label>
+                          </button>
                         </div>
                         <div className="flex-1 relative">
                           {(attachmentFile || audioBlob) && (
@@ -4391,9 +4415,89 @@ const handleReactMessage = async (msg, emoji) => {
           </div>
         </div>
       )}
-        {reactionModalData && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setReactionModalData(null)}>
-          <div className="bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4" onClick={e => e.stopPropagation()}>
+
+      {isCameraOpen && (
+        <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4">
+          <div className="relative w-full max-w-lg aspect-video bg-black rounded-2xl overflow-hidden mb-6 border border-purple-500/30">
+            <video ref={cameraVideoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+          </div>
+          <div className="flex gap-4">
+            <button type="button" onClick={() => {
+              if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
+              setIsCameraOpen(false);
+            }} className="px-6 py-3 rounded-xl bg-purple-900/40 text-white font-medium hover:bg-purple-900/60 border border-purple-500/30 transition-colors">
+              Cancel
+            </button>
+            <button type="button" onClick={() => {
+              if (!cameraVideoRef.current) return;
+              const canvas = document.createElement('canvas');
+              canvas.width = cameraVideoRef.current.videoWidth;
+              canvas.height = cameraVideoRef.current.videoHeight;
+              const ctx = canvas.getContext('2d');
+              ctx.translate(canvas.width, 0);
+              ctx.scale(-1, 1);
+              ctx.drawImage(cameraVideoRef.current, 0, 0, canvas.width, canvas.height);
+              canvas.toBlob(blob => {
+                if (blob) {
+                  const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
+                  setAttachmentFile(file);
+                }
+                if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
+                setIsCameraOpen(false);
+              }, 'image/jpeg', 0.9);
+            }} className="px-8 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all flex items-center gap-2">
+              <Camera size={20} /> Capture
+            </button>
+          </div>
+        </div>
+      )}
+        {isCameraOpen && (
+        <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4">
+          <div className="relative w-full max-w-lg aspect-video bg-black rounded-2xl overflow-hidden mb-6 border border-purple-500/30">
+            <video ref={cameraVideoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+          </div>
+          <div className="flex gap-4">
+            <button type="button" onClick={() => {
+              if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
+              setIsCameraOpen(false);
+            }} className="px-6 py-3 rounded-xl bg-purple-900/40 text-white font-medium hover:bg-purple-900/60 border border-purple-500/30 transition-colors">
+              Cancel
+            </button>
+            <button type="button" onClick={() => {
+              if (!cameraVideoRef.current) return;
+              const canvas = document.createElement('canvas');
+              canvas.width = cameraVideoRef.current.videoWidth;
+              canvas.height = cameraVideoRef.current.videoHeight;
+              const ctx = canvas.getContext('2d');
+              ctx.translate(canvas.width, 0);
+              ctx.scale(-1, 1);
+              ctx.drawImage(cameraVideoRef.current, 0, 0, canvas.width, canvas.height);
+              canvas.toBlob(blob => {
+                if (blob) {
+                  const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
+                  setAttachmentFile(file);
+                }
+                if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
+                setIsCameraOpen(false);
+              }, 'image/jpeg', 0.9);
+            }} className="px-8 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all flex items-center gap-2">
+              <Camera size={20} /> Capture
+            </button>
+          </div>
+        </div>
+      )}
+
+      {reactionModalData && (
+        <div className="fixed inset-0 z-[100] bg-black/10" onClick={() => setReactionModalData(null)}>
+          <div 
+            className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl transform -translate-x-1/2" 
+            style={{ 
+              top: Math.max(10, (reactionModalData.y || window.innerHeight/2) - 150) + 'px', 
+              left: Math.max(100, (reactionModalData.x || window.innerWidth/2)) + 'px',
+              maxHeight: '300px'
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-white font-semibold">Reactions</h3>
               <button onClick={() => setReactionModalData(null)} className="text-gray-400 hover:text-white"><X size={20}/></button>
