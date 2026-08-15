@@ -294,6 +294,7 @@ export default function AppContainer() {
   const audioRecorderRef = useRef(null);
   const audioShouldSendRef = useRef(false);
   const audioChunksRef = useRef([]);
+  const mediaStreamRef = useRef(null);
   const audioDiscardRef = useRef(false);
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState([]); // [{id, emoji, userId, name}]
@@ -1511,8 +1512,8 @@ export default function AppContainer() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
       audioRecorderRef.current = new MediaRecorder(stream);
-      audioRecorderRef.current.stream = stream;
       audioChunksRef.current = [];
       
       audioRecorderRef.current.ondataavailable = (e) => {
@@ -1521,8 +1522,9 @@ export default function AppContainer() {
       
       audioRecorderRef.current.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        if (audioRecorderRef.current.stream) {
-            audioRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach(track => track.stop());
+            mediaStreamRef.current = null;
         }
         
         if (audioDiscardRef.current) {
@@ -1550,8 +1552,9 @@ export default function AppContainer() {
 const stopRecording = () => {
     if (audioRecorderRef.current && isRecordingAudio) {
       audioRecorderRef.current.stop();
-      if (audioRecorderRef.current.stream) {
-        audioRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
       }
       setIsRecordingAudio(false);
     }
@@ -3873,7 +3876,7 @@ const handleReactMessage = async (msg, emoji) => {
                                   <div className={`absolute top-full mt-1 ${isMine ? 'right-0' : 'left-0'} hidden group-hover/del:flex flex-col bg-[#1a0e2a] border border-purple-500/30 rounded-lg p-1 z-50 w-36 shadow-xl`}>
                                     <div className="flex gap-2 justify-center p-1 border-b border-purple-500/20 mb-1">
                                       {['👍', '❤️', '😂', '🔥', '👀'].map(emoji => (
-                                        <button key={emoji} onClick={() => handleReactMessage(msg, emoji)} className="hover:scale-125 transition-transform text-sm">{emoji}</button>
+                                        <button key={emoji} onClick={() => setReactionModalData({ msgId: msg.id, reactions: msg.reactions || {} })} title="View Reactions" className="hover:scale-125 transition-transform text-sm">{emoji}</button>
                                       ))}
                                     </div>
                                     <button onClick={() => handleDeleteMessage(msg, activeChat, 'me')} className="text-[10px] text-left px-2 py-1.5 hover:bg-purple-900/40 rounded text-purple-200">Delete for Me</button>
@@ -3922,7 +3925,7 @@ const handleReactMessage = async (msg, emoji) => {
                               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                                 <div className={`flex gap-1 -mt-2 z-10 ${isMine ? 'justify-end' : 'justify-start'}`}>
                                   {Object.entries(msg.reactions).map(([emoji, userIds]) => (
-                                    <button key={emoji} onClick={() => handleReactMessage(msg, emoji)} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
+                                    <button key={emoji} onClick={() => setReactionModalData({ msgId: msg.id, reactions: msg.reactions || {} })} title="View Reactions" className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
                                       {emoji} {userIds.length > 1 && <span className="text-purple-300 ml-0.5">{userIds.length}</span>}
                                     </button>
                                   ))}
