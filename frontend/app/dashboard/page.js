@@ -248,6 +248,7 @@ export default function AppContainer() {
   const [attachmentFile, setAttachmentFile] = useState(null);
   const audioRecorderRef = useRef(null);
   const audioShouldSendRef = useRef(false);
+  const audioDiscardRef = useRef(false);
   const audioChunksRef = useRef([]);
 
   // ── Session ──
@@ -3966,7 +3967,7 @@ export default function AppContainer() {
                   <div className="p-4 border-t border-purple-500/10 shrink-0">
                     {isRecordingAudio ? (
                       <div className="flex items-center gap-3 bg-[#11081c] border border-purple-500/20 rounded-xl px-4 py-2 w-full">
-                        <button type="button" onClick={() => { audioShouldSendRef.current = false; stopRecording(); setAudioBlob(null); }} className="p-2 rounded-full text-red-400 hover:bg-red-900/30 transition-colors">
+                        <button type="button" onClick={() => { audioDiscardRef.current = true; audioShouldSendRef.current = false; stopRecording(); }} className="p-2 rounded-full text-red-400 hover:bg-red-900/30 transition-colors">
                           <Trash2 size={18} />
                         </button>
                         <div className="flex-1 flex items-center justify-center gap-3">
@@ -4002,7 +4003,7 @@ export default function AppContainer() {
                           {(attachmentFile || audioBlob) && (
                             <div className="absolute -top-14 left-0 right-0 bg-[#150e25] p-2 rounded-lg border border-purple-500/30 flex justify-between items-center z-10 shadow-lg">
                                {attachmentFile && attachmentFile.type.startsWith('image/') ? (
-                                  <img src={URL.createObjectURL(attachmentFile)} alt="preview" className="h-10 max-w-[100px] object-cover rounded border border-purple-500/50" />
+                                  <img src={URL.createObjectURL(attachmentFile)} alt="preview" className="h-10 max-w-[100px] object-cover rounded border border-purple-500/50 cursor-pointer hover:opacity-80" onClick={() => setLightboxImage(URL.createObjectURL(attachmentFile))} title="Click to view full size" />
                                ) : attachmentFile ? (
                                   <span className="text-xs text-purple-300 flex items-center gap-1"><FileText size={14}/> {attachmentFile.name}</span>
                                ) : audioBlob ? (
