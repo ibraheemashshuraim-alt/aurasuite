@@ -3963,7 +3963,7 @@ export default function AppContainer() {
                                   <div className={`absolute top-full mt-1 ${isMine ? 'right-0' : 'left-0'} hidden group-hover/del:flex flex-col bg-[#1a0e2a] border border-purple-500/30 rounded-lg p-1 z-50 w-36 shadow-xl`}>
                                     <div className="flex gap-2 justify-center p-1 border-b border-purple-500/20 mb-1">
                                       {['👍', '❤️', '😂', '🔥', '👀'].map(emoji => (
-                                        <button key={emoji} onClick={() => setReactionModalData({ msgId: msg.id, reactions: msg.reactions || {} })} title="View Reactions" className="hover:scale-125 transition-transform text-sm">{emoji}</button>
+                                        <button key={emoji} onClick={() => handleReactMessage(msg, emoji)} className="hover:scale-125 transition-transform text-sm">{emoji}</button>
                                       ))}
                                     </div>
                                     <button onClick={() => handleDeleteMessage(msg, activeChat, 'me')} className="text-[10px] text-left px-2 py-1.5 hover:bg-purple-900/40 rounded text-purple-200">Delete for Me</button>
