@@ -4572,7 +4572,7 @@ export default function AppContainer() {
           <div 
             className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl transform -translate-x-1/2" 
             style={{ 
-              top: Math.max(10, (reactionModalData.y || window.innerHeight/2) - 150) + 'px', 
+              top: Math.max(10, (reactionModalData.y || window.innerHeight/2) + 20) + 'px', 
               left: Math.max(100, (reactionModalData.x || window.innerWidth/2)) + 'px',
               maxHeight: '300px'
             }} 

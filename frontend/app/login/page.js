@@ -3950,7 +3950,7 @@ const handleReactMessage = async (msg, emoji) => {
                               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                                 <div className={`flex gap-1 -mt-2 z-10 ${isMine ? 'justify-end' : 'justify-start'}`}>
                                   {Object.entries(msg.reactions).map(([emoji, userIds]) => (
-                                    <button key={emoji} onClick={() => setReactionModalData({ msgId: msg.id, reactions: msg.reactions || {} })} title="View Reactions" className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
+                                    <button key={emoji} onClick={(e) => setReactionModalData({ msgId: msg.id, reactions: msg.reactions || {}, x: e.clientX, y: e.clientY })} title="View Reactions" className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
                                       {emoji} {userIds.length > 1 && <span className="text-purple-300 ml-0.5">{userIds.length}</span>}
                                     </button>
                                   ))}
@@ -4492,7 +4492,7 @@ const handleReactMessage = async (msg, emoji) => {
           <div 
             className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl transform -translate-x-1/2" 
             style={{ 
-              top: Math.max(10, (reactionModalData.y || window.innerHeight/2) - 150) + 'px', 
+              top: Math.max(10, (reactionModalData.y || window.innerHeight/2) + 20) + 'px', 
               left: Math.max(100, (reactionModalData.x || window.innerWidth/2)) + 'px',
               maxHeight: '300px'
             }} 
