@@ -4500,7 +4500,7 @@ export default function AppContainer() {
         <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setLightboxImage(null)}>
           <div className="relative max-w-full max-h-full flex flex-col items-center">
             <button 
-              className="absolute -top-12 right-0 text-white hover:text-red-400 bg-white/10 hover:bg-white/20 transition-all rounded-full p-2"
+              className="fixed top-6 right-6 sm:top-10 sm:right-10 text-white hover:text-red-400 bg-white/10 hover:bg-white/20 transition-all rounded-full p-3 z-[100000]"
               onClick={(e) => { e.stopPropagation(); setLightboxImage(null); }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -4508,7 +4508,7 @@ export default function AppContainer() {
             <img 
               src={lightboxImage} 
               alt="Enlarged view" 
-              className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-[0_0_50px_rgba(168,85,247,0.2)] border border-purple-500/30"
+              className="max-w-[80vw] max-h-[75vh] object-contain rounded-lg shadow-[0_0_50px_rgba(168,85,247,0.2)] border border-purple-500/30"
               onClick={(e) => e.stopPropagation()}
             />
             {/* Provide a distinct download button just in case, though the image itself is visible */}
