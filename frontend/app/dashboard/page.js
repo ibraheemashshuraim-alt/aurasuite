@@ -14,6 +14,7 @@ import {
 , Type
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import JSZip from 'jszip';
 
 // ─── Utility ────────────────────────────────────────────────────
 const genId = (prefix = 'id') => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
@@ -1574,10 +1575,23 @@ export default function AppContainer() {
     setIsSendingChat(true);
 
     try {
-      // If there are multiple files, send each as a separate message
-      if (currentAttachmentFiles.length > 0) {
-        for (let i = 0; i < currentAttachmentFiles.length; i++) {
-          const file = currentAttachmentFiles[i];
+      // Group multiple files into a zip
+      let filesToProcess = currentAttachmentFiles;
+      if (filesToProcess.length > 1) {
+        const zip = new JSZip();
+        for (let i = 0; i < filesToProcess.length; i++) {
+          const f = filesToProcess[i];
+          const path = f.webkitRelativePath || f.name;
+          zip.file(path, f);
+        }
+        const content = await zip.generateAsync({ type: 'blob' });
+        const zipFile = new File([content], "Attachments.zip", { type: 'application/zip' });
+        filesToProcess = [zipFile];
+      }
+
+      if (filesToProcess.length > 0) {
+        for (let i = 0; i < filesToProcess.length; i++) {
+          const file = filesToProcess[i];
           const msgId = genId('msg');
           const msgTime = now();
           const isImage = file.type.startsWith('image/');
@@ -4076,15 +4090,21 @@ export default function AppContainer() {
                                         } catch(e) { displayName = 'Document'; }
                                       }
                                       const sizeStr = msg.fileSize ? (msg.fileSize > 1024*1024 ? (msg.fileSize/(1024*1024)).toFixed(1)+' MB' : Math.round(msg.fileSize/1024)+' KB') : '';
+                                      
+                                      let finalUrl = url;
+                                      if (url.includes('supabase.co')) {
+                                        finalUrl = url + (url.includes('?') ? '&' : '?') + 'download=';
+                                      }
+
                                       return (
-                                        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-[#2a1b38] hover:bg-[#342245] p-3 rounded-xl border border-purple-500/20 transition-colors w-64 max-w-full mt-1">
+                                        <a href={finalUrl} download={displayName} className="flex items-center gap-3 bg-[#2a1b38] hover:bg-[#342245] p-3 rounded-xl border border-purple-500/20 transition-colors w-64 max-w-full mt-1">
                                           <div className="w-10 h-10 shrink-0 rounded-lg bg-purple-900/50 flex items-center justify-center text-purple-300">
                                             <FileText size={20} />
                                           </div>
                                           <div className="flex flex-col min-w-0">
                                             <span className="text-sm font-medium text-purple-100 truncate">{displayName}</span>
                                             {sizeStr && <span className="text-[10px] text-purple-300/70">{sizeStr}</span>}
-                                            <span className="text-[10px] text-purple-300/70 mt-0.5">Click to view/download</span>
+                                            <span className="text-[10px] text-purple-300/70 mt-0.5">Click to download</span>
                                           </div>
                                         </a>
                                       );
