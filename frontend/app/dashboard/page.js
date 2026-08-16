@@ -1568,43 +1568,57 @@ export default function AppContainer() {
     
     if (!currentChatInput.trim() && currentAttachmentFiles.length === 0 && !currentAudioBlob) return;
     
-    const msgId = genId('msg');
-    const msgTime = now();
-    
-    const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: currentAttachmentFiles.length > 0 && currentAttachmentFiles[0].type.startsWith('image/') ? URL.createObjectURL(currentAttachmentFiles[0]) : (currentAttachmentFiles.length > 0 ? 'file_placeholder' : null), audioUrl: currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null, reactions: {} };
-    
-    if (activeChat === 'group') {
-      setGroupMessages(prev => [...prev, optimisticMsg]);
-    } else if (activeChat === 'dm' && activeDmUser) {
-      const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
-      setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] }));
-    }
-    
     setChatInput('');
     setAttachmentFiles([]);
     setAudioBlob(null);
     setIsSendingChat(true);
-    
-    let attachmentUrl = null;
-    let audioUrl = null;
+
     try {
-      if (currentAttachmentFiles && currentAttachmentFiles.length > 0) {
-        const fileExt = currentAttachmentFiles[0].name.split('.').pop();
-        const fileName = `${msgId}_${Date.now()}.${fileExt}`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAttachmentFiles[0]);
-        if (error) throw error;
-        attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+      // If there are multiple files, send each as a separate message
+      if (currentAttachmentFiles.length > 0) {
+        for (let i = 0; i < currentAttachmentFiles.length; i++) {
+          const file = currentAttachmentFiles[i];
+          const msgId = genId('msg');
+          const msgTime = now();
+          const isImage = file.type.startsWith('image/');
+          
+          // Optimistic UI
+          const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: isImage ? URL.createObjectURL(file) : 'file_placeholder', audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size };
+          if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
+          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
+
+          // Upload file
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${msgId}_${Date.now()}.${fileExt}`;
+          const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, file);
+          if (error) { console.error('Upload error:', error); continue; }
+          const attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+
+          // Insert message
+          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: i === 0 ? currentChatInput : '', msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: attachmentUrl, file_name: file.name, file_size: file.size };
+          if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
+          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }); }
+        }
+      } else {
+        // Text only or audio message
+        const msgId = genId('msg');
+        const msgTime = now();
+        let audioUrl = null;
+        
+        const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null, reactions: {} };
+        if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
+        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
+
+        if (currentAudioBlob) {
+          const audioFileName = `${msgId}_audio.webm`;
+          const { error: audioErr } = await supabase.storage.from('chat_attachments').upload(audioFileName, currentAudioBlob);
+          if (!audioErr) audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(audioFileName).data.publicUrl;
+        }
+
+        if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
       }
-      if (currentAudioBlob) {
-        const fileName = `${msgId}_audio.webm`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAudioBlob);
-        if (error) throw error;
-        audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
-      }
-    } catch(err) { console.error(err); setIsSendingChat(false); return; }
-    
-    if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: attachmentUrl });
-    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: attachmentUrl }); }
+    } catch(err) { console.error('Send message error:', err); }
     
     setIsSendingChat(false);
   };
