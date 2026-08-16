@@ -1710,11 +1710,11 @@ const handleReactMessage = async (msg, emoji) => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!chatInput.trim() && !attachmentFile) return;
+    if (!chatInput.trim() && currentAttachmentFiles.length === 0) return;
     
     const msgId = genId('msg');
     const msgTime = now();
-    const tempAttachmentUrl = attachmentFile && attachmentFile.type.startsWith('image/') ? URL.createObjectURL(attachmentFile) : (attachmentFile ? 'file_placeholder' : null);
+    const tempAttachmentUrl = currentAttachmentFiles.length > 0 && currentAttachmentFiles[0].type.startsWith('image/') ? URL.createObjectURL(currentAttachmentFiles[0]) : (currentAttachmentFiles.length > 0 ? 'file_placeholder' : null);
     
     const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: chatInput, time: msgTime, type: 'chat', audioUrl: null, attachmentUrl: tempAttachmentUrl, reactions: {} };
     if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
