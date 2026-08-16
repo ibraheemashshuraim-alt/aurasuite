@@ -1589,7 +1589,18 @@ const handleDeleteMessage = async (msg, type, action) => {
     try {
       const table = type === 'group' || activeChat === 'group' ? 'group_messages' : 'dm_messages';
       
+      // OPTIMISTIC UPDATE
+      const removeFromList = (list) => list.filter(m => m.id !== msg.id);
+      const markDeletedForMe = (list) => list.map(m => m.id === msg.id ? { ...m, deletedFor: [...(m.deletedFor || []), currentUser.id] } : m);
+      
       if (action === 'everyone') {
+        if (msg.from === currentUser.id || (currentUser.role === 'super_admin' && table === 'group_messages')) {
+          if (activeChat === 'group') setGroupMessages(prev => removeFromList(prev));
+          else if (activeChat === 'dm' && activeDmUser) {
+            const key = [currentUser.id, activeDmUser.id].sort().join('_');
+            setDmThreads(prev => ({ ...prev, [key]: removeFromList(prev[key] || []) }));
+          }
+          await supabase.from(table).delete().eq('id', msg.id);
         if (msg.from === currentUser.id || (currentUser.role === 'super_admin' && table === 'group_messages')) {
           await supabase.from(table).delete().eq('id', msg.id);
         } else {
@@ -1598,6 +1609,11 @@ const handleDeleteMessage = async (msg, type, action) => {
       } else if (action === 'me') {
         const currentDeletedFor = msg.deletedFor || [];
         if (!currentDeletedFor.includes(currentUser.id)) {
+          if (activeChat === 'group') setGroupMessages(prev => markDeletedForMe(prev));
+          else if (activeChat === 'dm' && activeDmUser) {
+            const key = [currentUser.id, activeDmUser.id].sort().join('_');
+            setDmThreads(prev => ({ ...prev, [key]: markDeletedForMe(prev[key] || []) }));
+          }
           const newDeletedFor = [...currentDeletedFor, currentUser.id];
           await supabase.from(table).update({ deleted_for: newDeletedFor }).eq('id', msg.id);
         }
@@ -1609,8 +1625,9 @@ const handleDeleteMessage = async (msg, type, action) => {
 
 const handleReactMessage = async (msg, emoji) => {
     try {
+      document.activeElement?.blur(); // Immediately close hover menu if focused
       const table = activeChat === 'group' ? 'group_messages' : 'dm_messages';
-      const currentReactions = msg.reactions || {};
+      const currentReactions = { ...msg.reactions } || {}; // Clone it to avoid mutation issues
       
       // Toggle logic: if already reacted with this emoji by this user, remove it
       if (currentReactions[emoji] && currentReactions[emoji].includes(currentUser.id)) {
@@ -1619,6 +1636,15 @@ const handleReactMessage = async (msg, emoji) => {
       } else {
         if (!currentReactions[emoji]) currentReactions[emoji] = [];
         currentReactions[emoji].push(currentUser.id);
+      }
+      
+      // OPTIMISTIC UPDATE
+      const updateMsg = (m) => m.id === msg.id ? { ...m, reactions: currentReactions } : m;
+      if (activeChat === 'group') {
+        setGroupMessages(prev => prev.map(updateMsg));
+      } else if (activeChat === 'dm' && activeDmUser) {
+        const key = [currentUser.id, activeDmUser.id].sort().join('_');
+        setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(updateMsg) }));
       }
       
       await supabase.from(table).update({ reactions: currentReactions }).eq('id', msg.id);
@@ -4492,7 +4518,7 @@ const handleReactMessage = async (msg, emoji) => {
           <div 
             className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl transform -translate-x-1/2" 
             style={{ 
-              top: Math.max(10, (reactionModalData.y || window.innerHeight/2) + 20) + 'px', 
+              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 20)) + 'px', 
               left: Math.max(100, (reactionModalData.x || window.innerWidth/2)) + 'px',
               maxHeight: '300px'
             }} 
