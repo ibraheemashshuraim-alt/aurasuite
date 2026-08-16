@@ -287,7 +287,7 @@ export default function AppContainer() {
   // Audio fix: track previous media-control state to avoid spurious audio toggling
   const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
   const [showReactionsPanel, setShowReactionsPanel] = useState(false);
-  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
   const [audioBlob, setAudioBlob] = useState(null);
   const [isDictating, setIsDictating] = useState(false);
   const recognitionRef = useRef(null);
@@ -1721,8 +1721,8 @@ const handleReactMessage = async (msg, emoji) => {
     else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
     
     const currentChatInput = chatInput;
-    const currentAttachmentFile = attachmentFile;
-    setChatInput(''); setAttachmentFile(null);
+    const currentAttachmentFiles = attachmentFiles;
+    setChatInput(''); setAttachmentFiles([]);
     setIsSendingChat(true);
     
     try {
@@ -3815,7 +3815,7 @@ const handleReactMessage = async (msg, emoji) => {
                     <div className="px-4 py-2">
                       <span className="text-[9px] text-purple-500 uppercase font-bold tracking-wider">Direct Messages</span>
                     </div>
-                    {orgMembers.filter(u => u.role !== 'deleted' && u.role !== 'pending_worker').map(user => {
+                    {orgMembers.filter(u => u.role !== 'deleted' && u.role !== 'pending_worker' && u.role !== 'suspended').map(user => {
                       const key = getDmKey(user.id);
                       const msgs = dmThreads[key] || [];
                       return (
@@ -3974,7 +3974,31 @@ const handleReactMessage = async (msg, emoji) => {
                                     {(msg.attachmentUrl && typeof msg.attachmentUrl === 'string' && (msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) || msg.attachmentUrl.startsWith('blob:'))) ? (
                                       <img src={msg.attachmentUrl} alt="attachment" className="max-w-[200px] min-h-[100px] object-cover rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(msg.attachmentUrl)} loading="lazy" />
                                     ) : (
-                                      <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-purple-300 underline"><Pin size={10}/> View Attachment</a>
+                                      <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-[#2a1b38] hover:bg-[#342245] p-3 rounded-xl border border-purple-500/20 transition-colors w-64 max-w-full mt-1">
+                                        <div className="w-10 h-10 shrink-0 rounded-lg bg-purple-900/50 flex items-center justify-center text-purple-300">
+                                          <FileText size={20} />
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                          <span className="text-sm font-medium text-purple-100 truncate">
+                                            {(() => {
+                                              try {
+                                                const urlObj = new URL(msg.attachmentUrl);
+                                                const parts = urlObj.pathname.split('/');
+                                                const lastSegment = decodeURIComponent(parts.pop());
+                                                const nameParts = lastSegment.split('_');
+                                                if (nameParts.length > 3) {
+                                                  return nameParts.slice(3).join('_');
+                                                }
+                                                if (nameParts.length > 2) {
+                                                  return nameParts.slice(2).join('_');
+                                                }
+                                                return lastSegment || 'Document';
+                                              } catch(e) { return 'Document'; }
+                                            })()}
+                                          </span>
+                                          <span className="text-[10px] text-purple-300/70 mt-0.5">Click to view/download</span>
+                                        </div>
+                                      </a>
                                     )}
                                   </div>
                                 )}
@@ -4038,11 +4062,11 @@ const handleReactMessage = async (msg, emoji) => {
                         <div className="flex gap-1 mb-1">
                           <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Attach File">
                             <Pin size={18} />
-                            <input type="file" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
+                            <input type="file" multiple className="hidden" onChange={e => setAttachmentFiles(Array.from(e.target.files))} />
                           </label>
                           <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Gallery">
                             <ImageIcon size={18} />
-                            <input type="file" accept="image/*" className="hidden" onChange={e => setAttachmentFile(e.target.files[0])} />
+                            <input type="file" multiple accept="image/*" className="hidden" onChange={e => setAttachmentFiles(Array.from(e.target.files))} />
                           </label>
                           <button type="button" onClick={() => setIsCameraOpen(true)} className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Camera">
                             <Camera size={18} />
@@ -4058,7 +4082,7 @@ const handleReactMessage = async (msg, emoji) => {
                                ) : audioBlob ? (
                                   <span className="text-xs text-purple-300 flex items-center gap-1"><Mic size={14}/> Audio Note ready to send</span>
                                ) : null}
-                               <button type="button" onClick={() => { setAttachmentFile(null); setAudioBlob(null); }} className="p-1 text-red-400 hover:bg-red-500/20 rounded-full transition-colors"><X size={14}/></button>
+                               <button type="button" onClick={() => { setAttachmentFiles([]); setAudioBlob(null); }} className="p-1 text-red-400 hover:bg-red-500/20 rounded-full transition-colors"><X size={14}/></button>
                             </div>
                           )}
                           <input type="text" placeholder={`Message ${activeChat === 'group' ? '#team-general' : activeDmUser?.full_name || '...'}`}
@@ -4489,7 +4513,7 @@ const handleReactMessage = async (msg, emoji) => {
               canvas.toBlob(blob => {
                 if (blob) {
                   const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
-                  setAttachmentFile(file);
+                  setAttachmentFiles([file]);
                 }
                 if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
                 setIsCameraOpen(false);
@@ -4524,7 +4548,7 @@ const handleReactMessage = async (msg, emoji) => {
               canvas.toBlob(blob => {
                 if (blob) {
                   const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
-                  setAttachmentFile(file);
+                  setAttachmentFiles([file]);
                 }
                 if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
                 setIsCameraOpen(false);
