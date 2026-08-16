@@ -4528,7 +4528,7 @@ const handleReactMessage = async (msg, emoji) => {
               onClick={(e) => e.stopPropagation()}
             />
             {/* Provide a distinct download button just in case, though the image itself is visible */}
-            <a href={lightboxImage} target="_blank" download className="mt-4 px-4 py-2 bg-purple-600/50 hover:bg-purple-600/80 border border-purple-500/50 rounded-xl text-white text-sm font-medium transition-colors" onClick={e => e.stopPropagation()}>
+            <a href={lightboxImage + (lightboxImage.includes('?') ? '&' : '?') + 'download='} download className="mt-4 px-4 py-2 bg-purple-600/50 hover:bg-purple-600/80 border border-purple-500/50 rounded-xl text-white text-sm font-medium transition-colors" onClick={e => e.stopPropagation()}>
               Open / Download
             </a>
           </div>
