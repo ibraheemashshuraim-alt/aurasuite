@@ -419,12 +419,12 @@ export default function AppContainer() {
         if (tsk.data) setTasks(tsk.data);
         if (meets.data) setActiveMeetings(meets.data);
         if (scheds.data) setSchedules(scheds.data);
-        if (msgs.data) setGroupMessages(msgs.data.map(m => ({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, audioUrl: m.audio_url, attachmentUrl: m.attachment_url, reactions: m.reactions || {} })));
+        if (msgs.data) setGroupMessages(msgs.data.map(m => ({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, audioUrl: m.audio_url, attachmentUrl: m.attachment_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
         if (dms.data) {
           const threads = {};
           dms.data.forEach(m => {
             if (!threads[m.thread_key]) threads[m.thread_key] = [];
-            threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, audioUrl: m.audio_url, attachmentUrl: m.attachment_url, reactions: m.reactions || {} });
+            threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, audioUrl: m.audio_url, attachmentUrl: m.attachment_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size });
           });
           setDmThreads(threads);
         }
@@ -585,7 +585,7 @@ export default function AppContainer() {
           setGroupMessages(prev => {
             const exists = prev.find(msg => msg.id === m.id);
             if (exists) return prev.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg);
-            return [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }];
+            return [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }];
           });
         } else if (payload.eventType === 'DELETE') {
           setGroupMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
@@ -601,7 +601,7 @@ export default function AppContainer() {
             const thread = prev[m.thread_key] || [];
             const exists = thread.find(msg => msg.id === m.id);
             if (exists) return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg) };
-            return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }] };
+            return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }] };
           });
         } else if (payload.eventType === 'DELETE') {
           setDmThreads(prev => {
@@ -3984,37 +3984,38 @@ const handleReactMessage = async (msg, emoji) => {
                                     : 'bg-[#150e25] border border-purple-500/15 text-white'
                               }`}>
                                 {renderTextWithLinks(msg.text.replace(/ \| \[MEET_ID:.*\]/, ''))}
-                                {msg.attachmentUrl && (
+                                {(msg.attachmentUrl && msg.attachmentUrl !== 'file_placeholder') && (
                                   <div className="mt-2">
-                                    {(msg.attachmentUrl && typeof msg.attachmentUrl === 'string' && (msg.attachmentUrl.match(/\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i) || msg.attachmentUrl.startsWith('blob:'))) ? (
-                                      <img src={msg.attachmentUrl} alt="attachment" className="max-w-[200px] min-h-[100px] object-cover rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(msg.attachmentUrl)} loading="lazy" />
-                                    ) : (
-                                      <a href={msg.attachmentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-[#2a1b38] hover:bg-[#342245] p-3 rounded-xl border border-purple-500/20 transition-colors w-64 max-w-full mt-1">
-                                        <div className="w-10 h-10 shrink-0 rounded-lg bg-purple-900/50 flex items-center justify-center text-purple-300">
-                                          <FileText size={20} />
-                                        </div>
-                                        <div className="flex flex-col min-w-0">
-                                          <span className="text-sm font-medium text-purple-100 truncate">
-                                            {(() => {
-                                              try {
-                                                const urlObj = new URL(msg.attachmentUrl);
-                                                const parts = urlObj.pathname.split('/');
-                                                const lastSegment = decodeURIComponent(parts.pop());
-                                                const nameParts = lastSegment.split('_');
-                                                if (nameParts.length > 3) {
-                                                  return nameParts.slice(3).join('_');
-                                                }
-                                                if (nameParts.length > 2) {
-                                                  return nameParts.slice(2).join('_');
-                                                }
-                                                return lastSegment || 'Document';
-                                              } catch(e) { return 'Document'; }
-                                            })()}
-                                          </span>
-                                          <span className="text-[10px] text-purple-300/70 mt-0.5">Click to view/download</span>
-                                        </div>
-                                      </a>
-                                    )}
+                                    {(() => {
+                                      const url = msg.attachmentUrl;
+                                      const isImg = url.startsWith('blob:') || /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(url);
+                                      if (isImg) {
+                                        return <img src={url} alt="attachment" className="max-w-[200px] min-h-[100px] object-cover rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(url)} loading="lazy" />;
+                                      }
+                                      let displayName = msg.fileName || 'Document';
+                                      if (!msg.fileName) {
+                                        try {
+                                          const urlObj = new URL(url);
+                                          const parts = urlObj.pathname.split('/');
+                                          const lastSeg = decodeURIComponent(parts.pop() || '');
+                                          const nameParts = lastSeg.split('_');
+                                          displayName = nameParts.length > 2 ? nameParts.slice(2).join('_') : lastSeg || 'Document';
+                                        } catch(e) { displayName = 'Document'; }
+                                      }
+                                      const sizeStr = msg.fileSize ? (msg.fileSize > 1024*1024 ? (msg.fileSize/(1024*1024)).toFixed(1)+' MB' : Math.round(msg.fileSize/1024)+' KB') : '';
+                                      return (
+                                        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-[#2a1b38] hover:bg-[#342245] p-3 rounded-xl border border-purple-500/20 transition-colors w-64 max-w-full mt-1">
+                                          <div className="w-10 h-10 shrink-0 rounded-lg bg-purple-900/50 flex items-center justify-center text-purple-300">
+                                            <FileText size={20} />
+                                          </div>
+                                          <div className="flex flex-col min-w-0">
+                                            <span className="text-sm font-medium text-purple-100 truncate">{displayName}</span>
+                                            {sizeStr && <span className="text-[10px] text-purple-300/70">{sizeStr}</span>}
+                                            <span className="text-[10px] text-purple-300/70 mt-0.5">Click to view/download</span>
+                                          </div>
+                                        </a>
+                                      );
+                                    })()}
                                   </div>
                                 )}
                                 {msg.audioUrl && (
