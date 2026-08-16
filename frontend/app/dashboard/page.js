@@ -4597,7 +4597,6 @@ export default function AppContainer() {
           </div>
         </div>
       )}
-    </div>
   </main>
   );
 }
