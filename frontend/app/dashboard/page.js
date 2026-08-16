@@ -1582,20 +1582,26 @@ export default function AppContainer() {
           const msgTime = now();
           const isImage = file.type.startsWith('image/');
           
-          // Optimistic UI
-          const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: isImage ? URL.createObjectURL(file) : 'file_placeholder', audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size };
+          // Optimistic UI - show blob preview immediately
+          const blobUrl = URL.createObjectURL(file);
+          const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: blobUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size };
           if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
           else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
 
-          // Upload file
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${msgId}_${Date.now()}.${fileExt}`;
-          const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, file);
-          if (error) { console.error('Upload error:', error); continue; }
-          const attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+          // Upload file to Supabase storage
+          const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const storageFileName = `${msgId}_${safeFileName}`;
+          const { error: uploadErr } = await supabase.storage.from('chat_attachments').upload(storageFileName, file, { contentType: file.type });
+          if (uploadErr) { console.error('Upload error:', uploadErr); continue; }
+          const realUrl = supabase.storage.from('chat_attachments').getPublicUrl(storageFileName).data.publicUrl;
 
-          // Insert message
-          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: i === 0 ? currentChatInput : '', msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: attachmentUrl, file_name: file.name, file_size: file.size };
+          // Update optimistic message with real URL
+          if (activeChat === 'group') setGroupMessages(prev => prev.map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m));
+          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m) })); }
+
+          // Insert message to DB (only use existing columns)
+          const msgText = i === 0 && currentChatInput ? currentChatInput : '';
+          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: realUrl };
           if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
           else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }); }
         }
@@ -4053,9 +4059,9 @@ export default function AppContainer() {
                                   <div className="mt-2">
                                     {(() => {
                                       const url = msg.attachmentUrl;
-                                      const isImg = url.startsWith('blob:') || /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(url);
+                                      const isImg = url.startsWith('blob:') || /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(url) || (msg.fileName && /\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i.test(msg.fileName));
                                       if (isImg) {
-                                        return <img src={url} alt="attachment" className="max-w-[200px] min-h-[100px] object-cover rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(url)} loading="lazy" />;
+                                        return <img src={url} alt="attachment" className="max-w-[200px] rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(url)} loading="lazy" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex'); }} />;
                                       }
                                       // File attachment bubble
                                       let displayName = msg.fileName || 'Document';

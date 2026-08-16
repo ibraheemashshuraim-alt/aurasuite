@@ -1725,22 +1725,27 @@ const handleReactMessage = async (msg, emoji) => {
           const file = currentAttachmentFiles[i];
           const msgId = genId('msg');
           const msgTime = now();
-          const isImage = file.type.startsWith('image/');
 
-          // Optimistic UI
-          const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', audioUrl: null, attachmentUrl: isImage ? URL.createObjectURL(file) : 'file_placeholder', reactions: {}, fileName: file.name, fileSize: file.size };
+          // Optimistic UI - always show blob preview
+          const blobUrl = URL.createObjectURL(file);
+          const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', audioUrl: null, attachmentUrl: blobUrl, reactions: {}, fileName: file.name, fileSize: file.size };
           if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
           else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
 
           // Upload file to Supabase storage
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${msgId}_${Date.now()}.${fileExt}`;
-          const { error: uploadError } = await supabase.storage.from('chat_attachments').upload(fileName, file);
+          const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const storageFileName = `${msgId}_${safeFileName}`;
+          const { error: uploadError } = await supabase.storage.from('chat_attachments').upload(storageFileName, file, { contentType: file.type });
           if (uploadError) { console.error('Upload error:', uploadError); continue; }
-          const attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+          const realUrl = supabase.storage.from('chat_attachments').getPublicUrl(storageFileName).data.publicUrl;
 
-          // Insert message to database
-          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: i === 0 ? currentChatInput : '', msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: attachmentUrl, file_name: file.name, file_size: file.size };
+          // Update optimistic with real URL
+          if (activeChat === 'group') setGroupMessages(prev => prev.map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m));
+          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m) })); }
+
+          // Insert message to database (only existing columns)
+          const msgText = i === 0 && currentChatInput ? currentChatInput : '';
+          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: realUrl };
           if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
           else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }); }
         }
