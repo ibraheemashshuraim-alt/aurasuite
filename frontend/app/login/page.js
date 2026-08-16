@@ -246,6 +246,8 @@ export default function AppContainer() {
 
   // ── Nav ──
   const [activeTab, setActiveTab] = useState('dashboard');
+  useEffect(() => { const saved = localStorage.getItem('aura_worker_tab'); if (saved) setActiveTab(saved); }, []);
+  useEffect(() => { localStorage.setItem('aura_worker_tab', activeTab); }, [activeTab]);
 
   // ── Meeting ──
   const [isInMeeting, setIsInMeeting] = useState(false);
@@ -577,24 +579,47 @@ export default function AppContainer() {
           }
         });
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, ({ new: m }) => {
-        setGroupMessages(prev => {
-          const exists = prev.find(msg => msg.id === m.id);
-          if (exists) {
-            return prev.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg);
-          }
-          return [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }];
-        });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          const m = payload.new;
+          setGroupMessages(prev => {
+            const exists = prev.find(msg => msg.id === m.id);
+            if (exists) return prev.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg);
+            return [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }];
+          });
+        } else if (payload.eventType === 'DELETE') {
+          setGroupMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
+        } else if (payload.eventType === 'UPDATE') {
+          const m = payload.new;
+          setGroupMessages(prev => prev.map(msg => msg.id === m.id ? { ...msg, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} } : msg));
+        }
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'dm_messages' }, ({ new: m }) => {
-        setDmThreads(prev => {
-          const thread = prev[m.thread_key] || [];
-          const exists = thread.find(msg => msg.id === m.id);
-          if (exists) {
-            return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg) };
-          }
-          return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }] };
-        });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          const m = payload.new;
+          setDmThreads(prev => {
+            const thread = prev[m.thread_key] || [];
+            const exists = thread.find(msg => msg.id === m.id);
+            if (exists) return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg) };
+            return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} }] };
+          });
+        } else if (payload.eventType === 'DELETE') {
+          setDmThreads(prev => {
+            const next = { ...prev };
+            for (const k in next) {
+              next[k] = next[k].filter(msg => msg.id !== payload.old.id);
+            }
+            return next;
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const m = payload.new;
+          setDmThreads(prev => {
+             const next = { ...prev };
+             if (!next[m.thread_key]) return next;
+             next[m.thread_key] = next[m.thread_key].map(msg => msg.id === m.id ? { ...msg, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} } : msg);
+             return next;
+          });
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => {
         supabase.from('schedules').select('*').then(({ data }) => { if (data) setSchedules(data); });
@@ -4516,7 +4541,7 @@ const handleReactMessage = async (msg, emoji) => {
           <div 
             className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl" 
             style={{ 
-              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 15)) + 'px', 
+              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 35)) + 'px', 
               left: Math.min(window.innerWidth - 330, Math.max(10, (reactionModalData.x || window.innerWidth/2) - 160)) + 'px',
               maxHeight: '300px'
             }} 

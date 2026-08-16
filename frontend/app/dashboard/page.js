@@ -290,6 +290,8 @@ export default function AppContainer() {
 
   // ── Nav ──
   const [activeTab, setActiveTab] = useState('dashboard');
+  useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
+  useEffect(() => { localStorage.setItem('aura_admin_tab', activeTab); }, [activeTab]);
 
   // ── Meeting ──
   const [isInMeeting, setIsInMeeting] = useState(false);
@@ -4514,6 +4516,8 @@ export default function AppContainer() {
               Open / Download
             </a>
           </div>
+        </div>
+      )}
       
       {isCameraOpen && (
         <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4">
@@ -4557,7 +4561,7 @@ export default function AppContainer() {
           <div 
             className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl" 
             style={{ 
-              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 15)) + 'px', 
+              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 35)) + 'px', 
               left: Math.min(window.innerWidth - 330, Math.max(10, (reactionModalData.x || window.innerWidth/2) - 160)) + 'px',
               maxHeight: '300px'
             }} 
@@ -4594,7 +4598,6 @@ export default function AppContainer() {
         </div>
       )}
     </div>
-      )}
   </main>
   );
 }
