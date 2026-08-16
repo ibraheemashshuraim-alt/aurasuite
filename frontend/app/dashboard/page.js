@@ -1751,7 +1751,12 @@ export default function AppContainer() {
       }
       
       // Optimistic update
-      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, reactions: currentReactions } : m));
+      if (activeChat === 'group') {
+        setGroupMessages(prev => prev.map(m => m.id === msg.id ? { ...m, reactions: currentReactions } : m));
+      } else if (activeChat === 'dm' && activeDmUser) {
+        const key = [currentUser.id, activeDmUser.id].sort().join('_');
+        setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msg.id ? { ...m, reactions: currentReactions } : m) }));
+      }
       
       await supabase.from(table).update({ reactions: currentReactions }).eq('id', msg.id);
     } catch (err) {
@@ -4545,49 +4550,15 @@ export default function AppContainer() {
           </div>
         </div>
       )}
-        {isCameraOpen && (
-        <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4">
-          <div className="relative w-full max-w-lg aspect-video bg-black rounded-2xl overflow-hidden mb-6 border border-purple-500/30">
-            <video ref={cameraVideoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
-          </div>
-          <div className="flex gap-4">
-            <button type="button" onClick={() => {
-              if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
-              setIsCameraOpen(false);
-            }} className="px-6 py-3 rounded-xl bg-purple-900/40 text-white font-medium hover:bg-purple-900/60 border border-purple-500/30 transition-colors">
-              Cancel
-            </button>
-            <button type="button" onClick={() => {
-              if (!cameraVideoRef.current) return;
-              const canvas = document.createElement('canvas');
-              canvas.width = cameraVideoRef.current.videoWidth;
-              canvas.height = cameraVideoRef.current.videoHeight;
-              const ctx = canvas.getContext('2d');
-              ctx.translate(canvas.width, 0);
-              ctx.scale(-1, 1);
-              ctx.drawImage(cameraVideoRef.current, 0, 0, canvas.width, canvas.height);
-              canvas.toBlob(blob => {
-                if (blob) {
-                  const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
-                  setAttachmentFile(file);
-                }
-                if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
-                setIsCameraOpen(false);
-              }, 'image/jpeg', 0.9);
-            }} className="px-8 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all flex items-center gap-2">
-              <Camera size={20} /> Capture
-            </button>
-          </div>
-        </div>
-      )}
+        
 
       {reactionModalData && (
         <div className="fixed inset-0 z-[100] bg-black/10" onClick={() => setReactionModalData(null)}>
           <div 
-            className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl transform -translate-x-1/2" 
+            className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl" 
             style={{ 
-              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 20)) + 'px', 
-              left: Math.max(100, (reactionModalData.x || window.innerWidth/2)) + 'px',
+              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 15)) + 'px', 
+              left: Math.min(window.innerWidth - 330, Math.max(10, (reactionModalData.x || window.innerWidth/2) - 160)) + 'px',
               maxHeight: '300px'
             }} 
             onClick={e => e.stopPropagation()}
@@ -4610,7 +4581,7 @@ export default function AppContainer() {
                           <span className="text-sm text-gray-200">{isMe ? 'You' : (user?.full_name || 'Unknown')}</span>
                         </div>
                         {isMe && (
-                          <button onClick={() => { toggleReaction(reactionModalData.msgId, emoji); setReactionModalData(null); }} className="text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-1 transition-colors">
+                          <button onClick={() => { handleReactMessage({ id: reactionModalData.msgId, reactions: reactionModalData.reactions }, emoji); setReactionModalData(null); }} className="text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-1 transition-colors">
                             Tap to remove
                           </button>
                         )}

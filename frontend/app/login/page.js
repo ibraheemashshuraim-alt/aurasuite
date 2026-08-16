@@ -4514,10 +4514,10 @@ const handleReactMessage = async (msg, emoji) => {
       {reactionModalData && (
         <div className="fixed inset-0 z-[100] bg-black/10" onClick={() => setReactionModalData(null)}>
           <div 
-            className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl transform -translate-x-1/2" 
+            className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl" 
             style={{ 
-              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 20)) + 'px', 
-              left: Math.max(100, (reactionModalData.x || window.innerWidth/2)) + 'px',
+              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 15)) + 'px', 
+              left: Math.min(window.innerWidth - 330, Math.max(10, (reactionModalData.x || window.innerWidth/2) - 160)) + 'px',
               maxHeight: '300px'
             }} 
             onClick={e => e.stopPropagation()}
@@ -4540,7 +4540,7 @@ const handleReactMessage = async (msg, emoji) => {
                           <span className="text-sm text-gray-200">{isMe ? 'You' : (user?.full_name || 'Unknown')}</span>
                         </div>
                         {isMe && (
-                          <button onClick={() => { toggleReaction(reactionModalData.msgId, emoji); setReactionModalData(null); }} className="text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-1 transition-colors">
+                          <button onClick={() => { handleReactMessage({ id: reactionModalData.msgId, reactions: reactionModalData.reactions }, emoji); setReactionModalData(null); }} className="text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-1 transition-colors">
                             Tap to remove
                           </button>
                         )}
