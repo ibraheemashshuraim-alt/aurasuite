@@ -4009,9 +4009,9 @@ const handleReactMessage = async (msg, emoji) => {
                                   <div className="mt-2">
                                     {(() => {
                                       const url = msg.attachmentUrl;
-                                      const isImg = url.startsWith('blob:') || /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(url);
+                                      const isImg = url.startsWith('blob:') || /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(url) || (msg.fileName && /\.(jpeg|jpg|gif|png|webp|svg|bmp)$/i.test(msg.fileName));
                                       if (isImg) {
-                                        return <img src={url} alt="attachment" className="max-w-[200px] min-h-[100px] object-cover rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(url)} loading="lazy" />;
+                                        return <img src={url} alt="attachment" className="max-w-[200px] rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(url)} loading="lazy" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex'); }} />;
                                       }
                                       let displayName = msg.fileName || 'Document';
                                       if (!msg.fileName) {
