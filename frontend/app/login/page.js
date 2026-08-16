@@ -1727,10 +1727,11 @@ const handleReactMessage = async (msg, emoji) => {
     
     try {
       let attachmentUrl = null;
-      if (currentAttachmentFile) {
-        const fileExt = currentAttachmentFile.name.split('.').pop();
+      if (currentAttachmentFiles && currentAttachmentFiles.length > 0) {
+        // Just upload the first one for temp messages in login
+        const fileExt = currentAttachmentFiles[0].name.split('.').pop();
         const fileName = `${msgId}_file.${fileExt}`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAttachmentFile);
+        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, currentAttachmentFiles[0]);
         if (error) throw error;
         attachmentUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
       }
@@ -4073,16 +4074,19 @@ const handleReactMessage = async (msg, emoji) => {
                           </button>
                         </div>
                         <div className="flex-1 relative">
-                          {(attachmentFile || audioBlob) && (
-                            <div className="absolute -top-14 left-0 right-0 bg-[#150e25] p-2 rounded-lg border border-purple-500/30 flex justify-between items-center z-10 shadow-lg">
-                               {attachmentFile && attachmentFile.type.startsWith('image/') ? (
-                                  <img src={URL.createObjectURL(attachmentFile)} alt="preview" className="h-10 max-w-[100px] object-cover rounded border border-purple-500/50 cursor-pointer hover:opacity-80" onClick={() => setLightboxImage(URL.createObjectURL(attachmentFile))} title="Click to view full size" />
-                               ) : attachmentFile ? (
-                                  <span className="text-xs text-purple-300 flex items-center gap-1"><FileText size={14}/> {attachmentFile.name}</span>
-                               ) : audioBlob ? (
-                                  <span className="text-xs text-purple-300 flex items-center gap-1"><Mic size={14}/> Audio Note ready to send</span>
+                          {(attachmentFiles.length > 0 || audioBlob) && (
+                            <div className="absolute -top-14 left-0 right-0 bg-[#150e25] p-2 rounded-lg border border-purple-500/30 flex justify-between items-center z-10 shadow-lg overflow-x-auto gap-2">
+                               <div className="flex gap-2 items-center flex-nowrap">
+                               {attachmentFiles.map((f, i) => (
+                                 f.type.startsWith('image/') ? 
+                                  <img key={i} src={URL.createObjectURL(f)} alt="preview" className="h-10 max-w-[100px] object-cover rounded border border-purple-500/50 cursor-pointer hover:opacity-80 shrink-0" onClick={() => setLightboxImage(URL.createObjectURL(f))} title="Click to view full size" />
+                                 : <span key={i} className="text-xs text-purple-300 flex items-center gap-1 shrink-0"><FileText size={14}/> {f.name}</span>
+                               ))}
+                               </div>
+                               {audioBlob ? (
+                                  <span className="text-xs text-purple-300 flex items-center gap-1 shrink-0"><Mic size={14}/> Audio Note ready to send</span>
                                ) : null}
-                               <button type="button" onClick={() => { setAttachmentFiles([]); setAudioBlob(null); }} className="p-1 text-red-400 hover:bg-red-500/20 rounded-full transition-colors"><X size={14}/></button>
+                               <button type="button" onClick={() => { setAttachmentFiles([]); setAudioBlob(null); }} className="p-1 text-red-400 hover:bg-red-500/20 rounded-full transition-colors shrink-0 ml-auto"><X size={14}/></button>
                             </div>
                           )}
                           <input type="text" placeholder={`Message ${activeChat === 'group' ? '#team-general' : activeDmUser?.full_name || '...'}`}
