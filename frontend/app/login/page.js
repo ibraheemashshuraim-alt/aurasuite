@@ -290,6 +290,7 @@ export default function AppContainer() {
   const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
   const [showReactionsPanel, setShowReactionsPanel] = useState(false);
   const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const [attachmentSource, setAttachmentSource] = useState(null);
   const [audioBlob, setAudioBlob] = useState(null);
   const [isDictating, setIsDictating] = useState(false);
   const recognitionRef = useRef(null);
@@ -1717,13 +1718,13 @@ const handleReactMessage = async (msg, emoji) => {
     
     if (!currentChatInput.trim() && currentAttachmentFiles.length === 0) return;
     
-    setChatInput(''); setAttachmentFiles([]);
+    setChatInput(''); setAttachmentFiles([]); setAttachmentSource(null);
     setIsSendingChat(true);
     
     try {
-      // Group multiple files into a zip
+      // Group multiple files into a zip (skip if from gallery)
       let filesToProcess = currentAttachmentFiles;
-      if (filesToProcess.length > 1) {
+      if (filesToProcess.length > 1 && attachmentSource !== 'gallery') {
         const zip = new JSZip();
         for (let i = 0; i < filesToProcess.length; i++) {
           const f = filesToProcess[i];
@@ -4105,11 +4106,11 @@ const handleReactMessage = async (msg, emoji) => {
                         <div className="flex gap-1 mb-1">
                           <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Attach File">
                             <Pin size={18} />
-                            <input type="file" multiple className="hidden" onChange={e => setAttachmentFiles(Array.from(e.target.files))} />
+                            <input type="file" multiple className="hidden" onChange={e => { setAttachmentFiles(Array.from(e.target.files)); setAttachmentSource('file'); }} />
                           </label>
                           <label className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Gallery">
                             <ImageIcon size={18} />
-                            <input type="file" multiple accept="image/*" className="hidden" onChange={e => setAttachmentFiles(Array.from(e.target.files))} />
+                            <input type="file" multiple accept="image/*" className="hidden" onChange={e => { setAttachmentFiles(Array.from(e.target.files)); setAttachmentSource('gallery'); }} />
                           </label>
                           <button type="button" onClick={() => setIsCameraOpen(true)} className="cursor-pointer p-2 rounded-xl text-purple-400 hover:bg-purple-900/30 hover:text-white transition-colors group relative" title="Camera">
                             <Camera size={18} />
