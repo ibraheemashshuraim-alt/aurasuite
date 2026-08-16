@@ -1601,8 +1601,6 @@ const handleDeleteMessage = async (msg, type, action) => {
             setDmThreads(prev => ({ ...prev, [key]: removeFromList(prev[key] || []) }));
           }
           await supabase.from(table).delete().eq('id', msg.id);
-        if (msg.from === currentUser.id || (currentUser.role === 'super_admin' && table === 'group_messages')) {
-          await supabase.from(table).delete().eq('id', msg.id);
         } else {
           alert("You do not have permission to delete this message for everyone.");
         }
