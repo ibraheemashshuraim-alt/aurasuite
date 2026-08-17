@@ -4553,14 +4553,16 @@ export default function AppContainer() {
                               body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name, role: 'admin' })
                             });
                             const data = await res.json();
-                            if (!data.success) {
-                              console.error('Email API returned failure:', data);
+                            if (!data.success || data.message?.includes('skipped')) {
+                              console.warn('Email skipped or failed:', data);
+                              alert(`⚠️ Approval successful, but Email was NOT sent (Vercel config missing/failed).\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+                            } else {
+                              addNotification(`✅ Approved successfully and Email sent to ${org.email}!`, 'success');
                             }
                           } catch (e) {
                             console.error("Email might have failed", e);
+                            alert(`⚠️ Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
                           }
-
-                          alert(`✅ ${org.name} Approved!\n\nSend these credentials to the owner:\n\nPortal Login URL: aurasuite-kappa.vercel.app/login\nCard Number: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}\n\n(If you haven't set up EMAIL_USER and EMAIL_PASS in Vercel, the automatic email was not sent.)`);
 
                           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: 'active' } : o));
                         }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 transition-all">

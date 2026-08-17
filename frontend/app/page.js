@@ -74,6 +74,17 @@ export default function LandingPage() {
     }
   };
 
+  const handleCloseModal = () => {
+    setShowRegisterModal(false);
+    setTimeout(() => {
+      setSuccess(false);
+      setErrorMsg('');
+      setFormData({
+        orgName: '', ownerName: '', email: '', phone: '+92 ', businessType: 'software_house', teamSize: '1-10', cnic: '', city: ''
+      });
+    }, 300); // Reset after modal close animation
+  };
+
   const modeContent = {
     software_house: {
       title: "Agile Software Houses",
@@ -386,7 +397,7 @@ export default function LandingPage() {
       {showRegisterModal && (
         <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg glass-panel-glow border border-purple-500/40 rounded-3xl p-8 relative overflow-hidden">
-            <button onClick={() => setShowRegisterModal(false)} className="absolute top-4 right-4 text-purple-400 hover:text-white">✕</button>
+            <button onClick={handleCloseModal} className="absolute top-4 right-4 text-purple-400 hover:text-white">✕</button>
             
             {success ? (
               <div className="text-center py-10 space-y-4">
@@ -397,7 +408,7 @@ export default function LandingPage() {
                 <p className="text-sm text-purple-200">
                   Your registration request has been submitted. Our Super Admin will review it and send your Admin Access Card via Email within 24 hours.
                 </p>
-                <button onClick={() => setShowRegisterModal(false)} className="mt-4 px-8 py-3 bg-purple-900/40 border border-purple-500/30 rounded-xl text-white font-bold hover:bg-purple-800/50 transition-colors">
+                <button onClick={handleCloseModal} className="mt-4 px-8 py-3 bg-purple-900/40 border border-purple-500/30 rounded-xl text-white font-bold hover:bg-purple-800/50 transition-colors">
                   Close
                 </button>
               </div>
