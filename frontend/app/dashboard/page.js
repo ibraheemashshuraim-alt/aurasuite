@@ -2049,18 +2049,32 @@ export default function AppContainer() {
     }
   };
 
-  const toggleLockAllWorkers = async (lock) => {
+  const toggleLockAllWorkers = async (mode) => {
     const workerIds = profiles.filter(p => p.role === 'worker' && p.organization_id === activeOrg?.id).map(p => p.id);
     if (workerIds.length === 0) return;
     
-    // If locking all, set is_locked true, force_unlocked false
-    // If unlocking all, set is_locked false, force_unlocked false (restores Auto mode)
-    const newForceUnlocked = false;
+    let lock = false;
+    let newForceUnlocked = false;
+    let modeText = 'auto mode';
+
+    if (mode === 'lock') {
+      lock = true;
+      newForceUnlocked = false;
+      modeText = 'locked';
+    } else if (mode === 'unlock') {
+      lock = false;
+      newForceUnlocked = true;
+      modeText = 'force unlocked';
+    } else if (mode === 'auto') {
+      lock = false;
+      newForceUnlocked = false;
+      modeText = 'set to auto mode';
+    }
     
     const { error } = await supabase.from('profiles').update({ is_locked: lock, force_unlocked: newForceUnlocked }).in('id', workerIds);
     if (!error) {
       setProfiles(prev => prev.map(p => workerIds.includes(p.id) ? { ...p, is_locked: lock, force_unlocked: newForceUnlocked } : p));
-      addNotification(`All workers are now ${lock ? 'locked' : 'unlocked'}.`, lock ? 'warning' : 'success');
+      addNotification(`All workers are now ${modeText}.`, mode === 'lock' ? 'warning' : 'success');
       if (kickoutChannelRef.current) {
         await kickoutChannelRef.current.send({
           type: 'broadcast',
@@ -3733,8 +3747,9 @@ export default function AppContainer() {
                     </div>
 
                     <div className="flex bg-purple-950/30 rounded-lg p-1 border border-purple-500/10">
-                      <button onClick={() => toggleLockAllWorkers(true)} className="px-3 py-1 text-[10px] font-bold rounded bg-red-950/30 text-red-400 hover:bg-red-900/50 transition-colors">Lock All</button>
-                      <button onClick={() => toggleLockAllWorkers(false)} className="px-3 py-1 text-[10px] font-bold rounded bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/50 transition-colors ml-1">Unlock All</button>
+                      <button onClick={() => toggleLockAllWorkers('lock')} className="px-3 py-1 text-[10px] font-bold rounded bg-red-950/30 text-red-400 hover:bg-red-900/50 transition-colors">Lock All</button>
+                      <button onClick={() => toggleLockAllWorkers('unlock')} className="px-3 py-1 text-[10px] font-bold rounded bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/50 transition-colors mx-1">Unlock All</button>
+                      <button onClick={() => toggleLockAllWorkers('auto')} className="px-3 py-1 text-[10px] font-bold rounded bg-blue-950/30 text-blue-400 hover:bg-blue-900/50 transition-colors">Auto All</button>
                     </div>
                   </div>
                 </div>
