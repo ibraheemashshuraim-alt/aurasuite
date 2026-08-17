@@ -15,6 +15,8 @@ export default function SuperAdminPage() {
   const [mounted, setMounted] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [pendingOrgs, setPendingOrgs] = useState([]);
+  const [activeOrgs, setActiveOrgs] = useState([]);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'active'
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   
@@ -33,13 +35,22 @@ export default function SuperAdminPage() {
   }, []);
 
   const fetchPendingOrgs = async () => {
-    const { data, error } = await supabase
+    const { data: pendingData } = await supabase
       .from('organizations')
       .select('*')
       .eq('status', 'pending_approval')
       .order('created_at', { ascending: false });
       
-    if (data) setPendingOrgs(data);
+    if (pendingData) setPendingOrgs(pendingData);
+
+    const { data: activeData } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+      
+    if (activeData) setActiveOrgs(activeData);
+
     setLoading(false);
   };
 
@@ -145,80 +156,140 @@ export default function SuperAdminPage() {
 
       <main className="max-w-7xl mx-auto px-6 py-12 relative z-10">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-            <div className="p-2 bg-red-500/10 rounded-lg border border-red-500/20"><Clock className="text-red-400" /></div> Pending Registrations
-          </h2>
-          <div className="px-4 py-2 bg-[#11081c]/80 backdrop-blur border border-red-500/30 rounded-xl flex items-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.1)]">
+          <div className="flex gap-4">
+            <button 
+              onClick={() => setActiveTab('pending')}
+              className={`px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2 ${activeTab === 'pending' ? 'bg-red-500/20 text-red-400 border border-red-500/50 shadow-[0_0_15px_rgba(220,38,38,0.2)]' : 'bg-[#11081c]/50 text-purple-400 hover:bg-[#11081c] border border-transparent'}`}>
+              <Clock size={18} /> Pending Approvals
+            </button>
+            <button 
+              onClick={() => setActiveTab('active')}
+              className={`px-6 py-3 rounded-xl font-bold transition-all flex items-center gap-2 ${activeTab === 'active' ? 'bg-green-500/20 text-green-400 border border-green-500/50 shadow-[0_0_15px_rgba(34,197,94,0.2)]' : 'bg-[#11081c]/50 text-purple-400 hover:bg-[#11081c] border border-transparent'}`}>
+              <CheckCircle size={18} /> Active Orgs
+            </button>
+          </div>
+          <div className="px-4 py-3 bg-[#11081c]/80 backdrop-blur border border-red-500/30 rounded-xl flex items-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.1)]">
             <Search size={16} className="text-red-400" />
-            <input type="text" placeholder="Search requests..." className="bg-transparent border-none outline-none text-sm text-white" />
+            <input type="text" placeholder="Search requests..." className="bg-transparent border-none outline-none text-sm text-white min-w-[250px]" />
           </div>
         </div>
 
         {loading ? (
-          <div className="text-center py-20 text-purple-400">Loading requests...</div>
-        ) : pendingOrgs.length === 0 ? (
-          <div className="text-center py-32 bg-[#0f081c] border border-purple-500/10 rounded-3xl">
-            <Shield className="mx-auto text-purple-500/30 mb-4" size={48} />
-            <h3 className="text-xl font-bold text-white mb-2">No Pending Requests</h3>
-            <p className="text-purple-300">All organization registrations have been processed.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {pendingOrgs.map(org => (
-              <div key={org.id} className="bg-[#11081c] border border-purple-500/20 rounded-2xl p-6 relative overflow-hidden group hover:border-purple-500/50 transition-colors">
-                <div className="absolute top-0 right-0 p-4">
-                  <span className="px-2 py-1 text-[10px] uppercase tracking-wider font-bold rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
-                    Pending
-                  </span>
-                </div>
-                
-                <h3 className="text-xl font-bold text-white mb-1">{org.org_name}</h3>
-                <p className="text-xs text-purple-300 uppercase tracking-wider mb-6 font-bold">{org.business_type?.replace('_', ' ')}</p>
-                
-                <div className="space-y-3 mb-8 text-sm">
-                  <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                    <span className="text-purple-400">Owner</span>
-                    <span className="text-white font-medium">{org.owner_name}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                    <span className="text-purple-400">Email</span>
-                    <span className="text-white font-medium truncate ml-4">{org.email}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                    <span className="text-purple-400">Phone</span>
-                    <span className="text-white font-medium">{org.phone || 'N/A'}</span>
-                  </div>
-                  <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                    <span className="text-purple-400">Team Size</span>
-                    <span className="text-white font-medium">{org.team_size}</span>
-                  </div>
-                  {org.working_hours?.cnic && (
-                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                      <span className="text-red-400 font-semibold">CNIC</span>
-                      <span className="text-white font-medium tracking-wider">{org.working_hours.cnic}</span>
+          <div className="text-center py-20 text-purple-400">Loading data...</div>
+        ) : activeTab === 'pending' ? (
+          pendingOrgs.length === 0 ? (
+            <div className="text-center py-32 bg-[#0f081c] border border-purple-500/10 rounded-3xl">
+              <Shield className="mx-auto text-purple-500/30 mb-4" size={48} />
+              <h3 className="text-xl font-bold text-white mb-2">No Pending Requests</h3>
+              <p className="text-purple-300">All organization registrations have been processed.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {pendingOrgs.map(org => (
+                <div key={org.id} className="bg-[#11081c] border border-purple-500/20 rounded-2xl p-6 hover:border-red-500/40 transition-colors shadow-lg relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/10 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <h3 className="text-xl font-bold text-white mb-1">{org.org_name}</h3>
+                      <span className="text-xs font-bold text-purple-400 uppercase tracking-wider bg-purple-900/30 px-2 py-1 rounded">{org.business_type}</span>
                     </div>
-                  )}
-                  {org.working_hours?.city && (
-                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                      <span className="text-purple-400">City</span>
-                      <span className="text-white font-medium">{org.working_hours.city}</span>
+                    <div className="w-10 h-10 rounded-full bg-red-900/30 flex items-center justify-center border border-red-500/30">
+                      <Zap className="text-red-400" size={18} />
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                <div className="flex gap-3">
-                  <button onClick={() => handleApprove(org)} disabled={actionLoading === org.id}
-                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
-                    {actionLoading === org.id ? 'Processing...' : <><CheckCircle size={18}/> Approve & Send Card</>}
-                  </button>
-                  <button onClick={() => handleReject(org.id)} disabled={actionLoading === org.id}
-                    className="px-4 py-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 disabled:opacity-50 transition-colors">
-                    <X size={16} />
-                  </button>
+                  <div className="space-y-3 mb-8 text-sm">
+                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                      <span className="text-purple-400">Owner</span>
+                      <span className="text-white font-medium">{org.owner_name}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                      <span className="text-purple-400">Email</span>
+                      <span className="text-white font-medium truncate ml-4">{org.email}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                      <span className="text-purple-400">Phone</span>
+                      <span className="text-white font-medium">{org.phone || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                      <span className="text-purple-400">Team Size</span>
+                      <span className="text-white font-medium">{org.team_size}</span>
+                    </div>
+                    {org.working_hours?.cnic && (
+                      <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                        <span className="text-red-400 font-semibold">CNIC</span>
+                        <span className="text-white font-medium tracking-wider">{org.working_hours.cnic}</span>
+                      </div>
+                    )}
+                    {org.working_hours?.city && (
+                      <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                        <span className="text-purple-400">City</span>
+                        <span className="text-white font-medium">{org.working_hours.city}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={() => handleApprove(org)} disabled={actionLoading === org.id}
+                      className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
+                      {actionLoading === org.id ? 'Processing...' : <><CheckCircle size={18}/> Approve & Send Card</>}
+                    </button>
+                    <button onClick={() => handleReject(org.id)} disabled={actionLoading === org.id}
+                      className="px-4 py-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 disabled:opacity-50 transition-colors">
+                      <XCircle size={20} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )
+        ) : (
+          activeOrgs.length === 0 ? (
+            <div className="text-center py-32 bg-[#0f081c] border border-purple-500/10 rounded-3xl">
+              <CheckCircle className="mx-auto text-green-500/30 mb-4" size={48} />
+              <h3 className="text-xl font-bold text-white mb-2">No Active Organizations</h3>
+              <p className="text-purple-300">Approved organizations will appear here.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {activeOrgs.map(org => (
+                <div key={org.id} className="bg-[#11081c] border border-green-500/20 rounded-2xl p-6 hover:border-green-500/40 transition-colors shadow-lg relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-green-600/10 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <h3 className="text-xl font-bold text-white mb-1">{org.org_name}</h3>
+                      <span className="text-xs font-bold text-green-400 uppercase tracking-wider bg-green-900/30 px-2 py-1 rounded">{org.business_type}</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-full bg-green-900/30 flex items-center justify-center border border-green-500/30">
+                      <Shield className="text-green-400" size={18} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 mb-8 text-sm">
+                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                      <span className="text-purple-400">Owner</span>
+                      <span className="text-white font-medium">{org.owner_name}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                      <span className="text-purple-400">Email</span>
+                      <span className="text-white font-medium truncate ml-4">{org.email}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button className="flex-1 py-3 rounded-xl bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                       View Details
+                    </button>
+                    <button className="px-4 py-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 disabled:opacity-50 transition-colors" title="Suspend Organization">
+                      <XCircle size={20} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </main>
     </div>

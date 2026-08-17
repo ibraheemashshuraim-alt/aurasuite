@@ -24,6 +24,17 @@ export default function LandingPage() {
 
   // Interactive Showcase State
   const [activeMode, setActiveMode] = useState('software_house');
+  
+  // Background Carousel State
+  const [bgIndex, setBgIndex] = useState(0);
+  const bgImages = ['/bg-office.jpg', '/bg-building-1.jpg', '/bg-building-2.jpg'];
+
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setBgIndex(prev => (prev + 1) % bgImages.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -76,9 +87,12 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#05010a] text-[#f3f1f5] font-sans selection:bg-purple-500/30 overflow-x-hidden relative">
       
-      {/* Background Image & Ambient Glows */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <img src="/bg-office.jpg" alt="Luxury Office" className="w-full h-full object-cover opacity-20 object-center" />
+      {/* Background Image Carousel & Ambient Glows */}
+      <div className="fixed inset-0 z-0 pointer-events-none transition-all duration-1000 ease-in-out">
+        {bgImages.map((src, i) => (
+          <img key={src} src={src} alt="Luxury Office Background" 
+               className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 object-center ${bgIndex === i ? 'opacity-20' : 'opacity-0'}`} />
+        ))}
         <div className="absolute inset-0 bg-gradient-to-b from-[#05010a]/80 via-[#05010a]/90 to-[#05010a]"></div>
       </div>
       
@@ -129,10 +143,11 @@ export default function LandingPage() {
           AuraSuite Premium is Live
         </div>
         
-        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-[1.1]" style={{ textShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-[1.1] flex flex-col items-center justify-center" style={{ textShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
           The Ultimate OS for <br/>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-indigo-400">
-            Luxury Workspaces
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-indigo-400" 
+                style={{ display: 'inline-block', transformStyle: 'preserve-3d', animation: 'spin-slow 8s linear infinite', padding: '10px 0' }}>
+            AuraSuite
           </span>
         </h1>
         
@@ -159,13 +174,13 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-6 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                 <h3 className="text-white font-bold text-xl">Admin Master Control</h3>
               </div>
-              <img src="/bg-office.jpg" alt="Admin Dashboard" className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 blur-[2px] opacity-70" />
+              <img src="/screenshot-admin.png" alt="Admin Dashboard" className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 blur-[0.5px] opacity-90 border-t border-purple-500/30" />
             </div>
-            <div className="rounded-2xl border border-purple-500/20 overflow-hidden shadow-[0_10px_40px_rgba(147,51,234,0.15)] group relative">
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-6 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="rounded-2xl border border-purple-500/20 overflow-hidden shadow-[0_10px_40px_rgba(147,51,234,0.15)] group relative bg-black">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex items-end p-6 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                 <h3 className="text-white font-bold text-xl">Client & Worker Vaults</h3>
               </div>
-              <img src="/bg-gold-card.jpg" alt="Vaults" className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 opacity-80 mix-blend-screen" />
+              <img src="/screenshot-worker.png" alt="Vaults" className="w-full h-auto transform group-hover:scale-105 transition-transform duration-700 opacity-90 border-t border-purple-500/30" />
             </div>
           </div>
         </div>
@@ -250,23 +265,51 @@ export default function LandingPage() {
       </section>
 
       {/* ── PRIVACY & RULES SECTION ── */}
-      <section id="privacy" className="py-24 px-6 relative z-10 bg-gradient-to-t from-[#0a0514] to-transparent">
-        <div className="max-w-4xl mx-auto bg-[#11081c] border border-red-500/20 rounded-3xl p-10 shadow-[0_0_40px_rgba(239,68,68,0.05)]">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 rounded-xl bg-red-900/30 flex items-center justify-center border border-red-500/30">
-              <Shield className="text-red-400" />
+      <section id="privacy" className="py-24 px-6 relative z-10 bg-gradient-to-t from-[#0a0514] to-[#11081c]/50">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
+          <div className="bg-[#11081c] border border-red-500/20 rounded-3xl p-10 shadow-[0_0_40px_rgba(239,68,68,0.05)]">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 rounded-xl bg-red-900/30 flex items-center justify-center border border-red-500/30">
+                <Shield className="text-red-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Strict Privacy & Suspension Policy</h2>
             </div>
-            <h2 className="text-2xl font-bold text-white">Privacy & Suspension Policy</h2>
+            <div className="space-y-6 text-purple-200/80 text-sm leading-relaxed">
+              <p>
+                <strong>1. Absolute Privacy Standards:</strong> AuraSuite employs advanced end-to-end encryption for all organization data. Messages, client files, source code staging, and financial business logic are fully isolated per tenant. Your data is never shared with third-party vendors.
+              </p>
+              <div>
+                <strong>2. Suspension Criteria:</strong> A registered Software House, Academy, or Factory can be suspended instantly without notice if they engage in:
+                <ul className="list-disc pl-6 space-y-2 mt-2 text-red-300/80">
+                  <li>Fraudulent activities, scamming clients out of payments, or failing to deliver verified milestones after collecting funds.</li>
+                  <li>Attempting to bypass, reverse-engineer, or manipulate the built-in tracking, video monitoring, and automated attendance systems.</li>
+                  <li>Registering with a fake identification (CNIC) or providing misleading legal organization details during the initial approval phase.</li>
+                </ul>
+              </div>
+              <p>
+                <strong>3. Master Super Admin Authority:</strong> The overarching Super Admin reserves the ultimate right to suspend, ban, or investigate any registered portal if malicious behavior or violation of the terms of service is detected on the network.
+              </p>
+            </div>
           </div>
-          <div className="space-y-4 text-purple-200/80 text-sm leading-relaxed">
-            <p><strong>1. Strict Privacy Standards:</strong> AuraSuite employs advanced end-to-end encryption for all organization data. Messages, client files, and business logic are fully isolated per tenant.</p>
-            <p><strong>2. Suspension Criteria:</strong> A registered Software House can be suspended immediately without notice if they engage in:</p>
-            <ul className="list-disc pl-6 space-y-2 text-red-300/80">
-              <li>Fraudulent activities, scamming clients, or failing to deliver verified milestones.</li>
-              <li>Attempting to bypass the built-in tracking and automated attendance systems.</li>
-              <li>Registering with fake identification (CNIC) or providing misleading organization details.</li>
-            </ul>
-            <p><strong>3. Super Admin Authority:</strong> The master Super Admin reserves the ultimate right to suspend, ban, or investigate any registered portal if malicious behavior is detected.</p>
+          
+          <div className="bg-gradient-to-br from-purple-900/10 to-indigo-900/10 border border-purple-500/20 rounded-3xl p-10 shadow-[0_0_40px_rgba(147,51,234,0.05)]">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-12 h-12 rounded-xl bg-purple-900/30 flex items-center justify-center border border-purple-500/30">
+                <Cloud className="text-purple-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Platform Features</h2>
+            </div>
+            <div className="space-y-6 text-purple-200/80 text-sm leading-relaxed">
+              <p>
+                <strong>The Ultimate Master Control:</strong> Once approved, your organization gains access to a dedicated tenant workspace. The Super Admin of your organization controls the entire ecosystem—from creating sub-admins and managers to assigning specific worker roles.
+              </p>
+              <p>
+                <strong>Client & Student Vaults:</strong> Invite external clients or students to their own restricted sandbox portals via secure Magic Links and digital cards. Clients can securely view their staging projects, read daily AI summaries, and unlock payment-gated deliverables.
+              </p>
+              <p>
+                <strong>Realtime Monitoring & Automation:</strong> Experience 24/7 autonomous management. AuraSuite tracks active sessions, monitors live WebRTC meetings, issues AI skill assessments automatically, and strictly manages working hours to auto-lock the portal out-of-hours.
+              </p>
+            </div>
           </div>
         </div>
       </section>
