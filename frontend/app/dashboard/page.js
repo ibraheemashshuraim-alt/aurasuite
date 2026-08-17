@@ -43,7 +43,13 @@ function checkIsEffectivelyLocked(user, org) {
       const [eh, em] = (end || "23:59").split(':').map(Number);
       const endMin = eh * 60 + em;
 
-      if (currentMin < startMin || currentMin > endMin) return true;
+      if (startMin <= endMin) {
+        // Normal day shift (e.g., 09:00 to 17:00)
+        if (currentMin < startMin || currentMin > endMin) return true;
+      } else {
+        // Night shift (e.g., 20:00 to 06:00)
+        if (currentMin < startMin && currentMin > endMin) return true;
+      }
     }
   }
   return false;
