@@ -2024,6 +2024,7 @@ export default function AppContainer() {
     const { error } = await supabase.from('organizations').update({ working_days: currentDays }).eq('id', activeOrg.id);
     if (!error) {
       setOrganizations(prev => prev.map(o => o.id === activeOrg.id ? { ...o, working_days: currentDays } : o));
+      setActiveOrg(prev => ({ ...prev, working_days: currentDays }));
       addNotification('Working days updated successfully.', 'success');
       if (kickoutChannelRef.current) {
         await kickoutChannelRef.current.send({

@@ -2041,7 +2041,11 @@ const handleReactMessage = async (msg, emoji) => {
   }
 
   // ── LOCK MODAL OVERLAY ──
-  if (lockModal && currentUser?.role === 'worker') {
+  const currentDay = new Date().getDay();
+  const orgWorkingDays = activeOrg?.working_days || [1,2,3,4,5];
+  const isEffectivelyLocked = lockModal || (currentUser?.role === 'worker' && (currentUser?.is_locked || !orgWorkingDays.includes(currentDay)));
+
+  if (isEffectivelyLocked && currentUser?.role === 'worker') {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
         <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
