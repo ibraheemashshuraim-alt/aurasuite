@@ -2098,6 +2098,23 @@ export default function AppContainer() {
       setOrganizations(prev => prev.map(o => o.id === activeOrg.id ? { ...o, working_hours: newHours } : o));
       setActiveOrg(prev => ({ ...prev, working_hours: newHours }));
       addNotification('Working hours updated.', 'success');
+      
+      // If turning Auto System ON (is_24_7 becomes false), clear all manual locks
+      if (type === 'is_24_7' && value === false) {
+        const workerIds = profiles.filter(p => p.role === 'worker' && p.organization_id === activeOrg.id).map(p => p.id);
+        if (workerIds.length > 0) {
+          await supabase.from('profiles').update({ is_locked: false, force_unlocked: false }).in('id', workerIds);
+          setProfiles(prev => prev.map(p => workerIds.includes(p.id) ? { ...p, is_locked: false, force_unlocked: false } : p));
+          if (kickoutChannelRef.current) {
+            await kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: 'worker-lock-all',
+              payload: { is_locked: false, force_unlocked: false, orgId: activeOrg.id }
+            });
+          }
+        }
+      }
+
       if (kickoutChannelRef.current) {
         await kickoutChannelRef.current.send({
           type: 'broadcast',
@@ -3723,15 +3740,6 @@ export default function AppContainer() {
                     <p className="text-[10px] text-purple-300/70 mt-1">Manage working days and portal locks for all workers</p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                    <div 
-                      className={`flex items-center gap-2 rounded-lg p-1 px-2 border h-8 cursor-pointer transition-all ${!activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-950/30 border-emerald-500/30' : 'bg-gray-900/50 border-gray-700/30'}`} 
-                      onClick={() => updateWorkingHours('is_24_7', !activeOrg?.working_hours?.is_24_7)}
-                    >
-                      <span className="text-[10px] font-bold text-white whitespace-nowrap">Auto System</span>
-                      <div className={`flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${!activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`}>
-                        {!activeOrg?.working_hours?.is_24_7 ? 'ON' : 'OFF'}
-                      </div>
-                    </div>
 
                     <div className={`flex gap-1 ${activeOrg?.working_hours?.is_24_7 ? 'opacity-30 pointer-events-none' : ''}`}>
                       {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName, idx) => {
@@ -3759,9 +3767,18 @@ export default function AppContainer() {
                     </div>
 
                     <div className="flex bg-purple-950/30 rounded-lg p-1 border border-purple-500/10">
+                      <div 
+                        className={`flex items-center gap-2 rounded p-1 px-2 border cursor-pointer transition-all mr-2 ${!activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-950/30 border-emerald-500/30' : 'bg-gray-900/50 border-gray-700/30'}`} 
+                        onClick={() => updateWorkingHours('is_24_7', !activeOrg?.working_hours?.is_24_7)}
+                        title="When ON, system manages locks. When OFF, portals remain open 24/7."
+                      >
+                        <span className="text-[10px] font-bold text-white whitespace-nowrap">Auto System</span>
+                        <div className={`flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${!activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                          {!activeOrg?.working_hours?.is_24_7 ? 'ON' : 'OFF'}
+                        </div>
+                      </div>
                       <button onClick={() => toggleLockAllWorkers('lock')} className="px-3 py-1 text-[10px] font-bold rounded bg-red-950/30 text-red-400 hover:bg-red-900/50 transition-colors">Lock All</button>
-                      <button onClick={() => toggleLockAllWorkers('unlock')} className="px-3 py-1 text-[10px] font-bold rounded bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/50 transition-colors mx-1">Unlock All</button>
-                      <button onClick={() => toggleLockAllWorkers('auto')} className="px-3 py-1 text-[10px] font-bold rounded bg-blue-950/30 text-blue-400 hover:bg-blue-900/50 transition-colors" title="Remove manual locks to let the Auto System manage them">Reset to Auto</button>
+                      <button onClick={() => toggleLockAllWorkers('unlock')} className="px-3 py-1 text-[10px] font-bold rounded bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/50 transition-colors ml-1">Unlock All</button>
                     </div>
                   </div>
                 </div>
