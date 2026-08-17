@@ -4548,10 +4548,14 @@ export default function AppContainer() {
                           }
 
                           try {
-                            await fetch('/api/send-invite', {
+                            const res = await fetch('/api/send-invite', {
                               method: 'POST', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name })
+                              body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name, role: 'admin' })
                             });
+                            const data = await res.json();
+                            if (!data.success) {
+                              console.error('Email API returned failure:', data);
+                            }
                           } catch (e) {
                             console.error("Email might have failed", e);
                           }
