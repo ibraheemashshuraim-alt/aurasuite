@@ -1975,6 +1975,68 @@ export default function AppContainer() {
     });
   };
 
+  // ─────────────────── Off-Day / Locking System ───────────────────
+  const toggleLockWorker = async (user) => {
+    const newStatus = !user.is_locked;
+    const { error } = await supabase.from('profiles').update({ is_locked: newStatus }).eq('id', user.id);
+    if (!error) {
+      setProfiles(prev => prev.map(p => p.id === user.id ? { ...p, is_locked: newStatus } : p));
+      addNotification(`Worker ${user.full_name} is now ${newStatus ? 'locked' : 'unlocked'}.`, newStatus ? 'warning' : 'success');
+      if (kickoutChannelRef.current) {
+        await kickoutChannelRef.current.send({
+          type: 'broadcast',
+          event: 'worker-lock-status',
+          payload: { userId: user.id, is_locked: newStatus }
+        });
+      }
+    } else {
+      addNotification('Failed to update worker lock status.', 'error');
+    }
+  };
+
+  const toggleLockAllWorkers = async (lock) => {
+    const workerIds = profiles.filter(p => p.role === 'worker' && p.organization_id === activeOrg?.id).map(p => p.id);
+    if (workerIds.length === 0) return;
+    const { error } = await supabase.from('profiles').update({ is_locked: lock }).in('id', workerIds);
+    if (!error) {
+      setProfiles(prev => prev.map(p => workerIds.includes(p.id) ? { ...p, is_locked: lock } : p));
+      addNotification(`All workers are now ${lock ? 'locked' : 'unlocked'}.`, lock ? 'warning' : 'success');
+      if (kickoutChannelRef.current) {
+        await kickoutChannelRef.current.send({
+          type: 'broadcast',
+          event: 'worker-lock-all',
+          payload: { is_locked: lock, orgId: activeOrg?.id }
+        });
+      }
+    } else {
+      addNotification('Failed to update all workers lock status.', 'error');
+    }
+  };
+
+  const updateWorkingDays = async (day) => {
+    if (!activeOrg) return;
+    let currentDays = activeOrg.working_days || [1,2,3,4,5];
+    if (currentDays.includes(day)) {
+       currentDays = currentDays.filter(d => d !== day);
+    } else {
+       currentDays = [...currentDays, day];
+    }
+    const { error } = await supabase.from('organizations').update({ working_days: currentDays }).eq('id', activeOrg.id);
+    if (!error) {
+      setOrganizations(prev => prev.map(o => o.id === activeOrg.id ? { ...o, working_days: currentDays } : o));
+      addNotification('Working days updated successfully.', 'success');
+      if (kickoutChannelRef.current) {
+        await kickoutChannelRef.current.send({
+          type: 'broadcast',
+          event: 'org-working-days',
+          payload: { orgId: activeOrg.id, working_days: currentDays }
+        });
+      }
+    } else {
+      addNotification('Failed to update working days.', 'error');
+    }
+  };
+
   // ─────────────────── Budget ───────────────────
   const handleSuggestBudget = (e) => {
     e.preventDefault();
@@ -3554,6 +3616,34 @@ export default function AppContainer() {
           {activeTab === 'users' && ['admin', 'super_admin'].includes(currentUser.role) && (
             <div className="max-w-7xl mx-auto space-y-6">
               {/* User Management Table */}
+              <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden mb-6">
+                <div className="p-4 border-b border-purple-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Lock size={16} className="text-purple-400" /> Worker Access Control
+                    </h3>
+                    <p className="text-[10px] text-purple-300/70 mt-1">Manage working days and portal locks for all workers</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                    <div className="flex gap-1">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName, idx) => {
+                        const isWorking = (activeOrg?.working_days || [1,2,3,4,5]).includes(idx);
+                        return (
+                          <button key={idx} onClick={() => updateWorkingDays(idx)}
+                            className={`w-8 h-8 rounded-lg text-[10px] font-bold transition-all ${isWorking ? 'bg-purple-600/50 text-white border-purple-500/50 border' : 'bg-purple-950/30 text-purple-400/50 border-purple-900/30 border hover:bg-purple-900/50 hover:text-purple-300'}`}>
+                            {dayName.charAt(0)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex bg-purple-950/30 rounded-lg p-1 border border-purple-500/10">
+                      <button onClick={() => toggleLockAllWorkers(true)} className="px-3 py-1 text-[10px] font-bold rounded bg-red-950/30 text-red-400 hover:bg-red-900/50 transition-colors">Lock All</button>
+                      <button onClick={() => toggleLockAllWorkers(false)} className="px-3 py-1 text-[10px] font-bold rounded bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/50 transition-colors ml-1">Unlock All</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 border-b border-purple-500/10 gap-3">
                   <div className="flex items-center gap-2">
@@ -3631,6 +3721,12 @@ export default function AppContainer() {
                                 className="p-1.5 bg-purple-950/50 border border-purple-500/20 rounded-lg text-purple-300 hover:text-white hover:border-purple-500/50 transition-all">
                                 <Edit3 size={11} />
                               </button>
+                              {user.role === 'worker' && (
+                                <button onClick={() => toggleLockWorker(user)} title={user.is_locked ? "Unlock Portal" : "Lock Portal"}
+                                  className={`p-1.5 border rounded-lg transition-all ${user.is_locked ? 'bg-red-950/30 border-red-500/20 text-red-400 hover:text-white hover:border-red-500/50' : 'bg-emerald-950/30 border-emerald-500/20 text-emerald-400 hover:text-white hover:border-emerald-500/50'}`}>
+                                  {user.is_locked ? <Lock size={11} /> : <Unlock size={11} />}
+                                </button>
+                              )}
                               {user.id !== currentUser.id && (
                                 <div className="flex gap-1">
                                   <button onClick={() => handleSuspendUser(user.id)} title="Delete / Suspend"

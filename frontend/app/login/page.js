@@ -282,6 +282,7 @@ export default function AppContainer() {
   const currentUserRef = useRef(currentUser);
   const kickoutChannelRef = useRef(null);
   const [kickoutModal, setKickoutModal] = useState(false);
+  const [lockModal, setLockModal] = useState(false);
   
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -647,12 +648,31 @@ export default function AppContainer() {
         console.log('🚨 KICKOUT BROADCAST RECEIVED:', payload);
         const targetId = payload?.payload?.userId;
         const currentId = currentUserRef.current?.id;
-        
         if (targetId && currentId && targetId === currentId) {
-          console.log('🚨 TARGET MATCHED! Kicking out user:', currentId);
           setKickoutModal(true);
-        } else {
-          console.log('ℹ️ Broadcast ignored. Target ID:', targetId, 'Current ID:', currentId);
+        }
+      })
+      .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
+        const { userId, is_locked } = payload.payload;
+        if (userId === currentUserRef.current?.id) {
+           setLockModal(is_locked);
+        }
+      })
+      .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
+        const { is_locked, orgId } = payload.payload;
+        if (orgId === activeOrgRef.current?.id && currentUserRef.current?.role === 'worker') {
+           setLockModal(is_locked);
+        }
+      })
+      .on('broadcast', { event: 'org-working-days' }, (payload) => {
+        const { orgId, working_days } = payload.payload;
+        if (orgId === activeOrgRef.current?.id && currentUserRef.current?.role === 'worker') {
+           const currentDay = new Date().getDay();
+           if (!working_days.includes(currentDay)) {
+             setLockModal(true);
+           } else {
+             // Let the poller handle manual lock status
+           }
         }
       })
       .subscribe((status) => {
@@ -669,7 +689,7 @@ export default function AppContainer() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, organization_id, is_locked')
           .eq('id', uid)
           .maybeSingle();
 
@@ -677,6 +697,15 @@ export default function AppContainer() {
         if ((!data && !error) || (data && ['suspended', 'banned', 'deleted'].includes(data.role))) {
           console.log('🚨 POLLER KICKOUT: profile missing or suspended', { data, error });
           setKickoutModal(true);
+        } else if (data && data.role === 'worker') {
+          const { data: orgData } = await supabase.from('organizations').select('working_days').eq('id', data.organization_id).maybeSingle();
+          const currentDay = new Date().getDay();
+          const workingDays = orgData?.working_days || [1,2,3,4,5];
+          if (data.is_locked || !workingDays.includes(currentDay)) {
+             setLockModal(true);
+          } else {
+             setLockModal(false);
+          }
         }
       } catch (err) {
         // Silence errors
@@ -2003,6 +2032,31 @@ const handleReactMessage = async (msg, emoji) => {
               } catch (e) {}
             }}
             className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
+          >
+            Close Portal
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── LOCK MODAL OVERLAY ──
+  if (lockModal && currentUser?.role === 'worker') {
+    return (
+      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <div className="flex justify-center mb-4">
+             <Lock size={48} className="text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-4">Off-Day / Access Locked</h2>
+          <p className="text-yellow-400 text-sm mb-6">Your portal access is currently locked for an off-day or by an admin. Enjoy your break!</p>
+          <button
+            onClick={() => {
+              try {
+                window.close();
+              } catch (e) {}
+            }}
+            className="px-8 py-3 bg-yellow-950/60 hover:bg-yellow-900/80 text-white font-semibold rounded-xl border border-yellow-500/30 transition-all"
           >
             Close Portal
           </button>
