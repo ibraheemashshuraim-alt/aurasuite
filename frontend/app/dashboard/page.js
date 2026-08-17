@@ -3723,9 +3723,14 @@ export default function AppContainer() {
                     <p className="text-[10px] text-purple-300/70 mt-1">Manage working days and portal locks for all workers</p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                    <div className="flex items-center gap-2 bg-purple-950/30 rounded-lg p-1.5 px-3 border border-purple-500/10 h-8 cursor-pointer" onClick={() => updateWorkingHours('is_24_7', !activeOrg?.working_hours?.is_24_7)}>
-                      <div className={`w-3 h-3 rounded-full ${activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-purple-900'}`} />
-                      <span className="text-[10px] font-bold text-white">24/7 Open</span>
+                    <div 
+                      className={`flex items-center gap-2 rounded-lg p-1 px-2 border h-8 cursor-pointer transition-all ${!activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-950/30 border-emerald-500/30' : 'bg-gray-900/50 border-gray-700/30'}`} 
+                      onClick={() => updateWorkingHours('is_24_7', !activeOrg?.working_hours?.is_24_7)}
+                    >
+                      <span className="text-[10px] font-bold text-white whitespace-nowrap">Auto System</span>
+                      <div className={`flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${!activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                        {!activeOrg?.working_hours?.is_24_7 ? 'ON' : 'OFF'}
+                      </div>
                     </div>
 
                     <div className={`flex gap-1 ${activeOrg?.working_hours?.is_24_7 ? 'opacity-30 pointer-events-none' : ''}`}>
