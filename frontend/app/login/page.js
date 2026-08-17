@@ -23,6 +23,34 @@ const genId = (prefix = 'id') => `${prefix}-${Date.now()}-${Math.floor(Math.rand
 const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const today = () => new Date().toISOString().split('T')[0];
 
+function checkIsEffectivelyLocked(user, org) {
+  if (!user || user.role !== 'worker') return false;
+  
+  if (user.is_locked) return true;
+  if (user.force_unlocked) return false;
+
+  if (org) {
+    const currentDay = new Date().getDay();
+    const workingDays = org.working_days || [1,2,3,4,5];
+    if (!workingDays.includes(currentDay)) return true;
+
+    if (org.working_hours) {
+      const { start, end } = org.working_hours;
+      const now = new Date();
+      const currentMin = now.getHours() * 60 + now.getMinutes();
+      
+      const [sh, sm] = (start || "00:00").split(':').map(Number);
+      const startMin = sh * 60 + sm;
+      
+      const [eh, em] = (end || "23:59").split(':').map(Number);
+      const endMin = eh * 60 + em;
+
+      if (currentMin < startMin || currentMin > endMin) return true;
+    }
+  }
+  return false;
+}
+
 // ─── Participant Video Tile ──────────────────────────────────────
 function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, streamTrigger }) {
   const videoRef = React.useRef(null);
@@ -653,26 +681,33 @@ export default function AppContainer() {
         }
       })
       .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
-        const { userId, is_locked } = payload.payload;
+        const { userId, is_locked, force_unlocked } = payload.payload;
         if (userId === currentUserRef.current?.id) {
-           setLockModal(is_locked);
+           currentUserRef.current = { ...currentUserRef.current, is_locked, force_unlocked };
+           setLockModal(checkIsEffectivelyLocked(currentUserRef.current, activeOrgRef.current));
         }
       })
       .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
-        const { is_locked, orgId } = payload.payload;
+        const { is_locked, force_unlocked, orgId } = payload.payload;
         if (orgId === activeOrgRef.current?.id && currentUserRef.current?.role === 'worker') {
-           setLockModal(is_locked);
+           currentUserRef.current = { ...currentUserRef.current, is_locked, force_unlocked };
+           setLockModal(checkIsEffectivelyLocked(currentUserRef.current, activeOrgRef.current));
         }
       })
       .on('broadcast', { event: 'org-working-days' }, (payload) => {
         const { orgId, working_days } = payload.payload;
         if (orgId === activeOrgRef.current?.id && currentUserRef.current?.role === 'worker') {
-           const currentDay = new Date().getDay();
-           if (!working_days.includes(currentDay)) {
-             setLockModal(true);
-           } else {
-             // Let the poller handle manual lock status
-           }
+           activeOrgRef.current = { ...activeOrgRef.current, working_days };
+           setActiveOrg(activeOrgRef.current);
+           setLockModal(checkIsEffectivelyLocked(currentUserRef.current, activeOrgRef.current));
+        }
+      })
+      .on('broadcast', { event: 'org-working-hours' }, (payload) => {
+        const { orgId, working_hours } = payload.payload;
+        if (orgId === activeOrgRef.current?.id && currentUserRef.current?.role === 'worker') {
+           activeOrgRef.current = { ...activeOrgRef.current, working_hours };
+           setActiveOrg(activeOrgRef.current);
+           setLockModal(checkIsEffectivelyLocked(currentUserRef.current, activeOrgRef.current));
         }
       })
       .subscribe((status) => {
@@ -689,7 +724,7 @@ export default function AppContainer() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('role, organization_id, is_locked')
+          .select('role, organization_id, is_locked, force_unlocked')
           .eq('id', uid)
           .maybeSingle();
 
@@ -698,14 +733,8 @@ export default function AppContainer() {
           console.log('🚨 POLLER KICKOUT: profile missing or suspended', { data, error });
           setKickoutModal(true);
         } else if (data && data.role === 'worker') {
-          const { data: orgData } = await supabase.from('organizations').select('working_days').eq('id', data.organization_id).maybeSingle();
-          const currentDay = new Date().getDay();
-          const workingDays = orgData?.working_days || [1,2,3,4,5];
-          if (data.is_locked || !workingDays.includes(currentDay)) {
-             setLockModal(true);
-          } else {
-             setLockModal(false);
-          }
+          const { data: orgData } = await supabase.from('organizations').select('working_days, working_hours').eq('id', data.organization_id).maybeSingle();
+          setLockModal(checkIsEffectivelyLocked(data, orgData));
         }
       } catch (err) {
         // Silence errors
@@ -724,6 +753,10 @@ export default function AppContainer() {
     if (!mounted || !isLoggedIn || !currentUser) return;
 
     const updatePresence = async () => {
+      if (checkIsEffectivelyLocked(currentUser, activeOrg)) {
+        await supabase.from('presence').delete().eq('user_id', currentUser.id);
+        return;
+      }
       try {
         const { data: existing, error: selErr } = await supabase.from('presence').select('user_id').eq('user_id', currentUser.id).maybeSingle();
         if (selErr) console.error('Presence select error:', selErr);
@@ -2041,9 +2074,7 @@ const handleReactMessage = async (msg, emoji) => {
   }
 
   // ── LOCK MODAL OVERLAY ──
-  const currentDay = new Date().getDay();
-  const orgWorkingDays = activeOrg?.working_days || [1,2,3,4,5];
-  const isEffectivelyLocked = lockModal || (currentUser?.role === 'worker' && (currentUser?.is_locked || !orgWorkingDays.includes(currentDay)));
+  const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
 
   if (isEffectivelyLocked && currentUser?.role === 'worker') {
     return (
