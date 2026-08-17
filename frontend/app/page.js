@@ -40,9 +40,11 @@ export default function LandingPage() {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+    const orgId = `org-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
     
     try {
       const { error } = await supabase.from('organizations').insert({
+        id: orgId,
         name: formData.orgName,
         owner_name: formData.ownerName,
         email: formData.email,
