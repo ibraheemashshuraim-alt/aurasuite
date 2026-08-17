@@ -91,9 +91,9 @@ export default function LandingPage() {
       <div className="fixed inset-0 z-0 pointer-events-none transition-all duration-1000 ease-in-out">
         {bgImages.map((src, i) => (
           <img key={src} src={src} alt="Luxury Office Background" 
-               className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 object-center ${bgIndex === i ? 'opacity-20' : 'opacity-0'}`} />
+               className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 object-center ${bgIndex === i ? 'opacity-60' : 'opacity-0'}`} />
         ))}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#05010a]/80 via-[#05010a]/90 to-[#05010a]"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-[#05010a]/50 via-[#05010a]/70 to-[#05010a]"></div>
       </div>
       
       <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] bg-purple-700/20 rounded-full blur-[150px] pointer-events-none z-0" />
@@ -111,6 +111,11 @@ export default function LandingPage() {
               @keyframes spin-slow {
                 0% { transform: rotateY(0deg); }
                 100% { transform: rotateY(360deg); }
+              }
+              @keyframes float-3d {
+                0% { transform: perspective(1000px) rotateX(15deg) rotateY(-10deg) translateZ(0px); }
+                50% { transform: perspective(1000px) rotateX(-5deg) rotateY(15deg) translateZ(30px); }
+                100% { transform: perspective(1000px) rotateX(15deg) rotateY(-10deg) translateZ(0px); }
               }
             `}</style>
           </div>
@@ -143,15 +148,20 @@ export default function LandingPage() {
           AuraSuite Premium is Live
         </div>
         
-        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-[1.1] flex flex-col items-center justify-center" style={{ textShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
-          The Ultimate OS for <br/>
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-indigo-400" 
-                style={{ display: 'inline-block', transformStyle: 'preserve-3d', animation: 'spin-slow 8s linear infinite', padding: '10px 0' }}>
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-[1.1] flex flex-col items-center justify-center relative z-20">
+          <span style={{ textShadow: '0 10px 30px rgba(0,0,0,0.8)' }}>The Ultimate OS for</span> <br/>
+          <span className="text-transparent bg-clip-text bg-gradient-to-br from-purple-400 via-fuchsia-300 to-indigo-500 font-black tracking-wide" 
+                style={{ 
+                  display: 'inline-block', 
+                  animation: 'float-3d 6s ease-in-out infinite', 
+                  padding: '20px 0',
+                  filter: 'drop-shadow(0 20px 20px rgba(147, 51, 234, 0.4)) drop-shadow(0 0 10px rgba(255, 255, 255, 0.2))' 
+                }}>
             AuraSuite
           </span>
         </h1>
         
-        <p className="text-lg md:text-xl text-purple-200/80 max-w-3xl mx-auto mb-10 leading-relaxed font-light">
+        <p className="text-lg text-purple-200/90 max-w-2xl mx-auto mb-10 leading-relaxed font-medium" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.8)' }}>
           Experience world-class software house management. From client vaults and AI metrics to strict access control and real-time activity tracking, packed in a breathtaking glassmorphism design.
         </p>
 
@@ -228,98 +238,140 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── PORTALS SHOWCASE ── */}
-      <section id="features" className="py-24 px-6 relative z-10">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold mb-4">Three Interconnected Portals</h2>
-            <p className="text-purple-300">Dedicated interfaces designed specifically for your Admins, Workers, and Clients.</p>
+      {/* ── FEATURES SECTION (Three Interconnected Portals) ── */}
+      <section id="features" className="py-24 px-6 relative z-10 bg-[#0a0514]">
+        <div className="max-w-7xl mx-auto text-center mb-16">
+          <h2 className="text-3xl md:text-5xl font-bold mb-4">Three Interconnected Portals</h2>
+          <p className="text-purple-300">Dedicated interfaces designed specifically for your Admins, Workers, and Clients, packed with industry-leading features.</p>
+        </div>
+        
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="bg-[#11081c] border border-purple-500/20 rounded-2xl p-8 hover:border-purple-500/50 transition-all hover:transform hover:-translate-y-2 flex flex-col h-full shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+            <div className="w-12 h-12 rounded-xl bg-purple-900/30 flex items-center justify-center mb-6 border border-purple-500/30">
+              <Server className="text-purple-400" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-4">Admin Master Cabinet</h3>
+            <p className="text-sm text-purple-200/80 leading-relaxed mb-4">
+              Complete oversight over your entire organization. Manage users, track active sessions, and oversee operations in real-time.
+            </p>
+            <ul className="text-sm text-purple-300/90 space-y-2 list-disc pl-4 mt-auto">
+              <li>Live Active User Logs & Session Tracking</li>
+              <li>Zoom-like Master WebRTC Video Controls</li>
+              <li>AI-Suggested Payment & Salary Adjustments</li>
+              <li>Dynamic Department & Team Size Management</li>
+            </ul>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-gradient-to-b from-[#11081c] to-[#0a0514] border border-purple-500/20 rounded-3xl p-8 hover:border-purple-400/50 transition-colors">
-              <div className="w-12 h-12 rounded-xl bg-purple-900/50 flex items-center justify-center mb-6 border border-purple-500/30">
-                <Server className="text-purple-300" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-3">Admin Master Cabinet</h3>
-              <p className="text-sm text-purple-200/80 mb-6">Complete oversight with live active user logs, Zoom-like master meeting controls, and AI-suggested payment adjustments.</p>
+          <div className="bg-[#11081c] border border-indigo-500/20 rounded-2xl p-8 hover:border-indigo-500/50 transition-all hover:transform hover:-translate-y-2 flex flex-col h-full shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+            <div className="w-12 h-12 rounded-xl bg-indigo-900/30 flex items-center justify-center mb-6 border border-indigo-500/30">
+              <Shield className="text-indigo-400" />
             </div>
+            <h3 className="text-xl font-bold text-white mb-4">Worker Portal</h3>
+            <p className="text-sm text-purple-200/80 leading-relaxed mb-4">
+              A dedicated, distraction-free environment for your employees to work, track their hours, and securely communicate.
+            </p>
+            <ul className="text-sm text-purple-300/90 space-y-2 list-disc pl-4 mt-auto">
+              <li>Digital Access Card Authentication (Gold/Silver)</li>
+              <li>Dynamic AI Technical Onboarding Quizzes</li>
+              <li>Real-time Secure Personal DM Chats</li>
+              <li>Automated Hours Tracking & Auto-Lock</li>
+            </ul>
+          </div>
 
-            <div className="bg-gradient-to-b from-[#11081c] to-[#0a0514] border border-purple-500/20 rounded-3xl p-8 hover:border-purple-400/50 transition-colors">
-              <div className="w-12 h-12 rounded-xl bg-indigo-900/50 flex items-center justify-center mb-6 border border-indigo-500/30">
-                <Shield className="text-indigo-300" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-3">Worker Portal</h3>
-              <p className="text-sm text-purple-200/80 mb-6">Digital Access Card authentication, dynamic AI technical onboarding quizzes, and real-time personal DM chats.</p>
+          <div className="bg-[#11081c] border border-pink-500/20 rounded-2xl p-8 hover:border-pink-500/50 transition-all hover:transform hover:-translate-y-2 flex flex-col h-full shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+            <div className="w-12 h-12 rounded-xl bg-pink-900/30 flex items-center justify-center mb-6 border border-pink-500/30">
+              <Cloud className="text-pink-400" />
             </div>
-
-            <div className="bg-gradient-to-b from-[#11081c] to-[#0a0514] border border-purple-500/20 rounded-3xl p-8 hover:border-purple-400/50 transition-colors">
-              <div className="w-12 h-12 rounded-xl bg-fuchsia-900/50 flex items-center justify-center mb-6 border border-fuchsia-500/30">
-                <Cloud className="text-fuchsia-300" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-3">Client Sandbox</h3>
-              <p className="text-sm text-purple-200/80 mb-6">Live in-app project staging previews, AI-generated daily summaries, and secure payment-gated file unlocking.</p>
-            </div>
+            <h3 className="text-xl font-bold text-white mb-4">Client Sandbox</h3>
+            <p className="text-sm text-purple-200/80 leading-relaxed mb-4">
+              Give your clients complete transparency with a premium sandbox to view project progress, invoices, and milestones.
+            </p>
+            <ul className="text-sm text-purple-300/90 space-y-2 list-disc pl-4 mt-auto">
+              <li>Live In-App Project Staging Previews</li>
+              <li>AI-Generated Daily Progress Summaries</li>
+              <li>Secure Payment-Gated File Unlocking</li>
+              <li>Direct Encrypted Chat with Admins</li>
+            </ul>
           </div>
         </div>
       </section>
 
       {/* ── PRIVACY & RULES SECTION ── */}
       <section id="privacy" className="py-24 px-6 relative z-10 bg-gradient-to-t from-[#0a0514] to-[#11081c]/50">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
-          <div className="bg-[#11081c] border border-red-500/20 rounded-3xl p-10 shadow-[0_0_40px_rgba(239,68,68,0.05)]">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+          
+          <div className="bg-[#11081c] border border-red-500/30 rounded-3xl p-10 shadow-[0_0_40px_rgba(239,68,68,0.1)] flex flex-col h-full">
             <div className="flex items-center gap-4 mb-6">
               <div className="w-12 h-12 rounded-xl bg-red-900/30 flex items-center justify-center border border-red-500/30">
                 <Shield className="text-red-400" />
               </div>
               <h2 className="text-2xl font-bold text-white">Strict Privacy & Suspension Policy</h2>
             </div>
-            <div className="space-y-6 text-purple-200/80 text-sm leading-relaxed">
+            <div className="space-y-6 text-purple-200/90 text-sm leading-relaxed flex-1">
               <p>
-                <strong>1. Absolute Privacy Standards:</strong> AuraSuite employs advanced end-to-end encryption for all organization data. Messages, client files, source code staging, and financial business logic are fully isolated per tenant. Your data is never shared with third-party vendors.
+                <strong className="text-white">1. Absolute Privacy Standards:</strong> AuraSuite employs advanced end-to-end encryption for all organization data. Messages, client files, source code staging, and financial business logic are fully isolated per tenant. Your data is never shared with third-party vendors, ensuring top-tier enterprise privacy.
               </p>
               <div>
-                <strong>2. Suspension Criteria:</strong> A registered Software House, Academy, or Factory can be suspended instantly without notice if they engage in:
-                <ul className="list-disc pl-6 space-y-2 mt-2 text-red-300/80">
+                <strong className="text-white">2. Suspension Criteria:</strong> A registered Software House, Academy, or Factory can be suspended instantly without notice if they engage in:
+                <ul className="list-disc pl-6 space-y-3 mt-4 text-red-300/90 font-medium">
                   <li>Fraudulent activities, scamming clients out of payments, or failing to deliver verified milestones after collecting funds.</li>
                   <li>Attempting to bypass, reverse-engineer, or manipulate the built-in tracking, video monitoring, and automated attendance systems.</li>
                   <li>Registering with a fake identification (CNIC) or providing misleading legal organization details during the initial approval phase.</li>
                 </ul>
               </div>
               <p>
-                <strong>3. Master Super Admin Authority:</strong> The overarching Super Admin reserves the ultimate right to suspend, ban, or investigate any registered portal if malicious behavior or violation of the terms of service is detected on the network.
+                <strong className="text-white">3. Master Super Admin Authority:</strong> The overarching Super Admin reserves the ultimate right to suspend, ban, or investigate any registered portal if malicious behavior or violation of the terms of service is detected on the network, keeping the ecosystem completely safe.
               </p>
             </div>
           </div>
           
-          <div className="bg-gradient-to-br from-purple-900/10 to-indigo-900/10 border border-purple-500/20 rounded-3xl p-10 shadow-[0_0_40px_rgba(147,51,234,0.05)]">
+          <div className="bg-gradient-to-br from-[#11081c] to-indigo-900/10 border border-purple-500/30 rounded-3xl p-10 shadow-[0_0_40px_rgba(147,51,234,0.1)] flex flex-col h-full">
             <div className="flex items-center gap-4 mb-6">
               <div className="w-12 h-12 rounded-xl bg-purple-900/30 flex items-center justify-center border border-purple-500/30">
-                <Cloud className="text-purple-400" />
+                <Server className="text-purple-400" />
               </div>
-              <h2 className="text-2xl font-bold text-white">Platform Features</h2>
+              <h2 className="text-2xl font-bold text-white">Advanced Platform Features</h2>
             </div>
-            <div className="space-y-6 text-purple-200/80 text-sm leading-relaxed">
+            <div className="space-y-6 text-purple-200/90 text-sm leading-relaxed flex-1">
               <p>
-                <strong>The Ultimate Master Control:</strong> Once approved, your organization gains access to a dedicated tenant workspace. The Super Admin of your organization controls the entire ecosystem—from creating sub-admins and managers to assigning specific worker roles.
+                <strong className="text-white">The Ultimate Master Control:</strong> Once approved, your organization gains access to a dedicated tenant workspace. The Super Admin of your organization controls the entire ecosystem—from creating sub-admins and managers to assigning specific worker roles and configuring complex multi-mode setups.
               </p>
               <p>
-                <strong>Client & Student Vaults:</strong> Invite external clients or students to their own restricted sandbox portals via secure Magic Links and digital cards. Clients can securely view their staging projects, read daily AI summaries, and unlock payment-gated deliverables.
+                <strong className="text-white">Client & Student Vaults:</strong> Invite external clients or students to their own restricted sandbox portals via secure Magic Links and digital cards. Clients can securely view their staging projects, read daily AI summaries, and unlock payment-gated deliverables using dynamic invoice triggers.
               </p>
               <p>
-                <strong>Realtime Monitoring & Automation:</strong> Experience 24/7 autonomous management. AuraSuite tracks active sessions, monitors live WebRTC meetings, issues AI skill assessments automatically, and strictly manages working hours to auto-lock the portal out-of-hours.
+                <strong className="text-white">Realtime Monitoring & Automation:</strong> Experience true 24/7 autonomous management. AuraSuite tracks active sessions via WebSocket, monitors live WebRTC meetings, issues AI skill assessments automatically based on job titles, and strictly manages working hours to auto-lock the portal out-of-hours, preventing unauthorized off-hours access.
               </p>
             </div>
           </div>
+
         </div>
       </section>
 
       {/* ── FOOTER ── */}
-      <footer className="border-t border-purple-500/10 py-10 text-center relative z-10">
-        <div className="flex items-center justify-center gap-2 mb-4 opacity-50">
-          <Zap size={16} /> <span className="font-bold tracking-widest">AURASUITE</span>
+      <footer className="border-t border-purple-500/20 bg-[#05010a] py-12 px-6 relative z-10">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+              <Zap className="text-white" size={16} />
+            </div>
+            <span className="font-bold text-lg tracking-wide text-white">AuraSuite</span>
+          </div>
+          
+          <div className="flex gap-8 text-sm text-purple-300/80">
+            <a href="#features" className="hover:text-purple-400 transition-colors">Features</a>
+            <a href="#privacy" className="hover:text-purple-400 transition-colors">Privacy Policy</a>
+            <a href="#" className="hover:text-purple-400 transition-colors">Terms of Service</a>
+            <a href="#" className="hover:text-purple-400 transition-colors">Contact Support</a>
+          </div>
+
+          <div className="text-sm font-medium text-purple-300/60 bg-[#11081c] px-4 py-2 rounded-full border border-purple-500/20">
+            For inquiries, contact: <span className="text-white font-bold tracking-wider">03703603184</span>
+          </div>
         </div>
-        <p className="text-xs text-purple-500/50">© 2026 AuraSuite Inc. All rights reserved.</p>
+        <div className="mt-8 text-center text-xs text-purple-400/40">
+          &copy; {new Date().getFullYear()} AuraSuite Inc. All rights reserved. The ultimate OS for luxury workspaces.
+        </div>
       </footer>
 
       {/* ── REGISTRATION MODAL ── */}
