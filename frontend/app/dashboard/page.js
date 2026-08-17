@@ -3600,7 +3600,7 @@ export default function AppContainer() {
 
                   // Build the invite link using a single base64 token (no & in URL = no encoding issues)
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
-                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername, orgType: activeOrg.type || 'software_house', orgName: activeOrg.org_name || 'AuraSuite' }));
+                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername, orgType: activeOrg.type || 'software_house', orgName: activeOrg.name || 'AuraSuite' }));
                   const inviteLink = `${baseUrl}/?t=${loginToken}`;
 
                   // 1. Create Profile (as 'pending_worker' to hide from UI until they login)
@@ -4491,7 +4491,7 @@ export default function AppContainer() {
                       <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/10 rounded-full blur-2xl pointer-events-none" />
                       <div className="flex justify-between items-start mb-6">
                         <div>
-                          <h3 className="text-xl font-bold text-white mb-1">{org.org_name}</h3>
+                          <h3 className="text-xl font-bold text-white mb-1">{org.name}</h3>
                           <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider bg-purple-900/30 px-2 py-1 rounded">{org.working_hours?.business_type || 'Unknown Type'}</span>
                         </div>
                       </div>
@@ -4527,10 +4527,10 @@ export default function AppContainer() {
                       </div>
                       <div className="flex gap-3">
                         <button onClick={async () => {
-                          if (!confirm(`Approve ${org.org_name}?`)) return;
+                          if (!confirm(`Approve ${org.name}?`)) return;
                           
                           const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
-                          const username = `admin_${org.org_name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+                          const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
                           const tempPassword = Math.random().toString(36).slice(-8);
 
                           await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
@@ -4549,7 +4549,7 @@ export default function AppContainer() {
 
                           await fetch('/api/send-invite', {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.org_name })
+                            body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name })
                           });
 
                           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: 'active' } : o));
@@ -4589,7 +4589,7 @@ export default function AppContainer() {
                       <div className="absolute top-0 right-0 w-24 h-24 bg-green-600/10 rounded-full blur-2xl pointer-events-none" />
                       <div className="flex justify-between items-start mb-6">
                         <div>
-                          <h3 className="text-xl font-bold text-white mb-1">{org.org_name}</h3>
+                          <h3 className="text-xl font-bold text-white mb-1">{org.name}</h3>
                           <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider bg-green-900/30 px-2 py-1 rounded">{org.working_hours?.business_type || 'Unknown Type'}</span>
                         </div>
                       </div>

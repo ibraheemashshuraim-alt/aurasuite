@@ -43,7 +43,7 @@ export default function LandingPage() {
     
     try {
       const { error } = await supabase.from('organizations').insert({
-        org_name: formData.orgName,
+        name: formData.orgName,
         owner_name: formData.ownerName,
         email: formData.email,
         phone: formData.phone,
