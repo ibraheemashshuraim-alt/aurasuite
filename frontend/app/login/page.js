@@ -491,11 +491,33 @@ export default function AppContainer() {
       const params = new URLSearchParams(window.location.search);
       const hasInviteToken = params.get('t');
       const hasOldInvite = params.get('inviteToken');
-      const hasCardLogin = params.get('card');
+      const cardParam = params.get('card');
+      const userParam = params.get('user');
+      const modeParam = params.get('mode');
+      const kickoutParam = params.get('kickout');
+
+      if (modeParam === 'admin') {
+        setLoginMode('admin');
+        setIsCardLoginOnly(true);
+      } else if (modeParam === 'register') {
+        setAuthTab('signup');
+        setIsCardLoginOnly(true);
+      }
+
+      if (kickoutParam === 'true') {
+        setCardError('Access Revoked: Your access card has been suspended by the Admin. Please contact support or request a new card.');
+      }
+
+      if (cardParam && userParam) {
+        setLoginMode('worker');
+        setAuthCardNumber(cardParam);
+        setAuthUsername(userParam);
+        addNotification('Credentials pre-filled from invite link. Enter your password to continue.', 'info');
+      }
 
       // If an invite token or card link is present, let the URL params effect handle the login flow.
       // Do not auto-login from localStorage, otherwise it overrides the token!
-      if (hasInviteToken || hasOldInvite || hasCardLogin) {
+      if (hasInviteToken || hasOldInvite || cardParam) {
         setIsCheckingSession(false);
         return;
       }
@@ -555,28 +577,6 @@ export default function AppContainer() {
           sessionStorage.removeItem('aura_session');
           localStorage.removeItem('aura_session');
           setIsCheckingSession(false);
-        }
-        const modeParam = params.get('mode');
-        if (modeParam === 'admin') {
-          setLoginMode('admin');
-          setIsCardLoginOnly(true);
-        } else if (modeParam === 'register') {
-          setAuthTab('signup');
-          setIsCardLoginOnly(true);
-        }
-
-        const kickoutParam = params.get('kickout');
-        if (kickoutParam === 'true') {
-          setCardError('Access Revoked: Your access card has been suspended by the Admin. Please contact support or request a new card.');
-        }
-
-        const cardParam = params.get('card');
-        const userParam = params.get('user');
-        if (cardParam && userParam) {
-          setLoginMode('worker');
-          setAuthCardNumber(cardParam);
-          setAuthUsername(userParam);
-          addNotification('Credentials pre-filled from invite link. Enter your password to continue.', 'info');
         }
       } else {
         setIsCheckingSession(false);
