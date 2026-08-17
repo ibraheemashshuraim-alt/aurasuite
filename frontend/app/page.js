@@ -47,10 +47,16 @@ export default function LandingPage() {
         owner_name: formData.ownerName,
         email: formData.email,
         phone: formData.phone,
-        business_type: formData.businessType,
-        team_size: formData.teamSize,
         status: 'pending_approval', // This will be reviewed by Super Admin
-        working_hours: { cnic: formData.cnic, city: formData.city, start: "00:00", end: "23:59", is_24_7: false }
+        working_hours: { 
+          cnic: formData.cnic, 
+          city: formData.city, 
+          business_type: formData.businessType,
+          team_size: formData.teamSize,
+          start: "00:00", 
+          end: "23:59", 
+          is_24_7: false 
+        }
       });
 
       if (error) {

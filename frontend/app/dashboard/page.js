@@ -10,7 +10,7 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer, Camera, FileText, Image as ImageIcon, PlayCircle
+  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer, Camera, FileText, Image as ImageIcon, PlayCircle, XCircle
 , Type
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -3363,6 +3363,8 @@ export default function AppContainer() {
           <div className="flex flex-col gap-0.5">
             {[
               { id: 'dashboard', icon: <LayoutDashboard size={15} />, label: 'Dashboard' },
+              { id: 'approvals', icon: <CheckCircle size={15} />, label: 'Approvals', superAdminOnly: true },
+              { id: 'active_orgs', icon: <Server size={15} />, label: 'Active Orgs', superAdminOnly: true },
               { id: 'admin', icon: <Shield size={15} />, label: 'Admin Control', adminOnly: true },
               { id: 'users', icon: <Users size={15} />, label: 'Users', adminOnly: true },
               { id: 'meetings', icon: <Video size={15} />, label: 'Meetings' },
@@ -3370,6 +3372,7 @@ export default function AppContainer() {
               { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules', hideForClient: true },
               { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials', hideForClient: true },
             ].filter(item => {
+              if (item.superAdminOnly && currentUser.role !== 'super_admin') return false;
               if (item.adminOnly && !['admin', 'super_admin', 'sub_admin', 'manager'].includes(currentUser.role)) return false;
               if (item.hideForClient && currentUser.role === 'client') return false;
               return true;
@@ -4466,6 +4469,147 @@ export default function AppContainer() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ═══════ APPROVALS (Super Admin) ═══════ */}
+          {activeTab === 'approvals' && currentUser?.role === 'super_admin' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <div className="p-2 bg-red-500/10 rounded-lg border border-red-500/20"><Clock className="text-red-400" size={20} /></div> Pending Approvals
+              </h2>
+              {organizations.filter(o => o.status === 'pending_approval').length === 0 ? (
+                <div className="text-center py-20 bg-[#0f081c] border border-purple-500/10 rounded-3xl">
+                  <Shield className="mx-auto text-purple-500/30 mb-4" size={40} />
+                  <h3 className="text-xl font-bold text-white mb-2">No Pending Requests</h3>
+                  <p className="text-purple-300">All registrations have been processed.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {organizations.filter(o => o.status === 'pending_approval').map(org => (
+                    <div key={org.id} className="bg-[#11081c] border border-purple-500/20 rounded-2xl p-6 hover:border-red-500/40 transition-colors shadow-lg relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/10 rounded-full blur-2xl pointer-events-none" />
+                      <div className="flex justify-between items-start mb-6">
+                        <div>
+                          <h3 className="text-xl font-bold text-white mb-1">{org.org_name}</h3>
+                          <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider bg-purple-900/30 px-2 py-1 rounded">{org.working_hours?.business_type || 'Unknown Type'}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-3 mb-8 text-sm">
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Owner</span>
+                          <span className="text-white font-medium">{org.owner_name}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Email</span>
+                          <span className="text-white font-medium truncate ml-4">{org.email}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Phone</span>
+                          <span className="text-white font-medium">{org.phone || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Team Size</span>
+                          <span className="text-white font-medium">{org.working_hours?.team_size || '1-10'}</span>
+                        </div>
+                        {org.working_hours?.cnic && (
+                          <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                            <span className="text-red-400 font-semibold">CNIC</span>
+                            <span className="text-white font-medium tracking-wider">{org.working_hours.cnic}</span>
+                          </div>
+                        )}
+                        {org.working_hours?.city && (
+                          <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                            <span className="text-purple-400">City</span>
+                            <span className="text-white font-medium">{org.working_hours.city}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-3">
+                        <button onClick={async () => {
+                          if (!confirm(`Approve ${org.org_name}?`)) return;
+                          
+                          const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
+                          const username = `admin_${org.org_name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+                          const tempPassword = Math.random().toString(36).slice(-8);
+
+                          await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
+                          const { data: profileData } = await supabase.from('profiles').insert({
+                            organization_id: org.id, email: org.email, full_name: org.owner_name,
+                            role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+                            card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+                          }).select().single();
+
+                          if (profileData) {
+                            await supabase.from('digital_cards').insert({
+                              card_number: cardNumber, username, temp_password: tempPassword,
+                              profile_id: profileData.id, organization_id: org.id, email: org.email
+                            });
+                          }
+
+                          await fetch('/api/send-invite', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.org_name })
+                          });
+
+                          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: 'active' } : o));
+                        }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 transition-all">
+                          <CheckCircle size={18}/> Approve
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm('Reject this organization?')) return;
+                          await supabase.from('organizations').delete().eq('id', org.id);
+                          setOrganizations(prev => prev.filter(o => o.id !== org.id));
+                        }} className="px-4 py-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
+                          <XCircle size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ═══════ ACTIVE ORGS (Super Admin) ═══════ */}
+          {activeTab === 'active_orgs' && currentUser?.role === 'super_admin' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <div className="p-2 bg-green-500/10 rounded-lg border border-green-500/20"><Server className="text-green-400" size={20} /></div> Active Organizations
+              </h2>
+              {organizations.filter(o => o.status === 'active').length === 0 ? (
+                <div className="text-center py-20 bg-[#0f081c] border border-purple-500/10 rounded-3xl">
+                  <Shield className="mx-auto text-green-500/30 mb-4" size={40} />
+                  <h3 className="text-xl font-bold text-white mb-2">No Active Orgs</h3>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {organizations.filter(o => o.status === 'active').map(org => (
+                    <div key={org.id} className="bg-[#11081c] border border-green-500/20 rounded-2xl p-6 hover:border-green-500/40 transition-colors shadow-lg relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-green-600/10 rounded-full blur-2xl pointer-events-none" />
+                      <div className="flex justify-between items-start mb-6">
+                        <div>
+                          <h3 className="text-xl font-bold text-white mb-1">{org.org_name}</h3>
+                          <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider bg-green-900/30 px-2 py-1 rounded">{org.working_hours?.business_type || 'Unknown Type'}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-3 mb-6 text-sm">
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Owner</span>
+                          <span className="text-white font-medium">{org.owner_name}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Email</span>
+                          <span className="text-white font-medium truncate ml-4">{org.email}</span>
+                        </div>
+                      </div>
+                      <button className="w-full py-2.5 rounded-xl bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20 transition-colors flex items-center justify-center gap-2 text-sm font-bold">
+                        Manage Organization
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
