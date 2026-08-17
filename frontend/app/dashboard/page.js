@@ -4547,10 +4547,16 @@ export default function AppContainer() {
                             });
                           }
 
-                          await fetch('/api/send-invite', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name })
-                          });
+                          try {
+                            await fetch('/api/send-invite', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name })
+                            });
+                          } catch (e) {
+                            console.error("Email might have failed", e);
+                          }
+
+                          alert(`✅ ${org.name} Approved!\n\nSend these credentials to the owner:\n\nPortal Login URL: aurasuite-kappa.vercel.app/login\nCard Number: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}\n\n(If you haven't set up EMAIL_USER and EMAIL_PASS in Vercel, the automatic email was not sent.)`);
 
                           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: 'active' } : o));
                         }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 transition-all">
@@ -4603,9 +4609,18 @@ export default function AppContainer() {
                           <span className="text-white font-medium truncate ml-4">{org.email}</span>
                         </div>
                       </div>
-                      <button className="w-full py-2.5 rounded-xl bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20 transition-colors flex items-center justify-center gap-2 text-sm font-bold">
-                        Manage Organization
-                      </button>
+                      <div className="flex gap-3">
+                        <button onClick={() => alert(`Management console for ${org.name} will open here.`)} className="flex-1 py-2.5 rounded-xl bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20 transition-colors flex items-center justify-center gap-2 text-sm font-bold">
+                          Manage Org
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm(`Delete ${org.name} forever?`)) return;
+                          await supabase.from('organizations').delete().eq('id', org.id);
+                          setOrganizations(prev => prev.filter(o => o.id !== org.id));
+                        }} className="px-4 py-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors flex items-center justify-center">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
