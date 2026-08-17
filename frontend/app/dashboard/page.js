@@ -154,15 +154,18 @@ function DigitalCardVisual({ cardData }) {
   const { role, full_name, card_number, domain } = cardData;
   
   let bgClass = "bg-gradient-to-br from-purple-900 to-indigo-900 border-purple-500/30";
+  let bgImg = "/bg-silver-card.jpg"; // Default for workers
   let icon = <Briefcase size={20} className="text-purple-300" />;
   let roleTitle = "Team Member";
 
   if (role === 'client') {
     bgClass = "bg-gradient-to-br from-[#2a1b10] to-[#1a1410] border-yellow-500/30";
+    bgImg = "/bg-silver-card.jpg";
     icon = <Star size={20} className="text-yellow-400" />;
     roleTitle = "Valued Client";
   } else if (role === 'admin' || role === 'super_admin') {
     bgClass = "bg-gradient-to-br from-red-950 to-rose-950 border-red-500/30";
+    bgImg = "/bg-gold-card.jpg"; // Admin gets the gold luxury card
     icon = <Shield size={20} className="text-red-400" />;
     roleTitle = "Super Administrator";
   } else if (role === 'sub_admin') {
@@ -184,19 +187,21 @@ function DigitalCardVisual({ cardData }) {
   }
 
   return (
-    <div className={`relative w-full max-w-sm mx-auto rounded-xl border p-5 overflow-hidden shadow-2xl ${bgClass}`}>
+    <div className={`relative w-full max-w-sm mx-auto rounded-xl border p-5 overflow-hidden shadow-2xl ${bgClass} shadow-[0_10px_40px_rgba(0,0,0,0.8)]`}>
+      <img src={bgImg} alt="Card Texture" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-60 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
       <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl pointer-events-none" />
-      <div className="relative flex justify-between items-start mb-6">
+      <div className="relative flex justify-between items-start mb-6 z-10">
         <div>
-          <div className="text-[10px] uppercase font-bold text-white/50 tracking-wider mb-1">AuraSuite Access Card</div>
-          <div className="text-lg font-bold text-white leading-tight">{full_name}</div>
-          <div className="text-xs text-white/70 mt-0.5">{roleTitle} {domain && `• ${domain}`}</div>
+          <div className="text-[10px] uppercase font-bold text-white/70 tracking-wider mb-1" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>AuraSuite Premium Access</div>
+          <div className="text-lg font-bold text-white leading-tight drop-shadow-md">{full_name}</div>
+          <div className="text-xs text-white/90 mt-0.5 drop-shadow-md font-semibold">{roleTitle} {domain && `• ${domain}`}</div>
         </div>
-        <div className="p-2.5 bg-black/30 rounded-xl border border-white/10 shadow-inner">
+        <div className="p-2.5 bg-black/40 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-md">
           {icon}
         </div>
       </div>
-      <div className="relative flex justify-between items-end mt-4">
+      <div className="relative flex justify-between items-end mt-4 z-10">
         <div>
           <div className="text-[8px] uppercase font-bold text-white/40 mb-0.5">Card Number</div>
           <div className="font-mono text-sm text-white/90 tracking-widest">{card_number}</div>
@@ -247,6 +252,7 @@ export default function AppContainer() {
   const [passwordChangeNew, setPasswordChangeNew] = useState('');
   const [isInviteFlow, setIsInviteFlow] = useState(false);
   const [authOrgType, setAuthOrgType] = useState('');
+  const [authOrgName, setAuthOrgName] = useState('');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [tempDigitalCard, setTempDigitalCard] = useState(null);
   const [showQuiz, setShowQuiz] = useState(false);
@@ -833,6 +839,7 @@ export default function AppContainer() {
             setLoginMode('worker');
             setIsInviteFlow(true);
             if (decoded.orgType) setAuthOrgType(decoded.orgType);
+            if (decoded.orgName) setAuthOrgName(decoded.orgName);
           }
         } catch(e) { /* ignore invalid token */ }
       }
@@ -2325,7 +2332,8 @@ export default function AppContainer() {
             </div>
             <h1 className="font-bold text-2xl text-white tracking-wide">AuraSuite</h1>
             <p className="text-xs text-purple-400 font-medium mt-1">
-              {authOrgType === 'software_house' ? 'Welcome to our Software House' : 
+              {authOrgName ? `Welcome to ${authOrgName}` : 
+               authOrgType === 'software_house' ? 'Welcome to our Software House' : 
                authOrgType === 'factory' ? 'Welcome to our Factory' : 
                authOrgType === 'academy' ? 'Welcome to our Academy' : 
                'Enterprise SaaS Management Portal'}
@@ -3589,7 +3597,7 @@ export default function AppContainer() {
 
                   // Build the invite link using a single base64 token (no & in URL = no encoding issues)
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
-                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername, orgType: activeOrg.type || 'software_house' }));
+                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername, orgType: activeOrg.type || 'software_house', orgName: activeOrg.org_name || 'AuraSuite' }));
                   const inviteLink = `${baseUrl}/?t=${loginToken}`;
 
                   // 1. Create Profile (as 'pending_worker' to hide from UI until they login)

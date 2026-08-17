@@ -118,8 +118,17 @@ export default function SuperAdminPage() {
   if (!mounted || !isSuperAdmin) return null;
 
   return (
-    <div className="min-h-screen bg-[#05010a] text-[#f3f1f5] font-sans">
-      <header className="sticky top-0 z-50 bg-[#0a0514]/80 backdrop-blur-md border-b border-purple-500/20 px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[#05010a] text-[#f3f1f5] font-sans relative overflow-x-hidden">
+      {/* Background Ambient Glows */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <img src="/bg-office.jpg" alt="Luxury Office" className="w-full h-full object-cover opacity-10 object-center mix-blend-screen" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#05010a]/90 via-[#05010a]/95 to-[#05010a]"></div>
+      </div>
+      
+      <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] bg-red-900/20 rounded-full blur-[150px] pointer-events-none z-0" />
+      <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-900/20 rounded-full blur-[150px] pointer-events-none z-0" />
+
+      <header className="sticky top-0 z-50 bg-[#0a0514]/60 backdrop-blur-xl border-b border-red-500/20 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 to-purple-600 flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.4)]">
             <Shield className="text-white" size={20} />
@@ -129,18 +138,18 @@ export default function SuperAdminPage() {
             <p className="text-[10px] uppercase text-red-400 tracking-widest font-bold">Master Control</p>
           </div>
         </div>
-        <button onClick={() => router.push('/dashboard')} className="text-sm font-bold text-purple-300 hover:text-white">
+        <button onClick={() => router.push('/dashboard')} className="text-sm font-bold text-red-400 hover:text-white transition-colors">
           Return to Dashboard
         </button>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-12">
+      <main className="max-w-7xl mx-auto px-6 py-12 relative z-10">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Clock className="text-purple-400" /> Pending Registrations
+          <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+            <div className="p-2 bg-red-500/10 rounded-lg border border-red-500/20"><Clock className="text-red-400" /></div> Pending Registrations
           </h2>
-          <div className="px-4 py-2 bg-[#11081c] border border-purple-500/30 rounded-xl flex items-center gap-2">
-            <Search size={16} className="text-purple-400" />
+          <div className="px-4 py-2 bg-[#11081c]/80 backdrop-blur border border-red-500/30 rounded-xl flex items-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.1)]">
+            <Search size={16} className="text-red-400" />
             <input type="text" placeholder="Search requests..." className="bg-transparent border-none outline-none text-sm text-white" />
           </div>
         </div>
@@ -183,12 +192,24 @@ export default function SuperAdminPage() {
                     <span className="text-purple-400">Team Size</span>
                     <span className="text-white font-medium">{org.team_size}</span>
                   </div>
+                  {org.working_hours?.cnic && (
+                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                      <span className="text-red-400 font-semibold">CNIC</span>
+                      <span className="text-white font-medium tracking-wider">{org.working_hours.cnic}</span>
+                    </div>
+                  )}
+                  {org.working_hours?.city && (
+                    <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                      <span className="text-purple-400">City</span>
+                      <span className="text-white font-medium">{org.working_hours.city}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3">
                   <button onClick={() => handleApprove(org)} disabled={actionLoading === org.id}
-                    className="flex-1 py-2.5 rounded-xl bg-green-500/20 text-green-400 font-bold border border-green-500/30 hover:bg-green-500/30 flex items-center justify-center gap-2 disabled:opacity-50 transition-colors">
-                    {actionLoading === org.id ? 'Processing...' : <><CheckCircle size={16}/> Approve</>}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 disabled:opacity-50 transition-all">
+                    {actionLoading === org.id ? 'Processing...' : <><CheckCircle size={18}/> Approve & Send Card</>}
                   </button>
                   <button onClick={() => handleReject(org.id)} disabled={actionLoading === org.id}
                     className="px-4 py-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 disabled:opacity-50 transition-colors">
