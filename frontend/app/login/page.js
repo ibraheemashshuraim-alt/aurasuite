@@ -543,6 +543,7 @@ export default function AppContainer() {
               console.warn('Session check error (network?):', pError);
               // Do NOT delete session on network error! Just show login to be safe but keep storage.
               setIsCheckingSession(false);
+              addNotification('Network error checking session. Please refresh to try again.', 'warning');
               return;
             }
             if (savedUser) {
@@ -752,9 +753,9 @@ export default function AppContainer() {
           .eq('id', uid)
           .maybeSingle();
 
-        // Trigger kickout if: profile deleted (no data and no error), or role is suspended/banned/deleted
-        if ((!data && !error) || (data && ['suspended', 'banned', 'deleted'].includes(data.role))) {
-          console.log('🚨 POLLER KICKOUT: profile missing or suspended', { data, error });
+        // Trigger kickout if role is suspended/banned/deleted
+        if (data && ['suspended', 'banned', 'deleted'].includes(data.role)) {
+          console.log('🚨 POLLER KICKOUT: profile suspended', { data, error });
           setKickoutModal(true);
         } else if (data && data.role === 'worker') {
           const { data: orgData } = await supabase.from('organizations').select('working_days, working_hours').eq('id', data.organization_id).maybeSingle();

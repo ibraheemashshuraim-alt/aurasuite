@@ -614,6 +614,11 @@ export default function AppContainer() {
           }
         });
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'organizations' }, () => {
+        supabase.from('organizations').select('*').then(({ data }) => {
+          if (data) setOrganizations(data);
+        });
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         supabase.from('tasks').select('*').then(({ data }) => { if (data) setTasks(data); });
       })
@@ -762,9 +767,9 @@ export default function AppContainer() {
           .eq('id', uid)
           .maybeSingle();
 
-        // Trigger kickout if: profile deleted (no data and no error), or role is suspended/banned/deleted
-        if ((!data && !error) || (data && ['suspended', 'banned', 'deleted'].includes(data.role))) {
-          console.log('🚨 POLLER KICKOUT: profile missing or suspended', { data, error });
+        // Trigger kickout if role is suspended/banned/deleted
+        if (data && ['suspended', 'banned', 'deleted'].includes(data.role)) {
+          console.log('🚨 POLLER KICKOUT: profile suspended', { data, error });
           setKickoutModal(true);
         }
       } catch (err) {
