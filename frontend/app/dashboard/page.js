@@ -2048,8 +2048,8 @@ export default function AppContainer() {
     if (workerIds.length === 0) return;
     
     // If locking all, set is_locked true, force_unlocked false
-    // If unlocking all, set is_locked false, force_unlocked true (to override holidays)
-    const newForceUnlocked = !lock;
+    // If unlocking all, set is_locked false, force_unlocked false (restores Auto mode)
+    const newForceUnlocked = false;
     
     const { error } = await supabase.from('profiles').update({ is_locked: lock, force_unlocked: newForceUnlocked }).in('id', workerIds);
     if (!error) {
@@ -3713,15 +3713,17 @@ export default function AppContainer() {
                       })}
                     </div>
                     
-                    <div className="flex items-center gap-2 bg-purple-950/30 rounded-lg p-1.5 border border-purple-500/10 h-8">
+                    <div className="flex items-center gap-1.5 bg-purple-950/30 rounded-lg p-1.5 border border-purple-500/10 h-8">
                       <Clock size={12} className="text-purple-400" />
                       <input type="time" value={activeOrg?.working_hours?.start || "00:00"} 
                         onChange={(e) => updateWorkingHours('start', e.target.value)}
-                        className="bg-transparent text-[10px] text-white focus:outline-none w-[60px]" />
+                        className="bg-transparent text-[11px] font-mono text-white focus:outline-none w-[75px] cursor-text" 
+                        style={{ colorScheme: 'dark' }} />
                       <span className="text-[10px] text-purple-500">-</span>
                       <input type="time" value={activeOrg?.working_hours?.end || "23:59"} 
                         onChange={(e) => updateWorkingHours('end', e.target.value)}
-                        className="bg-transparent text-[10px] text-white focus:outline-none w-[60px]" />
+                        className="bg-transparent text-[11px] font-mono text-white focus:outline-none w-[75px] cursor-text" 
+                        style={{ colorScheme: 'dark' }} />
                     </div>
 
                     <div className="flex bg-purple-950/30 rounded-lg p-1 border border-purple-500/10">
