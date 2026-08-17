@@ -30,6 +30,8 @@ function checkIsEffectivelyLocked(user, org) {
   if (user.force_unlocked) return false;
 
   if (org) {
+    if (org.working_hours?.is_24_7) return false;
+
     const currentDay = new Date().getDay();
     const workingDays = org.working_days || [1,2,3,4,5];
     if (!workingDays.includes(currentDay)) return true;

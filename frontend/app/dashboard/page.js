@@ -28,6 +28,8 @@ function checkIsEffectivelyLocked(user, org) {
   if (user.force_unlocked) return false;
 
   if (org) {
+    if (org.working_hours?.is_24_7) return false;
+
     const currentDay = new Date().getDay();
     const workingDays = org.working_days || [1,2,3,4,5];
     if (!workingDays.includes(currentDay)) return true;
@@ -3721,7 +3723,12 @@ export default function AppContainer() {
                     <p className="text-[10px] text-purple-300/70 mt-1">Manage working days and portal locks for all workers</p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                    <div className="flex gap-1">
+                    <div className="flex items-center gap-2 bg-purple-950/30 rounded-lg p-1.5 px-3 border border-purple-500/10 h-8 cursor-pointer" onClick={() => updateWorkingHours('is_24_7', !activeOrg?.working_hours?.is_24_7)}>
+                      <div className={`w-3 h-3 rounded-full ${activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-purple-900'}`} />
+                      <span className="text-[10px] font-bold text-white">24/7 Open</span>
+                    </div>
+
+                    <div className={`flex gap-1 ${activeOrg?.working_hours?.is_24_7 ? 'opacity-30 pointer-events-none' : ''}`}>
                       {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName, idx) => {
                         const isWorking = (activeOrg?.working_days || [1,2,3,4,5]).includes(idx);
                         return (
@@ -3733,23 +3740,23 @@ export default function AppContainer() {
                       })}
                     </div>
                     
-                    <div className="flex items-center gap-1.5 bg-purple-950/30 rounded-lg p-1.5 border border-purple-500/10 h-8">
+                    <div className={`flex items-center gap-1.5 bg-purple-950/30 rounded-lg p-1.5 border border-purple-500/10 h-8 ${activeOrg?.working_hours?.is_24_7 ? 'opacity-30 pointer-events-none' : ''}`}>
                       <Clock size={12} className="text-purple-400" />
                       <input type="time" value={activeOrg?.working_hours?.start || "00:00"} 
                         onChange={(e) => updateWorkingHours('start', e.target.value)}
-                        className="bg-transparent text-[11px] font-mono text-white focus:outline-none w-[75px] cursor-text" 
+                        className="bg-transparent text-[12px] font-mono text-white focus:outline-none w-[110px] cursor-text" 
                         style={{ colorScheme: 'dark' }} />
                       <span className="text-[10px] text-purple-500">-</span>
                       <input type="time" value={activeOrg?.working_hours?.end || "23:59"} 
                         onChange={(e) => updateWorkingHours('end', e.target.value)}
-                        className="bg-transparent text-[11px] font-mono text-white focus:outline-none w-[75px] cursor-text" 
+                        className="bg-transparent text-[12px] font-mono text-white focus:outline-none w-[110px] cursor-text" 
                         style={{ colorScheme: 'dark' }} />
                     </div>
 
                     <div className="flex bg-purple-950/30 rounded-lg p-1 border border-purple-500/10">
                       <button onClick={() => toggleLockAllWorkers('lock')} className="px-3 py-1 text-[10px] font-bold rounded bg-red-950/30 text-red-400 hover:bg-red-900/50 transition-colors">Lock All</button>
                       <button onClick={() => toggleLockAllWorkers('unlock')} className="px-3 py-1 text-[10px] font-bold rounded bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/50 transition-colors mx-1">Unlock All</button>
-                      <button onClick={() => toggleLockAllWorkers('auto')} className="px-3 py-1 text-[10px] font-bold rounded bg-blue-950/30 text-blue-400 hover:bg-blue-900/50 transition-colors">Auto All</button>
+                      <button onClick={() => toggleLockAllWorkers('auto')} className="px-3 py-1 text-[10px] font-bold rounded bg-blue-950/30 text-blue-400 hover:bg-blue-900/50 transition-colors" title="Remove manual locks to let the Auto System manage them">Reset to Auto</button>
                     </div>
                   </div>
                 </div>
