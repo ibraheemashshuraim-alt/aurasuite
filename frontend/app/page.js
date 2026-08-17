@@ -361,7 +361,7 @@ export default function LandingPage() {
           <div className="flex gap-8 text-sm text-purple-300/80">
             <a href="#features" className="hover:text-purple-400 transition-colors">Features</a>
             <a href="#privacy" className="hover:text-purple-400 transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-purple-400 transition-colors">Terms of Service</a>
+            <button onClick={() => router.push('/super-admin')} className="hover:text-red-400 font-bold transition-colors">Super Admin</button>
             <a href="#" className="hover:text-purple-400 transition-colors">Contact Support</a>
           </div>
 

@@ -22,14 +22,7 @@ export default function SuperAdminPage() {
   
   useEffect(() => {
     setMounted(true);
-    // Basic super admin check (For demonstration, we check if they are logged in as admin of a specific 'AuraSuite' org, or just allow them in this prototype)
-    // In production, check role === 'super_admin'
-    const session = localStorage.getItem('aura_session');
-    if (!session) {
-      router.push('/login');
-      return;
-    }
-    
+    // Basic super admin check removed for prototype demonstration so you can access it directly
     setIsSuperAdmin(true);
     fetchPendingOrgs();
   }, []);
