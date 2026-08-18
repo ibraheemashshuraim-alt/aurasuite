@@ -4611,6 +4611,14 @@ export default function AppContainer() {
                         </button>
                         <button onClick={async () => {
                           if (!confirm('Reject this organization?')) return;
+                          // Delete associated cards and profiles first
+                          const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
+                          if (orgProfiles) {
+                              for (const p of orgProfiles) {
+                                  await supabase.from('digital_cards').delete().eq('profile_id', p.id);
+                                  await supabase.from('profiles').delete().eq('id', p.id);
+                              }
+                          }
                           await supabase.from('organizations').delete().eq('id', org.id);
                           setOrganizations(prev => prev.filter(o => o.id !== org.id));
                         }} className="px-4 py-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
@@ -4662,6 +4670,17 @@ export default function AppContainer() {
                         </button>
                         <button onClick={async () => {
                           if (!confirm(`Delete ${org.name} forever?`)) return;
+                          const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
+                          if (orgProfiles) {
+                              for (const p of orgProfiles) {
+                                  await supabase.from('digital_cards').delete().eq('profile_id', p.id);
+                                  await supabase.from('presence').delete().eq('user_id', p.id);
+                                  await supabase.from('tasks').delete().eq('assigned_to', p.id);
+                                  await supabase.from('profiles').delete().eq('id', p.id);
+                              }
+                          }
+                          await supabase.from('meetings').delete().eq('organization_id', org.id);
+                          await supabase.from('tasks').delete().eq('organization_id', org.id);
                           await supabase.from('organizations').delete().eq('id', org.id);
                           setOrganizations(prev => prev.filter(o => o.id !== org.id));
                         }} className="px-4 py-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors flex items-center justify-center">
