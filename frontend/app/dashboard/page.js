@@ -4552,16 +4552,30 @@ export default function AppContainer() {
                           const tempPassword = Math.random().toString(36).slice(-8);
 
                           await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
-                          const { data: profileData } = await supabase.from('profiles').insert({
-                            organization_id: org.id, email: org.email, full_name: org.owner_name,
-                            role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
-                            card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
-                          }).select().single();
+                          
+                          let finalProfileId = null;
+                          const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
+                          
+                          if (existingProfile) {
+                             finalProfileId = existingProfile.id;
+                             await supabase.from('profiles').update({
+                               organization_id: org.id, full_name: org.owner_name,
+                               role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+                               card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+                             }).eq('id', existingProfile.id);
+                          } else {
+                             const { data: profileData } = await supabase.from('profiles').insert({
+                               organization_id: org.id, email: org.email, full_name: org.owner_name,
+                               role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+                               card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+                             }).select().single();
+                             if (profileData) finalProfileId = profileData.id;
+                          }
 
-                          if (profileData) {
+                          if (finalProfileId) {
                             await supabase.from('digital_cards').insert({
                               card_number: cardNumber, username, temp_password: tempPassword,
-                              profile_id: profileData.id, organization_id: org.id, email: org.email,
+                              profile_id: finalProfileId, organization_id: org.id, email: org.email,
                               is_revoked: false, status: 'active'
                             });
                           }
