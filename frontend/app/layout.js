@@ -29,7 +29,7 @@ export default function RootLayout({ children }) {
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              const currentVersion = '1.0.1';
+              const currentVersion = '1.0.3';
               const storedVersion = localStorage.getItem('app_version');
               if (storedVersion !== currentVersion) {
                 localStorage.setItem('app_version', currentVersion);

@@ -2251,8 +2251,8 @@ export default function AppContainer() {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
         <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked (POPUP MODAL DASHBOARD)</h2>
-          <p className="text-red-400 text-sm mb-6">KickoutModal triggered in Dashboard.</p>
+          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
+          <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
           <button
             onClick={() => {
               try {
@@ -4571,6 +4571,7 @@ export default function AppContainer() {
                              if (profileData) finalProfileId = profileData.id;
                           }
 
+                          let updatedOrNewProfile = null;
                           if (finalProfileId) {
                             if (existingProfile) {
                               await supabase.from('digital_cards').update({
@@ -4578,6 +4579,13 @@ export default function AppContainer() {
                                 organization_id: org.id, email: org.email,
                                 is_revoked: false
                               }).eq('profile_id', finalProfileId);
+                              
+                              updatedOrNewProfile = {
+                                ...existingProfile,
+                                organization_id: org.id, full_name: org.owner_name,
+                                role: 'admin', category: 'A', domain: 'Admin', username,
+                                card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+                              };
                             } else {
                               await supabase.from('digital_cards').insert({
                                 card_number: cardNumber, username, temp_password: tempPassword,

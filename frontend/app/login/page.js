@@ -505,7 +505,7 @@ export default function AppContainer() {
       }
 
       if (kickoutParam === 'true') {
-        setCardError('Access Revoked (Condition URL): kickout=true in URL.');
+        setCardError('Access Revoked: Your access card has been suspended by the Admin.');
       }
 
       if (cardParam && userParam) {
@@ -1042,7 +1042,7 @@ export default function AppContainer() {
       }
 
       if ((card.is_revoked === true || card.status === 'suspended') && !card.is_first_login) {
-        setCardError(`Access Revoked (Condition A): card.is_revoked=${card.is_revoked}, card.status=${card.status}`);
+        setCardError(`Access Revoked: Your access card has been suspended by the Admin.`);
         return;
       }
       
@@ -1064,7 +1064,7 @@ export default function AppContainer() {
 
       if (user) {
         if (user.role === 'banned' || user.role === 'deleted' || card.is_revoked === true) {
-          setCardError(`Access Revoked (Condition B): user.role=${user.role}, card.is_revoked=${card.is_revoked}`);
+          setCardError(`Access Revoked: Your access card has been suspended by the Admin.`);
           return;
         }
         const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
@@ -2119,8 +2119,8 @@ const handleReactMessage = async (msg, emoji) => {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
         <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked (POPUP MODAL)</h2>
-          <p className="text-red-400 text-sm mb-6">KickoutModal was triggered or role is suspended/banned.</p>
+          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
+          <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
           <button
             onClick={() => {
               try {
