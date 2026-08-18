@@ -616,6 +616,7 @@ export default function AppContainer() {
                   window.location.href = '/login?kickout=true';
                   return null;
               }
+              return updated || prev;
             });
           }
         });
@@ -769,11 +770,21 @@ export default function AppContainer() {
         // Silence errors
       }
     }, 3000);
+    
+    // Polling fallback for organizations (in case Realtime is disabled on the table)
+    const orgsInterval = setInterval(() => {
+      if (currentUserRef.current?.role === 'super_admin') {
+        supabase.from('organizations').select('*').then(({ data }) => {
+          if (data) setOrganizations(data);
+        });
+      }
+    }, 5000);
 
     return () => {
       supabase.removeChannel(channel);
       kickoutChannelRef.current = null;
       clearInterval(interval);
+      clearInterval(orgsInterval);
     };
   }, []);
 
