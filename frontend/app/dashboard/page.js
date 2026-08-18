@@ -470,6 +470,7 @@ export default function AppContainer() {
           supabase.from('tasks').select('*'),
           supabase.from('meetings').select('*').eq('is_active', true),
           supabase.from('schedules').select('*'),
+          // Fix: Only load group messages for the active organization to prevent leaks
           supabase.from('group_messages').select('*').order('created_at', { ascending: true }),
           supabase.from('meeting_invites').select('*'),
           supabase.from('meeting_states').select('*'),
@@ -2351,6 +2352,7 @@ export default function AppContainer() {
     }
     return (
       <div className="min-h-screen bg-luxury-bg text-[#f3f1f5] flex items-center justify-center p-4">
+        {!kickoutModal && (
         <div className="w-full max-w-md glass-panel-glow p-8 rounded-2xl border border-[#9333ea]/20 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-40 h-40 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
           {/* TOP TABS PERMANENTLY HIDDEN FOR CLEAN UI */}
@@ -2620,7 +2622,7 @@ export default function AppContainer() {
                 <h3 className="text-xl font-bold text-white">Assessment Complete</h3>
                 <p className="text-sm text-purple-200 mt-2">You have been assigned to <strong className="text-purple-400 border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 rounded">Tier {currentUser.category || 'C'}</strong></p>
               </div>
-              <button onClick={() => setShowQuiz(false)} className="w-full py-3 rounded-xl accent-gradient text-sm font-bold text-white glow-btn">
+              <button onClick={() => { setActiveTab('dashboard'); setShowQuiz(false); }} className="w-full py-3 rounded-xl accent-gradient text-sm font-bold text-white glow-btn">
                 Enter AuraSuite Dashboard
               </button>
             </div>
@@ -4317,7 +4319,7 @@ export default function AppContainer() {
                   <div className="flex-1 overflow-y-auto p-5 space-y-4">
                     {(() => {
                       const msgs = activeChat === 'group'
-                        ? groupMessages
+                        ? groupMessages.filter(m => m.organization_id === activeOrg?.id)
                         : activeDmUser ? (dmThreads[getDmKey(activeDmUser.id)] || []) : [];
                       if (msgs.length === 0) return (
                         <div className="flex flex-col items-center justify-center h-full text-center">

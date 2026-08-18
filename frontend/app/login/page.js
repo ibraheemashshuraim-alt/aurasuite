@@ -10,13 +10,11 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer, Camera, FileText, Image as ImageIcon, PlayCircle
+  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer, Camera, FileText, Image as ImageIcon, PlayCircle, XCircle, Server
 , Type
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { getRandomQuestions } from '../../lib/questionBank';
 import JSZip from 'jszip';
-
 
 // ─── Utility ────────────────────────────────────────────────────
 const genId = (prefix = 'id') => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
@@ -217,12 +215,28 @@ function DigitalCardVisual({ cardData }) {
 export default function AppContainer() {
   const [mounted, setMounted] = useState(false);
 
+  useEffect(() => {
+    // Force purge legacy service workers and caches
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        for (let name of names) {
+          caches.delete(name);
+        }
+      });
+    }
+  }, []);
+
   // ── Auth ──
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [authTab, setAuthTab] = useState('login');
-  const [isCardLoginOnly, setIsCardLoginOnly] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null);
   const [authCardNumber, setAuthCardNumber] = useState('');
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -246,12 +260,6 @@ export default function AppContainer() {
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizStep, setQuizStep] = useState(0);
   const [quizLoading, setQuizLoading] = useState(false);
-  const [quizLang, setQuizLang] = useState('en');
-  const [actualQuizQuestions, setActualQuizQuestions] = useState([]);
-  const [actualQuizAnswers, setActualQuizAnswers] = useState({});
-  const [quizFailed, setQuizFailed] = useState(false);
-  const [quizScore, setQuizScore] = useState(0);
-  const [cardError, setCardError] = useState(null);
 
   const [signUpName, setSignUpName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
@@ -263,6 +271,8 @@ export default function AppContainer() {
   // ── Global data ──
   const [organizations, setOrganizations] = useState([]);
   const [profiles, setProfiles] = useState([]);
+  const [bannedEmails, setBannedEmails] = useState([]);
+  const [showSuspendedUsers, setShowSuspendedUsers] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [activeMeetings, setActiveMeetings] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -277,63 +287,7 @@ export default function AppContainer() {
   const [chatInput, setChatInput] = useState('');
   const [activeChat, setActiveChat] = useState('group');        // 'group' | 'dm'
   const chatBottomRef = useRef(null);
-
-  // ── Session ──
-  const [currentUser, setCurrentUser] = useState(null);
-  const [activeOrg, setActiveOrg] = useState(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [isSettingPassword, setIsSettingPassword] = useState(false);
-  const [isEnteringDashboard, setIsEnteringDashboard] = useState(false);
-  const [notifications, setNotifications] = useState([
-    { id: 1, text: 'AuraSuite loaded. Welcome!', type: 'info' }
-  ]);
-
-  // ── Nav ──
-  const [activeTab, setActiveTab] = useState('dashboard');
-  useEffect(() => { const saved = localStorage.getItem('aura_worker_tab'); if (saved) setActiveTab(saved); }, []);
-  useEffect(() => { localStorage.setItem('aura_worker_tab', activeTab); }, [activeTab]);
-
-  // ── Meeting ──
-  const [isInMeeting, setIsInMeeting] = useState(false);
-  const [currentMeetingSession, setCurrentMeetingSession] = useState(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [meetingChat, setMeetingChat] = useState([]);
-  const [newChatMessage, setNewChatMessage] = useState('');
-  const [meetingParticipants, setMeetingParticipants] = useState([]);
-  const [isChatLocked, setIsChatLocked] = useState(false);
-  const [areAllMuted, setAreAllMuted] = useState(false);
-  const [newMeetingTitle, setNewMeetingTitle] = useState('');
-  const [newMeetingPasscode, setNewMeetingPasscode] = useState('');
-  const [copiedMeetId, setCopiedMeetId] = useState(null);
-  const [meetingInviteModal, setMeetingInviteModal] = useState(null);  // meeting obj
-  const [selectedInvitees, setSelectedInvitees] = useState([]);
-  const [meetingInvites, setMeetingInvites] = useState([]);  // [{meetingId, invitees:[userId]}]
-
-  const [showMeetingChat, setShowMeetingChat] = useState(false);
-  const [showMeetingParticipants, setShowMeetingParticipants] = useState(false);
-  const [showHostTools, setShowHostTools] = useState(false);
-  const [customAlert, setCustomAlert] = useState(null);
-  const [pinnedUserId, setPinnedUserId] = useState(null);
-  const [lightboxImage, setLightboxImage] = useState(null);
-  const [reactionDetails, setReactionDetails] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef(null);
-  const recordedChunksRef = useRef([]);
-  const currentUserRef = useRef(currentUser);
-  const kickoutChannelRef = useRef(null);
-  const [kickoutModal, setKickoutModal] = useState(false);
-  const [lockModal, setLockModal] = useState(false);
-  
-  useEffect(() => {
-    currentUserRef.current = currentUser;
-  }, [currentUser]);
-  // Audio fix: track previous media-control state to avoid spurious audio toggling
-  const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
-  const [showReactionsPanel, setShowReactionsPanel] = useState(false);
-  const [attachmentFiles, setAttachmentFiles] = useState([]);
-  const [attachmentSource, setAttachmentSource] = useState(null);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [isDictating, setIsDictating] = useState(false);
   const recognitionRef = useRef(null);
@@ -363,19 +317,81 @@ export default function AppContainer() {
     }
   }, [isCameraOpen]);
 
-  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [attachmentFiles, setAttachmentFiles] = useState([]);
+  const [attachmentSource, setAttachmentSource] = useState(null);
   const audioRecorderRef = useRef(null);
   const audioShouldSendRef = useRef(false);
+  const audioDiscardRef = useRef(false);
   const audioChunksRef = useRef([]);
   const mediaStreamRef = useRef(null);
-  const audioDiscardRef = useRef(false);
-  const [isSendingChat, setIsSendingChat] = useState(false);
+
+  // ── Session ──
+  const [currentUser, setCurrentUser] = useState(null);
+  const [activeOrg, setActiveOrg] = useState(null);
+  const [notifications, setNotifications] = useState([
+    { id: 1, text: 'AuraSuite loaded. Welcome!', type: 'info' }
+  ]);
+
+  // ── Nav ──
+  const [activeTab, setActiveTab] = useState('dashboard');
+  useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
+  useEffect(() => { localStorage.setItem('aura_admin_tab', activeTab); }, [activeTab]);
+
+  // ── Meeting ──
+  const [isInMeeting, setIsInMeeting] = useState(false);
+  const [currentMeetingSession, setCurrentMeetingSession] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [meetingChat, setMeetingChat] = useState([]);
+  const [newChatMessage, setNewChatMessage] = useState('');
+  const [meetingParticipants, setMeetingParticipants] = useState([]);
+  const [isChatLocked, setIsChatLocked] = useState(false);
+  const [areAllMuted, setAreAllMuted] = useState(false);
+  const [newMeetingTitle, setNewMeetingTitle] = useState('');
+  const [newMeetingPasscode, setNewMeetingPasscode] = useState('');
+  const [copiedMeetId, setCopiedMeetId] = useState(null);
+  const [meetingInviteModal, setMeetingInviteModal] = useState(null);  // meeting obj
+  const [selectedInvitees, setSelectedInvitees] = useState([]);
+  const [meetingInvites, setMeetingInvites] = useState([]);  // [{meetingId, invitees:[userId]}]
+
+  const [showMeetingChat, setShowMeetingChat] = useState(false);
+  const [showMeetingParticipants, setShowMeetingParticipants] = useState(false);
+  const [showHostTools, setShowHostTools] = useState(false);
+  const [customAlert, setCustomAlert] = useState(null);
+  const [kickoutModal, setKickoutModal] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [pinnedUserId, setPinnedUserId] = useState(null);
+  const [lightboxImage, setLightboxImage] = useState(null);
+  const [reactionDetails, setReactionDetails] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const currentUserRef = useRef(currentUser);
+  const kickoutChannelRef = useRef(null);
+  
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+  
+  // Audio fix: track previous media-control state to avoid spurious audio toggling
+  const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
+  const [showReactionsPanel, setShowReactionsPanel] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState([]); // [{id, emoji, userId, name}]
 
   // ── AI Onboarding ──
   const [onboardSkills, setOnboardSkills] = useState('React, Next.js, Node.js, CSS');
   const [onboardBio, setOnboardBio] = useState('Full Stack Engineer interested in dashboard systems.');
   const [onboardLoading, setOnboardLoading] = useState(false);
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
+  const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const [isSavingUserEdit, setIsSavingUserEdit] = useState(false);
+  const [isApprovingPayout, setIsApprovingPayout] = useState(false);
+  const [isSendingMeetingInvites, setIsSendingMeetingInvites] = useState(false);
+  const [isEndingMeeting, setIsEndingMeeting] = useState(false);
+  const [isSendingLiveChat, setIsSendingLiveChat] = useState(false);
 
   // ── Admin edit ──
   const [editingUser, setEditingUser] = useState(null);
@@ -448,32 +464,26 @@ export default function AppContainer() {
     setMounted(true);
     const loadAll = async () => {
       try {
-        const [orgs, profs, tsk, meets, scheds, msgs, dms, invites, mStates, fin] = await Promise.all([
+        const [orgs, profs, tsk, meets, scheds, msgs, invites, mStates, fin, bans] = await Promise.all([
           supabase.from('organizations').select('*'),
           supabase.from('profiles').select('*'),
           supabase.from('tasks').select('*'),
           supabase.from('meetings').select('*').eq('is_active', true),
           supabase.from('schedules').select('*'),
+          // Fix: Only load group messages for the active organization to prevent leaks
           supabase.from('group_messages').select('*').order('created_at', { ascending: true }),
-          supabase.from('dm_messages').select('*').order('created_at', { ascending: true }),
           supabase.from('meeting_invites').select('*'),
           supabase.from('meeting_states').select('*'),
           supabase.from('financials').select('*'),
+          supabase.from('banned_emails').select('*'),
         ]);
         if (orgs.data) setOrganizations(orgs.data);
         if (profs.data) setProfiles(profs.data);
+        if (bans.data) setBannedEmails(bans.data);
         if (tsk.data) setTasks(tsk.data);
         if (meets.data) setActiveMeetings(meets.data);
         if (scheds.data) setSchedules(scheds.data);
-        if (msgs.data) setGroupMessages(msgs.data.map(m => ({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, audioUrl: m.audio_url, attachmentUrl: m.attachment_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
-        if (dms.data) {
-          const threads = {};
-          dms.data.forEach(m => {
-            if (!threads[m.thread_key]) threads[m.thread_key] = [];
-            threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, audioUrl: m.audio_url, attachmentUrl: m.attachment_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size });
-          });
-          setDmThreads(threads);
-        }
+        if (msgs.data) setGroupMessages(msgs.data.map(m => ({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
         if (invites.data) setMeetingInvites(invites.data.map(i => ({ meetingId: i.meeting_id, invitees: i.invitees })));
         if (mStates.data) {
           const statesMap = {};
@@ -491,33 +501,10 @@ export default function AppContainer() {
       const params = new URLSearchParams(window.location.search);
       const hasInviteToken = params.get('t');
       const hasOldInvite = params.get('inviteToken');
-      const cardParam = params.get('card');
-      const userParam = params.get('user');
-      const modeParam = params.get('mode');
-      const kickoutParam = params.get('kickout');
 
-      if (modeParam === 'admin') {
-        setLoginMode('admin');
-        setIsCardLoginOnly(true);
-      } else if (modeParam === 'register') {
-        setAuthTab('signup');
-        setIsCardLoginOnly(true);
-      }
-
-      if (kickoutParam === 'true') {
-        setCardError('Access Revoked: Your access card has been suspended by the Admin.');
-      }
-
-      if (cardParam && userParam) {
-        setLoginMode('worker');
-        setAuthCardNumber(cardParam);
-        setAuthUsername(userParam);
-        addNotification('Credentials pre-filled from invite link. Enter your password to continue.', 'info');
-      }
-
-      // If an invite token or card link is present, let the URL params effect handle the login flow.
+      // If an invite token is present, let the URL params effect handle the login flow.
       // Do not auto-login from localStorage, otherwise it overrides the token!
-      if (hasInviteToken || hasOldInvite || cardParam) {
+      if (hasInviteToken || hasOldInvite) {
         setIsCheckingSession(false);
         return;
       }
@@ -541,40 +528,62 @@ export default function AppContainer() {
           supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser, error: pError}) => {
             if (pError) {
               console.warn('Session check error (network?):', pError);
-              // Do NOT delete session on network error! Just show login to be safe but keep storage.
-              setIsCheckingSession(false);
-              addNotification('Network error checking session. Please refresh to try again.', 'warning');
-              return;
-            }
-            if (savedUser) {
-              // 🚨 STRICT ISOLATION: If localStorage was corrupted with a worker session from an older bug, reject it!
-              const isWorker = ['worker', 'client'].includes(savedUser.role);
+              const isWorker = ['worker', 'client'].includes(parsed.loginMode);
               if (isWorker && loadedMode === 'admin') {
                 localStorage.removeItem('aura_session');
                 setIsCheckingSession(false);
                 return;
               }
+              setCurrentUser({ id: userId, role: parsed.loginMode || 'worker', organization_id: parsed.orgId });
+              setActiveOrg({ id: parsed.orgId, name: 'Offline Mode', type: 'software_house' });
+              setIsLoggedIn(true);
+              setIsCheckingSession(false);
+              addNotification('Network error connecting to database. Using cached session.', 'warning');
+              return;
+            }
+            if (!savedUser) {
+              sessionStorage.clear();
+              localStorage.clear();
+              setIsCheckingSession(false);
+              return;
+            }
+            
+            if (['banned', 'deleted', 'suspended'].includes(savedUser.role) || savedUser.status === 'suspended') {
+              // DON'T clear storage! Keep them permanently stuck on the modal.
+              setKickoutModal(true);
+            }
 
+            // 🚨 STRICT ISOLATION: If localStorage was corrupted with a worker session from an older bug, reject it!
+            const isWorker = ['worker', 'client'].includes(savedUser.role);
+            if (isWorker && loadedMode === 'admin') {
+              localStorage.removeItem('aura_session');
+              setIsCheckingSession(false);
+              return;
+            }
+
+            const loadOrg = (extra = {}) => {
               supabase.from('organizations').select('*').eq('id', savedUser.organization_id).single().then(({data: savedOrg}) => {
-                setCurrentUser(savedUser);
+                setCurrentUser({ ...savedUser, ...extra });
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
                 setIsCheckingSession(false);
-                
-                // Trigger kickout modal IF suspended (but DON'T clear storage!)
-                if (['suspended', 'banned', 'deleted'].includes(savedUser.role) || savedUser.status === 'suspended') {
+              });
+            };
+
+            if (isWorker) {
+              supabase.from('digital_cards').select('id, is_revoked').eq('profile_id', userId).single().then(({data: card}) => {
+                if (!card || card.is_revoked === true) {
                   setKickoutModal(true);
+                  setIsCheckingSession(false);
+                  return;
                 }
+                loadOrg({ card_id: card.id });
               });
             } else {
-              // User deleted from DB
-              sessionStorage.removeItem('aura_session');
-              localStorage.removeItem('aura_session');
-              setIsCheckingSession(false);
+              loadOrg();
             }
           });
         } catch(e) {
-          console.error('Session parse error:', e);
           sessionStorage.removeItem('aura_session');
           localStorage.removeItem('aura_session');
           setIsCheckingSession(false);
@@ -610,12 +619,6 @@ export default function AppContainer() {
             setCurrentUser(prev => {
               if (!prev) return prev;
               const updated = data.find(p => p.id === prev.id);
-              if (updated && (updated.role === 'deleted' || updated.role === 'banned')) {
-                  sessionStorage.removeItem('aura_session');
-                  localStorage.removeItem('aura_session');
-                  window.location.href = '/login?kickout=true';
-                  return null;
-              }
               return updated || prev;
             });
           }
@@ -646,7 +649,9 @@ export default function AppContainer() {
           const m = payload.new;
           setGroupMessages(prev => {
             const exists = prev.find(msg => msg.id === m.id);
-            if (exists) return prev.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg);
+            if (exists) {
+              return prev.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg);
+            }
             return [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }];
           });
         } else if (payload.eventType === 'DELETE') {
@@ -654,33 +659,6 @@ export default function AppContainer() {
         } else if (payload.eventType === 'UPDATE') {
           const m = payload.new;
           setGroupMessages(prev => prev.map(msg => msg.id === m.id ? { ...msg, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} } : msg));
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages' }, payload => {
-        if (payload.eventType === 'INSERT') {
-          const m = payload.new;
-          setDmThreads(prev => {
-            const thread = prev[m.thread_key] || [];
-            const exists = thread.find(msg => msg.id === m.id);
-            if (exists) return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg) };
-            return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }] };
-          });
-        } else if (payload.eventType === 'DELETE') {
-          setDmThreads(prev => {
-            const next = { ...prev };
-            for (const k in next) {
-              next[k] = next[k].filter(msg => msg.id !== payload.old.id);
-            }
-            return next;
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const m = payload.new;
-          setDmThreads(prev => {
-             const next = { ...prev };
-             if (!next[m.thread_key]) return next;
-             next[m.thread_key] = next[m.thread_key].map(msg => msg.id === m.id ? { ...msg, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} } : msg);
-             return next;
-          });
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'schedules' }, () => {
@@ -691,11 +669,77 @@ export default function AppContainer() {
           if (data) setMeetingInvites(data.map(i => ({ meetingId: i.meeting_id, invitees: i.invitees })));
         });
       })
-      .subscribe();
 
+      .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [mounted]);
+
+  // Fetch DMs securely only for the logged-in user
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const loadDMs = async () => {
+      try {
+        const { data, error } = await supabase.from('dm_messages')
+          .select('*')
+          .like('thread_key', `%${currentUser.id}%`)
+          .order('created_at', { ascending: true });
+        
+        if (data) {
+          const threads = {};
+          data.forEach(m => {
+            if (!threads[m.thread_key]) threads[m.thread_key] = [];
+            threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size });
+          });
+          setDmThreads(threads);
+        }
+      } catch (err) {
+        console.error('Failed to load DMs', err);
+      }
+    };
+    loadDMs();
+    
+    // Listen for incoming DMs or DELETES specifically for this user
+    const dmChannel = supabase.channel(`dm-chat-${currentUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages', filter: `thread_key=like.%${currentUser.id}%` }, payload => {
+        if (payload.eventType === 'INSERT') {
+          const m = payload.new;
+          setDmThreads(prev => {
+            const thread = prev[m.thread_key] || [];
+            const exists = thread.find(msg => msg.id === m.id);
+            if (exists) {
+              return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg) };
+            }
+            if (m.from_id !== currentUser.id && activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
+            return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }] };
+          });
+        } else if (payload.eventType === 'DELETE') {
+          const m = payload.old;
+          setDmThreads(prev => {
+             const next = {...prev};
+             for (const k in next) {
+               next[k] = next[k].filter(msg => msg.id !== m.id);
+             }
+             return next;
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const m = payload.new;
+          setDmThreads(prev => {
+             const next = {...prev};
+             if (next[m.thread_key]) {
+               next[m.thread_key] = next[m.thread_key].map(msg => msg.id === m.id ? { ...msg, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} } : msg);
+             }
+             return next;
+          });
+        }
+      }).subscribe();
+
+    return () => {
+      supabase.removeChannel(dmChannel);
+    };
+  }, [currentUser]);
+
 
   // ─────────────────── Unified Kickout & Poller ───────────────────
   useEffect(() => {
@@ -706,38 +750,13 @@ export default function AppContainer() {
         console.log('🚨 KICKOUT BROADCAST RECEIVED:', payload);
         const targetId = payload?.payload?.userId;
         const currentId = currentUserRef.current?.id;
+        
+        // Only kick out if the broadcast was targeted at the currently logged-in user
         if (targetId && currentId && targetId === currentId) {
+          console.log('🚨 TARGET MATCHED! Kicking out user:', currentId);
           setKickoutModal(true);
-        }
-      })
-      .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
-        const { userId, is_locked, force_unlocked } = payload.payload;
-        if (userId === currentUserRef.current?.id) {
-           currentUserRef.current = { ...currentUserRef.current, is_locked, force_unlocked };
-           setLockModal(checkIsEffectivelyLocked(currentUserRef.current, activeOrgRef.current));
-        }
-      })
-      .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
-        const { is_locked, force_unlocked, orgId } = payload.payload;
-        if (orgId === activeOrgRef.current?.id && currentUserRef.current?.role === 'worker') {
-           currentUserRef.current = { ...currentUserRef.current, is_locked, force_unlocked };
-           setLockModal(checkIsEffectivelyLocked(currentUserRef.current, activeOrgRef.current));
-        }
-      })
-      .on('broadcast', { event: 'org-working-days' }, (payload) => {
-        const { orgId, working_days } = payload.payload;
-        if (orgId === activeOrgRef.current?.id && currentUserRef.current?.role === 'worker') {
-           activeOrgRef.current = { ...activeOrgRef.current, working_days };
-           setActiveOrg(activeOrgRef.current);
-           setLockModal(checkIsEffectivelyLocked(currentUserRef.current, activeOrgRef.current));
-        }
-      })
-      .on('broadcast', { event: 'org-working-hours' }, (payload) => {
-        const { orgId, working_hours } = payload.payload;
-        if (orgId === activeOrgRef.current?.id && currentUserRef.current?.role === 'worker') {
-           activeOrgRef.current = { ...activeOrgRef.current, working_hours };
-           setActiveOrg(activeOrgRef.current);
-           setLockModal(checkIsEffectivelyLocked(currentUserRef.current, activeOrgRef.current));
+        } else {
+          console.log('ℹ️ Broadcast ignored. Target ID:', targetId, 'Current ID:', currentId);
         }
       })
       .subscribe((status) => {
@@ -754,7 +773,7 @@ export default function AppContainer() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('role, organization_id, is_locked, force_unlocked')
+          .select('role')
           .eq('id', uid)
           .maybeSingle();
 
@@ -762,20 +781,23 @@ export default function AppContainer() {
         if (data && ['suspended', 'banned', 'deleted'].includes(data.role)) {
           console.log('🚨 POLLER KICKOUT: profile suspended', { data, error });
           setKickoutModal(true);
-        } else if (data && data.role === 'worker') {
-          const { data: orgData } = await supabase.from('organizations').select('working_days, working_hours').eq('id', data.organization_id).maybeSingle();
-          setLockModal(checkIsEffectivelyLocked(data, orgData));
         }
       } catch (err) {
         // Silence errors
       }
     }, 3000);
     
-    // Polling fallback for organizations (in case Realtime is disabled on the table)
+    // Polling fallback for organizations and profiles (in case Realtime is disabled on the table)
     const orgsInterval = setInterval(() => {
-      if (currentUserRef.current?.role === 'super_admin') {
-        supabase.from('organizations').select('*').then(({ data }) => {
-          if (data) setOrganizations(data);
+      const currentRole = currentUserRef.current?.role;
+      if (currentRole === 'super_admin' || currentRole === 'admin') {
+        if (currentRole === 'super_admin') {
+          supabase.from('organizations').select('*').then(({ data }) => {
+            if (data) setOrganizations(data);
+          });
+        }
+        supabase.from('profiles').select('*').then(({ data }) => {
+          if (data) setProfiles(data);
         });
       }
     }, 5000);
@@ -793,10 +815,6 @@ export default function AppContainer() {
     if (!mounted || !isLoggedIn || !currentUser) return;
 
     const updatePresence = async () => {
-      if (checkIsEffectivelyLocked(currentUser, activeOrg)) {
-        await supabase.from('presence').delete().eq('user_id', currentUser.id);
-        return;
-      }
       try {
         const { data: existing, error: selErr } = await supabase.from('presence').select('user_id').eq('user_id', currentUser.id).maybeSingle();
         if (selErr) console.error('Presence select error:', selErr);
@@ -830,50 +848,17 @@ export default function AppContainer() {
       const params = new URLSearchParams(window.location.search);
       const loginTokenParam = params.get('t');
       const inviteToken = params.get('inviteToken');
-      const cardParam = params.get('card');
 
-      // If no relevant params, nothing to do
-      if (!loginTokenParam && !inviteToken && !cardParam) return;
+      // If no invite/token params, nothing to do
+      if (!loginTokenParam && !inviteToken) return;
 
-      if (cardParam) {
-        // Force complete logout across tabs when accessing via direct card link
-        sessionStorage.removeItem('aura_session');
-        localStorage.removeItem('aura_session');
-        setIsLoggedIn(false);
-        setCurrentUser(null);
-        setActiveOrg(null);
-        
-        setAuthCardNumber(cardParam);
-        const userParam = params.get('user');
-        if (userParam) setAuthUsername(userParam);
-        
-        setAuthTab('login');
-        setIsCardLoginOnly(true);
-        setLoginMode('worker');
-        
-        supabase.from('digital_cards').select('is_revoked, profile_id').eq('card_number', cardParam).single().then(async ({data, error}) => {
-             if (error || !data) {
-                 setCardError("Access Revoked: Your access card has been suspended by the Admin.");
-                 return;
-             }
-             if (data.is_revoked === true) {
-                 const { data: user } = await supabase.from('profiles').select('role').eq('id', data.profile_id).single();
-                 if (user && (user.role === 'admin' || user.role === 'super_admin')) {
-                     return; // Do not block admins prematurely
-                 }
-                 setCardError("Access Revoked: Your access card has been suspended by the Admin.");
-             }
-        });
-      }
-
-      if (loginTokenParam || inviteToken) {
-        // Clear any tab-specific worker session so the correct portal opens.
-        sessionStorage.removeItem('aura_session');
-        // We don't clear localStorage here, because we don't want to log the admin out in their other tab.
-        setIsLoggedIn(false);
-        setCurrentUser(null);
-        setActiveOrg(null);
-      }
+      // If there's an invite token in the URL, it ALWAYS takes priority.
+      // Clear any tab-specific worker session so the correct portal opens.
+      sessionStorage.removeItem('aura_session');
+      // We don't clear localStorage here, because we don't want to log the admin out in their other tab.
+      setIsLoggedIn(false);
+      setCurrentUser(null);
+      setActiveOrg(null);
 
       // Process the invite token
       if (loginTokenParam) {
@@ -988,30 +973,12 @@ export default function AppContainer() {
   // ─────────────────── Auth ───────────────────
   const handleLogin = async (e) => {
     e.preventDefault();
-    setIsLoggingIn(true);
-    try {
     if (loginMode === 'worker') {
       if (!authCardNumber || !authUsername || !authPassword) {
         alert('Please fill all fields');
         return;
       }
       // Digital Card Login
-      // Super Admin Strict Password Verification for Digital Card fallback
-      if (authUsername.trim().toLowerCase() === 'ibraheemashshuraim@gmail.com') {
-        if (authPassword !== 'abdullahsuperadmin.2006') {
-          alert('Invalid Password for Super Admin!');
-          return;
-        }
-      }
-
-      // Super Admin Strict Password Verification for Digital Card fallback
-      if (authUsername.trim().toLowerCase() === 'ibraheemashshuraim@gmail.com') {
-        if (authPassword !== 'abdullahsuperadmin.2006') {
-          alert('401 Unauthorized: Invalid Password for Super Admin!');
-          return;
-        }
-      }
-
       const { data: cards, error } = await supabase.from('digital_cards')
         .select('*')
         .eq('card_number', authCardNumber.trim())
@@ -1022,36 +989,6 @@ export default function AppContainer() {
         return;
       }
       const card = cards[0];
-      
-      // Proceed to fetch user FIRST to know their role
-      let user = profiles.find(p => p.id === card.profile_id);
-      if (!user) {
-        const { data: fetchUser, error: fetchUserError } = await supabase.from('profiles').select('*').eq('id', card.profile_id).single();
-        if (fetchUserError || !fetchUser) {
-           alert('Error: Could not retrieve linked user profile.');
-           return;
-        }
-        user = fetchUser;
-      }
-
-      // If they are an admin, ALWAYS auto-fix their revoked card
-      if (user && (user.role === 'admin' || user.role === 'super_admin') && (card.is_revoked || card.status === 'suspended')) {
-        await supabase.from('digital_cards').update({ is_revoked: false }).eq('id', card.id);
-        card.is_revoked = false;
-        card.status = 'active';
-      }
-
-      if ((card.is_revoked === true || card.status === 'suspended') && !card.is_first_login) {
-        setCardError(`Access Revoked: Your access card has been suspended by the Admin.`);
-        return;
-      }
-      
-      // Auto-fix card if it was incorrectly revoked on creation
-      if (card.is_revoked && card.is_first_login) {
-        await supabase.from('digital_cards').update({ is_revoked: false }).eq('id', card.id);
-        card.is_revoked = false;
-        card.status = 'active';
-      }
       if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
         alert('Invalid Password');
         return;
@@ -1061,11 +998,18 @@ export default function AppContainer() {
         setForcePasswordChange(true);
         return;
       }
-
+      
+      // Proceed to login
+      const user = profiles.find(u => u.id === card.profile_id);
       if (user) {
-        if (user.role === 'banned' || user.role === 'deleted' || card.is_revoked === true) {
-          setCardError(`Access Revoked: Your access card has been suspended by the Admin.`);
+        if (user.role === 'banned') {
+          alert('This account has been permanently banned/suspended.');
           return;
+        }
+        if (user.role === 'deleted') {
+          // Restore suspended user
+          user.role = 'worker';
+          supabase.from('profiles').update({ role: 'worker' }).eq('id', user.id);
         }
         const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
         setCurrentUser(user);
@@ -1083,9 +1027,7 @@ export default function AppContainer() {
         alert('Please enter your email');
         return;
       }
-      
       const trimmedEmail = authEmail.trim().toLowerCase();
-      
       if (trimmedEmail !== 'ibraheemashshuraim@gmail.com') {
         alert('401 Unauthorized: Only Super Admin can login via email. Workers must use Digital Cards.');
         return;
@@ -1099,9 +1041,13 @@ export default function AppContainer() {
       const user = profiles.find(u => u.email.toLowerCase() === trimmedEmail);
       if (!user) { alert('Email not registered! Please register your portal first.'); return; }
       
-      if (user.role === 'banned' || user.role === 'deleted') {
-        alert('Access Denied: This card has been suspended by the Admin.');
+      if (user.role === 'banned') {
+        alert('This account has been permanently banned/suspended.');
         return;
+      }
+      if (user.role === 'deleted') {
+        user.role = 'admin';
+        supabase.from('profiles').update({ role: 'admin' }).eq('id', user.id);
       }
 
       const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
@@ -1112,9 +1058,6 @@ export default function AppContainer() {
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
       addNotification(`Welcome back, ${user.full_name}!`, 'success');
     }
-    } finally {
-      setIsLoggingIn(false);
-    }
   };
 
   const handleSetPermanentPassword = async (e) => {
@@ -1122,8 +1065,6 @@ export default function AppContainer() {
     if (!newPermanentPassword || newPermanentPassword.length < 6) {
       alert('Password must be at least 6 characters.'); return;
     }
-    setIsSettingPassword(true);
-    try {
 
     // Update card: set permanent password, clear pending status
     const { error: cardErr } = await supabase.from('digital_cards').update({
@@ -1153,7 +1094,7 @@ export default function AppContainer() {
       setActiveOrg(org);
       setIsLoggedIn(true);
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-      if ((user.role === 'worker' || user.role === 'student') && !user.skills?.includes('assessment_completed')) {
+      if (user.role === 'worker' || user.role === 'student') {
         setShowQuiz(true);
       } else {
         setShowQuiz(false);
@@ -1163,9 +1104,6 @@ export default function AppContainer() {
       addNotification(`Welcome ${user.full_name}! Password set successfully.`, 'success');
     } else {
       alert('Profile not found. Contact your admin.');
-    }
-    } finally {
-      setIsSettingPassword(false);
     }
   };
 
@@ -1191,7 +1129,7 @@ export default function AppContainer() {
       setActiveOrg(org);
       setIsLoggedIn(true);
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-      if ((user.role === 'worker' || user.role === 'student') && !user.skills?.includes('assessment_completed')) setShowQuiz(true);
+      if (user.role === 'worker' || user.role === 'student') setShowQuiz(true);
       else setShowQuiz(false);
       setForcePasswordChange(false);
       setTempDigitalCard(null);
@@ -1312,6 +1250,7 @@ export default function AppContainer() {
   const handleStartMeeting = async (e) => {
     e.preventDefault();
     if (!newMeetingTitle) return;
+    setIsCreatingMeeting(true);
     const meetingId = `${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}`;
     const passcode = newMeetingPasscode || `${Math.floor(1000 + Math.random() * 9000)}`;
     const meet = {
@@ -1331,6 +1270,7 @@ export default function AppContainer() {
     addNotification(`Meeting "${meet.title}" created! ID: ${meetingId}`, 'success');
     setMeetingInviteModal(meet);
     setSelectedInvitees([]);
+    setIsCreatingMeeting(false);
   };
 
   const handleJoinMeeting = async (meet) => {
@@ -1572,44 +1512,49 @@ export default function AppContainer() {
 
   const handleSendMeetingInvites = async () => {
     if (!meetingInviteModal || selectedInvitees.length === 0) { setMeetingInviteModal(null); return; }
-    const existing = meetingInvites.find(inv => inv.meetingId === meetingInviteModal.id);
-    const newInvitees = existing ? [...new Set([...existing.invitees, ...selectedInvitees])] : selectedInvitees;
-    await supabase.from('meeting_invites').upsert({ meeting_id: meetingInviteModal.id, invitees: newInvitees }, { onConflict: 'meeting_id' });
-    setMeetingInvites(prev => {
-      if (existing) return prev.map(i => i.meetingId === meetingInviteModal.id ? { ...i, invitees: newInvitees } : i);
-      return [...prev, { meetingId: meetingInviteModal.id, invitees: newInvitees }];
-    });
-    
-    if (selectedInvitees.includes('__all__')) {
-      const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
-        text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
-        msg_time: now() };
-      await supabase.from('group_messages').insert(inviteMsg);
-    } else {
-      const dmMessages = selectedInvitees.map(inviteeId => {
-        const key = [currentUser.id, inviteeId].sort().join('_');
-        return {
-           id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
-           text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
-           msg_time: now()
-        };
+    setIsSendingMeetingInvites(true);
+    try {
+      const existing = meetingInvites.find(inv => inv.meetingId === meetingInviteModal.id);
+      const newInvitees = existing ? [...new Set([...existing.invitees, ...selectedInvitees])] : selectedInvitees;
+      await supabase.from('meeting_invites').upsert({ meeting_id: meetingInviteModal.id, invitees: newInvitees }, { onConflict: 'meeting_id' });
+      setMeetingInvites(prev => {
+        if (existing) return prev.map(i => i.meetingId === meetingInviteModal.id ? { ...i, invitees: newInvitees } : i);
+        return [...prev, { meetingId: meetingInviteModal.id, invitees: newInvitees }];
       });
-      if (dmMessages.length > 0) {
-        await supabase.from('dm_messages').insert(dmMessages);
-        // Also update local state so sender sees it immediately
-        setDmThreads(prev => {
-          const next = { ...prev };
-          dmMessages.forEach(m => {
-            if (!next[m.thread_key]) next[m.thread_key] = [];
-            next[m.thread_key] = [...next[m.thread_key], { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time }];
-          });
-          return next;
+      
+      if (selectedInvitees.includes('__all__')) {
+        const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
+          text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
+          msg_time: now() };
+        await supabase.from('group_messages').insert(inviteMsg);
+      } else {
+        const dmMessages = selectedInvitees.map(inviteeId => {
+          const key = [currentUser.id, inviteeId].sort().join('_');
+          return {
+             id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
+             text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
+             msg_time: now()
+          };
         });
+        if (dmMessages.length > 0) {
+          await supabase.from('dm_messages').insert(dmMessages);
+          // Also update local state so sender sees it immediately
+          setDmThreads(prev => {
+            const next = { ...prev };
+            dmMessages.forEach(m => {
+              if (!next[m.thread_key]) next[m.thread_key] = [];
+              next[m.thread_key] = [...next[m.thread_key], { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time }];
+            });
+            return next;
+          });
+        }
       }
+      
+      addNotification(`Invited ${selectedInvitees.length} member(s) to the meeting.`, 'success');
+      setMeetingInviteModal(null); setSelectedInvitees([]);
+    } finally {
+      setIsSendingMeetingInvites(false);
     }
-    
-    addNotification(`Invited ${selectedInvitees.length} member(s) to the meeting.`, 'success');
-    setMeetingInviteModal(null); setSelectedInvitees([]);
   };
 
   const isInvitedToMeeting = (meet) => {
@@ -1640,15 +1585,140 @@ export default function AppContainer() {
     const newMsg = { id: Date.now(), sender: currentUser.full_name, text: newChatMessage, time: now() };
     const mState = meetingStates[currentMeetingSession.id];
     if (!mState) return;
-    const nextChat = [...mState.chat, newMsg];
-    await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: mState.participants, chat: nextChat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
-    setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, chat: nextChat } }));
-    setNewChatMessage('');
+    setIsSendingLiveChat(true);
+    try {
+      const nextChat = [...mState.chat, newMsg];
+      await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: mState.participants, chat: nextChat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
+      setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, chat: nextChat } }));
+      setNewChatMessage('');
+    } finally {
+      setIsSendingLiveChat(false);
+    }
   };
 
   // ─────────────────── Chat ───────────────────
   const orgMembers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id);
 
+  const renderTextWithLinks = (text) => {
+    if (!text) return text;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.split(urlRegex).map((part, i) => 
+      urlRegex.test(part) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">{part}</a> : part
+    );
+  };
+  
+  const handleDirectAudioSend = async (blob) => {
+    const msgId = genId('msg');
+    const msgTime = now();
+    const tempAudioUrl = URL.createObjectURL(blob);
+    
+    const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: '', time: msgTime, type: 'chat', audioUrl: tempAudioUrl, attachmentUrl: null, reactions: {} };
+    if (activeChat === 'group') setGroupMessages(prev => { const exists = prev.find(m=>m.id===msgId); if(exists) return prev; return [...prev, optimisticMsg]; });
+    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
+    
+    setIsSendingChat(true);
+    setAudioBlob(null);
+    let audioUrl = null;
+    try {
+      const fileName = `${msgId}_audio.webm`;
+      const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, blob);
+      if (error) throw error;
+      audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
+    } catch(err) { console.error(err); setIsSendingChat(false); return; }
+    
+    if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
+    setIsSendingChat(false);
+  };
+
+  const handleSendMessage = async (e) => {
+    e?.preventDefault();
+    if (isRecordingAudio) {
+      audioShouldSendRef.current = true;
+      stopRecording();
+      return;
+    }
+    const currentChatInput = chatInput;
+    const currentAttachmentFiles = attachmentFiles;
+    const currentAudioBlob = audioBlob;
+    
+    if (!currentChatInput.trim() && currentAttachmentFiles.length === 0 && !currentAudioBlob) return;
+    
+    setChatInput('');
+    setAttachmentFiles([]);
+    setAttachmentSource(null);
+    setAudioBlob(null);
+    setIsSendingChat(true);
+
+    try {
+      // Group multiple files into a zip (skip if from gallery)
+      let filesToProcess = currentAttachmentFiles;
+      if (filesToProcess.length > 1 && attachmentSource !== 'gallery') {
+        const zip = new JSZip();
+        for (let i = 0; i < filesToProcess.length; i++) {
+          const f = filesToProcess[i];
+          const path = f.webkitRelativePath || f.name;
+          zip.file(path, f);
+        }
+        const content = await zip.generateAsync({ type: 'blob' });
+        const zipFile = new File([content], "Attachments.zip", { type: 'application/zip' });
+        filesToProcess = [zipFile];
+      }
+
+      if (filesToProcess.length > 0) {
+        for (let i = 0; i < filesToProcess.length; i++) {
+          const file = filesToProcess[i];
+          const msgId = genId('msg');
+          const msgTime = now();
+          const isImage = file.type.startsWith('image/');
+          
+          // Optimistic UI - show blob preview immediately
+          const blobUrl = URL.createObjectURL(file);
+          const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: blobUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size };
+          if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
+          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
+
+          // Upload file to Supabase storage
+          const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const storageFileName = `${msgId}_${safeFileName}`;
+          const { error: uploadErr } = await supabase.storage.from('chat_attachments').upload(storageFileName, file, { contentType: file.type });
+          if (uploadErr) { console.error('Upload error:', uploadErr); continue; }
+          const realUrl = supabase.storage.from('chat_attachments').getPublicUrl(storageFileName).data.publicUrl;
+
+          // Update optimistic message with real URL
+          if (activeChat === 'group') setGroupMessages(prev => prev.map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m));
+          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m) })); }
+
+          // Insert message to DB (only use existing columns)
+          const msgText = i === 0 && currentChatInput ? currentChatInput : '';
+          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: realUrl };
+          if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
+          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }); }
+        }
+      } else {
+        // Text only or audio message
+        const msgId = genId('msg');
+        const msgTime = now();
+        let audioUrl = null;
+        
+        const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null, reactions: {} };
+        if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
+        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
+
+        if (currentAudioBlob) {
+          const audioFileName = `${msgId}_audio.webm`;
+          const { error: audioErr } = await supabase.storage.from('chat_attachments').upload(audioFileName, currentAudioBlob);
+          if (!audioErr) audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(audioFileName).data.publicUrl;
+        }
+
+        if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
+      }
+    } catch(err) { console.error('Send message error:', err); }
+    
+    setIsSendingChat(false);
+  };
+  
   const toggleDictation = () => {
     if (isDictating) {
       recognitionRef.current?.stop();
@@ -1726,8 +1796,8 @@ export default function AppContainer() {
       alert(`Microphone error: ${err.name}. If 'NotReadableError', close other tabs using the mic!`);
     }
   };
-
-const stopRecording = () => {
+  
+  const stopRecording = () => {
     if (audioRecorderRef.current && isRecordingAudio) {
       audioRecorderRef.current.stop();
       if (mediaStreamRef.current) {
@@ -1738,7 +1808,7 @@ const stopRecording = () => {
     }
   };
 
-const handleDeleteMessage = async (msg, type, action) => {
+  const handleDeleteMessage = async (msg, type, action) => {
     try {
       const table = type === 'group' || activeChat === 'group' ? 'group_messages' : 'dm_messages';
       
@@ -1774,13 +1844,16 @@ const handleDeleteMessage = async (msg, type, action) => {
     }
   };
 
-const handleReactMessage = async (msg, emoji) => {
+  const handleReactMessage = async (msg, emoji) => {
     try {
-      document.activeElement?.blur(); // Immediately close hover menu if focused
-      const table = activeChat === 'group' ? 'group_messages' : 'dm_messages';
-      const currentReactions = { ...msg.reactions } || {}; // Clone it to avoid mutation issues
+      // Instantly hide the hover dropdown
+      if (document.activeElement) document.activeElement.blur();
       
-      // Toggle logic: if already reacted with this emoji by this user, remove it
+      const table = activeChat === 'group' ? 'group_messages' : 'dm_messages';
+      // Deep copy to avoid mutating state directly if strict mode is on
+      const currentReactions = JSON.parse(JSON.stringify(msg.reactions || {}));
+      
+      // Toggle logic
       if (currentReactions[emoji] && currentReactions[emoji].includes(currentUser.id)) {
         currentReactions[emoji] = currentReactions[emoji].filter(id => id !== currentUser.id);
         if (currentReactions[emoji].length === 0) delete currentReactions[emoji];
@@ -1789,123 +1862,17 @@ const handleReactMessage = async (msg, emoji) => {
         currentReactions[emoji].push(currentUser.id);
       }
       
-      // OPTIMISTIC UPDATE
-      const updateMsg = (m) => m.id === msg.id ? { ...m, reactions: currentReactions } : m;
+      // Optimistic update
       if (activeChat === 'group') {
-        setGroupMessages(prev => prev.map(updateMsg));
+        setGroupMessages(prev => prev.map(m => m.id === msg.id ? { ...m, reactions: currentReactions } : m));
       } else if (activeChat === 'dm' && activeDmUser) {
         const key = [currentUser.id, activeDmUser.id].sort().join('_');
-        setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(updateMsg) }));
+        setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msg.id ? { ...m, reactions: currentReactions } : m) }));
       }
       
       await supabase.from(table).update({ reactions: currentReactions }).eq('id', msg.id);
     } catch (err) {
       console.error('Reaction failed:', err);
-    }
-  };
-
-
-  const renderTextWithLinks = (text) => {
-    if (!text) return text;
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.split(urlRegex).map((part, i) => 
-      urlRegex.test(part) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">{part}</a> : part
-    );
-  };
-  
-  const handleDirectAudioSend = async (blob) => {
-    const msgId = genId('msg');
-    const msgTime = now();
-    const tempAudioUrl = URL.createObjectURL(blob);
-    const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: '', time: msgTime, type: 'chat', audioUrl: tempAudioUrl, attachmentUrl: null, reactions: {} };
-    if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
-    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
-    
-    try {
-        const fileName = `${msgId}_audio.webm`;
-        const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, blob);
-        if (error) throw error;
-        const audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
-        if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl });
-        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl }); }
-    } catch(err) { 
-        console.error("Audio upload error:", err); 
-        // Revert optimistic UI on error
-        if (activeChat === 'group') setGroupMessages(prev => prev.filter(m => m.id !== msgId));
-        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).filter(m => m.id !== msgId) })); }
-    }
-  };
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    const currentChatInput = chatInput;
-    const currentAttachmentFiles = attachmentFiles;
-    
-    if (!currentChatInput.trim() && currentAttachmentFiles.length === 0) return;
-    
-    setChatInput(''); setAttachmentFiles([]); setAttachmentSource(null);
-    setIsSendingChat(true);
-    
-    try {
-      // Group multiple files into a zip (skip if from gallery)
-      let filesToProcess = currentAttachmentFiles;
-      if (filesToProcess.length > 1 && attachmentSource !== 'gallery') {
-        const zip = new JSZip();
-        for (let i = 0; i < filesToProcess.length; i++) {
-          const f = filesToProcess[i];
-          const path = f.webkitRelativePath || f.name;
-          zip.file(path, f);
-        }
-        const content = await zip.generateAsync({ type: 'blob' });
-        const zipFile = new File([content], "Attachments.zip", { type: 'application/zip' });
-        filesToProcess = [zipFile];
-      }
-
-      if (filesToProcess.length > 0) {
-        // Send each file as a separate message (now it's just 1 zip if multiple were selected)
-        for (let i = 0; i < filesToProcess.length; i++) {
-          const file = filesToProcess[i];
-          const msgId = genId('msg');
-          const msgTime = now();
-
-          // Optimistic UI - always show blob preview
-          const blobUrl = URL.createObjectURL(file);
-          const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', audioUrl: null, attachmentUrl: blobUrl, reactions: {}, fileName: file.name, fileSize: file.size };
-          if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
-          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
-
-          // Upload file to Supabase storage
-          const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          const storageFileName = `${msgId}_${safeFileName}`;
-          const { error: uploadError } = await supabase.storage.from('chat_attachments').upload(storageFileName, file, { contentType: file.type });
-          if (uploadError) { console.error('Upload error:', uploadError); continue; }
-          const realUrl = supabase.storage.from('chat_attachments').getPublicUrl(storageFileName).data.publicUrl;
-
-          // Update optimistic with real URL
-          if (activeChat === 'group') setGroupMessages(prev => prev.map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m));
-          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m) })); }
-
-          // Insert message to database (only existing columns)
-          const msgText = i === 0 && currentChatInput ? currentChatInput : '';
-          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: realUrl };
-          if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
-          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }); }
-        }
-      } else {
-        // Text only message
-        const msgId = genId('msg');
-        const msgTime = now();
-        const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', audioUrl: null, attachmentUrl: null, reactions: {} };
-        if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
-        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
-
-        if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: null });
-        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: null, attachment_url: null }); }
-      }
-    } catch(err) { 
-      console.error("Message send error:", err);
-    } finally {
-      setIsSendingChat(false);
     }
   };
 
@@ -1950,15 +1917,20 @@ const handleReactMessage = async (msg, emoji) => {
   };
 
   const handleSaveUserEdit = async () => {
-    const updated = { category: editCategory, domain: editDomain, role: editRole };
-    await supabase.from('profiles').update(updated).eq('id', editingUser.id);
-    setProfiles(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
-    if (currentUser.id === editingUser.id) setCurrentUser(prev => ({ ...prev, ...updated }));
-    setEditingUser(null);
-    addNotification(`User "${editingUser.full_name}" profile updated.`, 'success');
+    setIsSavingUserEdit(true);
+    try {
+      const updated = { category: editCategory, domain: editDomain, role: editRole };
+      await supabase.from('profiles').update(updated).eq('id', editingUser.id);
+      setProfiles(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
+      if (currentUser.id === editingUser.id) setCurrentUser(prev => ({ ...prev, ...updated }));
+      setEditingUser(null);
+      addNotification(`User "${editingUser.full_name}" profile updated.`, 'success');
+    } finally {
+      setIsSavingUserEdit(false);
+    }
   };
 
-  const handleSuspendUser = (userId) => {
+  const handleSuspendUser = async (userId) => {
     setConfirmModal({
       title: 'Suspend User & Revoke Access?',
       message: 'This will completely remove their profile and invalidate their current access card. You can re-invite this email anytime to issue a new card.',
@@ -1981,21 +1953,15 @@ const handleReactMessage = async (msg, emoji) => {
           }
 
           // 3. Optimistic UI update
-          setProfiles(prev => prev.filter(p => p.id !== userId));
+          setProfiles(prev => prev.map(p => p.id === userId ? { ...p, role: 'suspended' } : p));
           addNotification('User suspended and completely removed. Their access card has been revoked.', 'warning');
 
           // 4. DB cleanup (delayed to let poller catch the 'suspended' status)
           setTimeout(async () => {
             try {
-              await supabase.from('group_messages').delete().eq('from_id', userId);
-              await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
-              await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-              await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
-              await supabase.from('meetings').delete().eq('host_id', userId);
-              await supabase.from('tasks').delete().eq('assigned_to', userId);
               await supabase.from('presence').delete().eq('user_id', userId);
               await supabase.from('digital_cards').delete().eq('profile_id', userId);
-              await supabase.from('profiles').delete().eq('id', userId);
+              // We NO LONGER delete the profile here, so it can show in the Suspended tab!
             } catch (err) {
               console.warn('Silenced DB deletion error:', err);
             }
@@ -2009,7 +1975,33 @@ const handleReactMessage = async (msg, emoji) => {
     });
   };
 
-  const handleBanUser = (userId) => {
+  const handleDeletePermanentlyFromDB = async (userId, userEmail) => {
+    setConfirmModal({
+      title: 'Delete User Profile Only?',
+      message: 'This will delete the user profile and card. However, if they are banned, their 30-day ban record will REMAIN active in the system.',
+      onConfirm: async () => {
+        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('presence').delete().eq('user_id', userId);
+        await supabase.from('tasks').delete().eq('assigned_to', userId);
+        await supabase.from('group_messages').delete().eq('from_id', userId);
+        await supabase.from('dm_messages').delete().like('thread_key', `%${userId}%`);
+        const { data: userMeetings } = await supabase.from('meetings').select('id').eq('host_id', userId);
+        if (userMeetings && userMeetings.length > 0) {
+            const meetingIds = userMeetings.map(m => m.id);
+            await supabase.from('meeting_states').delete().in('meeting_id', meetingIds);
+            await supabase.from('meeting_invites').delete().in('meeting_id', meetingIds);
+        }
+        await supabase.from('meetings').delete().eq('host_id', userId);
+        await supabase.from('profiles').delete().eq('id', userId);
+        
+        setProfiles(prev => prev.filter(p => p.id !== userId));
+        addNotification('User profile deleted. Ban record (if any) remains active.', 'success');
+        setConfirmModal(null);
+      }
+    });
+  };
+
+  const handleBanUser = async (userId) => {
     setConfirmModal({
       title: 'Permanently Ban User for 30 Days?',
       message: 'WARNING: This user will be banned. You will NOT be able to re-invite or issue access to this email address for 30 days.',
@@ -2030,25 +2022,181 @@ const handleReactMessage = async (msg, emoji) => {
 
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
-          banDate.setDate(banDate.getDate() + 30);
-          await supabase.from('banned_emails').insert({ email: userEmail.toLowerCase(), banned_until: banDate.toISOString() });
+          banDate.setMonth(banDate.getMonth() + 1);
+          const newBanRecord = { email: userEmail.toLowerCase(), banned_until: banDate.toISOString(), created_at: new Date().toISOString() };
+          await supabase.from('banned_emails').upsert(newBanRecord, { onConflict: 'email' });
+          setBannedEmails(prev => {
+             const existing = prev.find(b => b.email === newBanRecord.email);
+             if (existing) {
+                return prev.map(b => b.email === newBanRecord.email ? { ...b, banned_until: newBanRecord.banned_until } : b);
+             }
+             return [...prev, newBanRecord];
+          });
         }
         
         // Delayed Cascade Delete (give poller time to catch suspended status)
         setTimeout(async () => {
           try {
-            await supabase.from('digital_cards').update({ is_revoked: true, is_pending: false }).eq('profile_id', userId);
-            await supabase.from('profiles').update({ role: 'banned', last_seen: new Date().toISOString(), email: `${userId}_banned@aurasuite.com` }).eq('id', userId);
+            await supabase.from('group_messages').delete().eq('from_id', userId);
+            await supabase.from('dm_messages').delete().like('thread_key', `%${userId}%`);
+            await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+            await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
+            await supabase.from('meetings').delete().eq('host_id', userId);
+            await supabase.from('tasks').delete().eq('assigned_to', userId);
+            await supabase.from('presence').delete().eq('user_id', userId);
+            await supabase.from('digital_cards').delete().eq('profile_id', userId);
+            // We NO LONGER delete the profile here, so it can show in the Suspended tab!
           } catch (err) {
             console.warn('Silenced cascade delete error:', err);
           }
         }, 2000);
 
-        setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned', last_seen: new Date().toISOString() } : u));
-        addNotification('User permanently banned for 30 days.', 'error');
+        setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned' } : u));
+        addNotification('User banned (permanently deleted from view).', 'error');
         setConfirmModal(null);
       }
     });
+  };
+
+  // ─────────────────── Off-Day / Locking System ───────────────────
+  const toggleLockWorker = async (user) => {
+    const isEffectivelyLocked = checkIsEffectivelyLocked(user, activeOrg);
+    let newIsLocked = false;
+    let newForceUnlocked = false;
+
+    if (isEffectivelyLocked) {
+      if (user.is_locked) {
+        newIsLocked = false;
+        newForceUnlocked = false;
+      } else {
+        newIsLocked = false;
+        newForceUnlocked = true;
+      }
+    } else {
+      if (user.force_unlocked) {
+        newIsLocked = false;
+        newForceUnlocked = false;
+      } else {
+        newIsLocked = true;
+        newForceUnlocked = false;
+      }
+    }
+
+    const { error } = await supabase.from('profiles').update({ is_locked: newIsLocked, force_unlocked: newForceUnlocked }).eq('id', user.id);
+    if (!error) {
+      setProfiles(prev => prev.map(p => p.id === user.id ? { ...p, is_locked: newIsLocked, force_unlocked: newForceUnlocked } : p));
+      addNotification(`Worker ${user.full_name} status updated.`, 'success');
+      if (kickoutChannelRef.current) {
+        await kickoutChannelRef.current.send({
+          type: 'broadcast',
+          event: 'worker-lock-status',
+          payload: { userId: user.id, is_locked: newIsLocked, force_unlocked: newForceUnlocked }
+        });
+      }
+    } else {
+      addNotification('Failed to update worker lock status.', 'error');
+    }
+  };
+
+  const toggleLockAllWorkers = async (mode) => {
+    const workerIds = profiles.filter(p => p.role === 'worker' && p.organization_id === activeOrg?.id).map(p => p.id);
+    if (workerIds.length === 0) return;
+    
+    let lock = false;
+    let newForceUnlocked = false;
+    let modeText = 'auto mode';
+
+    if (mode === 'lock') {
+      lock = true;
+      newForceUnlocked = false;
+      modeText = 'locked';
+    } else if (mode === 'unlock') {
+      lock = false;
+      newForceUnlocked = true;
+      modeText = 'force unlocked';
+    } else if (mode === 'auto') {
+      lock = false;
+      newForceUnlocked = false;
+      modeText = 'set to auto mode';
+    }
+    
+    const { error } = await supabase.from('profiles').update({ is_locked: lock, force_unlocked: newForceUnlocked }).in('id', workerIds);
+    if (!error) {
+      setProfiles(prev => prev.map(p => workerIds.includes(p.id) ? { ...p, is_locked: lock, force_unlocked: newForceUnlocked } : p));
+      addNotification(`All workers are now ${modeText}.`, mode === 'lock' ? 'warning' : 'success');
+      if (kickoutChannelRef.current) {
+        await kickoutChannelRef.current.send({
+          type: 'broadcast',
+          event: 'worker-lock-all',
+          payload: { is_locked: lock, force_unlocked: newForceUnlocked, orgId: activeOrg?.id }
+        });
+      }
+    } else {
+      addNotification('Failed to update all workers lock status.', 'error');
+    }
+  };
+
+  const updateWorkingHours = async (type, value) => {
+    if (!activeOrg) return;
+    const currentHours = activeOrg.working_hours || { start: "00:00", end: "23:59" };
+    const newHours = { ...currentHours, [type]: value };
+    const { error } = await supabase.from('organizations').update({ working_hours: newHours }).eq('id', activeOrg.id);
+    if (!error) {
+      setOrganizations(prev => prev.map(o => o.id === activeOrg.id ? { ...o, working_hours: newHours } : o));
+      setActiveOrg(prev => ({ ...prev, working_hours: newHours }));
+      addNotification('Working hours updated.', 'success');
+      
+      // If turning Auto System ON (is_24_7 becomes false), clear all manual locks
+      if (type === 'is_24_7' && value === false) {
+        const workerIds = profiles.filter(p => p.role === 'worker' && p.organization_id === activeOrg.id).map(p => p.id);
+        if (workerIds.length > 0) {
+          await supabase.from('profiles').update({ is_locked: false, force_unlocked: false }).in('id', workerIds);
+          setProfiles(prev => prev.map(p => workerIds.includes(p.id) ? { ...p, is_locked: false, force_unlocked: false } : p));
+          if (kickoutChannelRef.current) {
+            await kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: 'worker-lock-all',
+              payload: { is_locked: false, force_unlocked: false, orgId: activeOrg.id }
+            });
+          }
+        }
+      }
+
+      if (kickoutChannelRef.current) {
+        await kickoutChannelRef.current.send({
+          type: 'broadcast',
+          event: 'org-working-hours',
+          payload: { orgId: activeOrg.id, working_hours: newHours }
+        });
+      }
+    } else {
+      addNotification('Failed to update working hours.', 'error');
+    }
+  };
+
+  const updateWorkingDays = async (day) => {
+    if (!activeOrg) return;
+    let currentDays = activeOrg.working_days || [1,2,3,4,5];
+    if (currentDays.includes(day)) {
+       currentDays = currentDays.filter(d => d !== day);
+    } else {
+       currentDays = [...currentDays, day];
+    }
+    const { error } = await supabase.from('organizations').update({ working_days: currentDays }).eq('id', activeOrg.id);
+    if (!error) {
+      setOrganizations(prev => prev.map(o => o.id === activeOrg.id ? { ...o, working_days: currentDays } : o));
+      setActiveOrg(prev => ({ ...prev, working_days: currentDays }));
+      addNotification('Working days updated successfully.', 'success');
+      if (kickoutChannelRef.current) {
+        await kickoutChannelRef.current.send({
+          type: 'broadcast',
+          event: 'org-working-days',
+          payload: { orgId: activeOrg.id, working_days: currentDays }
+        });
+      }
+    } else {
+      addNotification('Failed to update working days.', 'error');
+    }
   };
 
   // ─────────────────── Budget ───────────────────
@@ -2066,11 +2214,16 @@ const handleReactMessage = async (msg, emoji) => {
   };
 
   const handleApprovePayout = async () => {
-    const finalAmount = parseFloat(overrideBudget);
-    await supabase.from('tasks').update({ suggested_payout: suggestedBudget, final_payout: finalAmount, payout_approved: true, status: 'done' }).eq('id', budgetTaskId);
-    setTasks(prev => prev.map(t => t.id === budgetTaskId ? { ...t, suggested_payout: suggestedBudget, final_payout: finalAmount, payout_approved: true, status: 'done' } : t));
-    addNotification(`Budget approved: Rs. ${finalAmount.toLocaleString()}`, 'success');
-    setSuggestedBudget(null);
+    setIsApprovingPayout(true);
+    try {
+      const finalAmount = parseFloat(overrideBudget);
+      await supabase.from('tasks').update({ suggested_payout: suggestedBudget, final_payout: finalAmount, payout_approved: true, status: 'done' }).eq('id', budgetTaskId);
+      setTasks(prev => prev.map(t => t.id === budgetTaskId ? { ...t, suggested_payout: suggestedBudget, final_payout: finalAmount, payout_approved: true, status: 'done' } : t));
+      addNotification(`Budget approved: Rs. ${finalAmount.toLocaleString()}`, 'success');
+      setSuggestedBudget(null);
+    } finally {
+      setIsApprovingPayout(false);
+    }
   };
 
   const handleMoveTask = async (taskId, status) => {
@@ -2097,11 +2250,14 @@ const handleReactMessage = async (msg, emoji) => {
   };
 
   // ─────────────────── Derived ───────────────────
-  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'pending_worker' && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
+  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
+  const suspendedOrgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && ['banned', 'suspended'].includes(p.role));
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
   // ─────────────────── Render ───────────────────
+
+
   // Show loading until: (1) component mounted AND (2) session check done
   if (!mounted || isCheckingSession) return (
     <div className="min-h-screen bg-luxury-bg flex items-center justify-center">
@@ -2115,7 +2271,7 @@ const handleReactMessage = async (msg, emoji) => {
   );
 
   // ── KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) ──
-  if (kickoutModal || currentUser?.role === 'suspended' || currentUser?.role === 'banned') {
+  if (kickoutModal || currentUser?.role === 'suspended' || currentUser?.status === 'suspended') {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
         <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
@@ -2135,34 +2291,6 @@ const handleReactMessage = async (msg, emoji) => {
       </div>
     );
   }
-
-  // ── LOCK MODAL OVERLAY ──
-  const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
-
-  if (isEffectivelyLocked && currentUser?.role === 'worker') {
-    return (
-      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-        <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <div className="flex justify-center mb-4">
-             <Lock size={48} className="text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-4">Off-Day / Access Locked</h2>
-          <p className="text-yellow-400 text-sm mb-6">Your portal access is currently locked for an off-day or by an admin. Enjoy your break!</p>
-          <button
-            onClick={() => {
-              try {
-                window.close();
-              } catch (e) {}
-            }}
-            className="px-8 py-3 bg-yellow-950/60 hover:bg-yellow-900/80 text-white font-semibold rounded-xl border border-yellow-500/30 transition-all"
-          >
-            Close Portal
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // ── LOGIN SCREEN ──
   if (!isLoggedIn) {
     if (authTab === 'invite_register') {
@@ -2222,29 +2350,22 @@ const handleReactMessage = async (msg, emoji) => {
         </div>
       );
     }
-    
-    if (cardError) {
-      return (
-        <div className="min-h-screen bg-luxury-bg flex items-center justify-center p-4">
-          <div className="w-full max-w-md glass-panel-glow p-8 rounded-2xl border border-red-500/20 text-center relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-40 h-40 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
-             <div className="absolute bottom-0 left-0 w-32 h-32 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
-             <h2 className="text-xl font-bold text-white mb-4">Access Revoked</h2>
-             <p className="text-sm text-red-400 font-semibold mb-6">{cardError}</p>
-             <button onClick={() => {
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.href = 'about:blank';
-             }} className="py-2.5 px-6 rounded-xl bg-red-950/30 border border-red-500/30 text-xs font-bold text-white hover:bg-red-900/40 transition-colors">Close Portal</button>
-          </div>
-        </div>
-      );
-    }
-    
     return (
       <div className="min-h-screen bg-luxury-bg text-[#f3f1f5] flex items-center justify-center p-4">
+        {!kickoutModal && (
         <div className="w-full max-w-md glass-panel-glow p-8 rounded-2xl border border-[#9333ea]/20 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-40 h-40 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+          {/* TOP TABS PERMANENTLY HIDDEN FOR CLEAN UI */}
+          {false && !isInviteFlow && !isCardLoginOnly && (
+            <div className="flex flex-col sm:flex-row bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6 gap-1">
+              {['login', 'signup'].map(tab => (
+                <button key={tab} onClick={() => setAuthTab(tab)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authTab === tab ? 'bg-[#9333ea] text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
+                  {tab === 'login' ? 'Sign In' : 'Register Portal'}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="absolute bottom-0 left-0 w-32 h-32 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
           <div className="text-center mb-8 relative">
             <div className="w-14 h-14 rounded-2xl accent-gradient flex items-center justify-center shadow-lg shadow-purple-500/30 mx-auto mb-3">
@@ -2260,17 +2381,7 @@ const handleReactMessage = async (msg, emoji) => {
             </p>
           </div>
 
-          {/* TOP TABS PERMANENTLY HIDDEN FOR CLEAN UI */}
-          {false && !isInviteFlow && !isCardLoginOnly && (
-            <div className="flex flex-col sm:flex-row bg-[#120a1f] p-1 rounded-xl border border-purple-500/10 mb-6 gap-1">
-              {['login', 'signup'].map(tab => (
-                <button key={tab} onClick={() => setAuthTab(tab)}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${authTab === tab ? 'bg-[#9333ea] text-white shadow-md' : 'text-purple-400 hover:text-white'}`}>
-                  {tab === 'login' ? 'Sign In' : 'Register Portal'}
-                </button>
-              ))}
-            </div>
-          )}
+
 
           {forcePasswordChange ? (
             <form onSubmit={handleSetPermanentPassword} className="space-y-4">
@@ -2291,14 +2402,20 @@ const handleReactMessage = async (msg, emoji) => {
                 <button type="button" onClick={handleSkipPasswordChange} className="flex-1 py-3 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs font-bold text-purple-300 hover:bg-purple-900/40">
                   Skip for Now
                 </button>
-                <button type="submit" disabled={isSettingPassword} className={`flex-1 py-3 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 ${isSettingPassword ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
-                  {isSettingPassword ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />} 
-                  {isSettingPassword ? 'Setting Password...' : 'Set & Enter'}
+                <button type="submit" className="flex-1 py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn flex items-center justify-center gap-2">
+                  <Lock size={14} /> Set &amp; Enter
                 </button>
               </div>
             </form>
           ) : authTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
+              {false && !isInviteFlow && (
+                <div className="flex bg-[#11081c] p-1 rounded-xl mb-4 border border-purple-500/20">
+                  <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='admin'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Admin Login</button>
+                  <button type="button" onClick={() => setLoginMode('worker')} className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${loginMode==='worker'?'bg-purple-600 text-white':'text-white/50 hover:text-white'}`}>Digital Card</button>
+                </div>
+              )}
+
               {loginMode === 'admin' ? (
                 <>
                   <div>
@@ -2338,9 +2455,9 @@ const handleReactMessage = async (msg, emoji) => {
                 </>
               )}
 
-              <button type="submit" disabled={isLoggingIn} className={`w-full py-3 rounded-xl text-xs font-bold text-white mt-4 flex items-center justify-center gap-2 ${isLoggingIn ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
-                {isLoggingIn ? <Loader2 size={14} className="animate-spin" /> : (loginMode === 'admin' ? <Lock size={14} /> : <Unlock size={14} />)} 
-                {isLoggingIn ? 'Validating...' : (loginMode === 'admin' ? 'Login as Admin' : 'Validate Credentials')}
+              <button type="submit" className="w-full py-3 rounded-xl accent-gradient text-xs font-bold text-white glow-btn mt-4 flex items-center justify-center gap-2">
+                {loginMode === 'admin' ? <Lock size={14} /> : <Unlock size={14} />} 
+                {loginMode === 'admin' ? 'Login as Admin' : 'Validate Credentials'}
               </button>
               
               <button type="button" onClick={() => {
@@ -2399,63 +2516,53 @@ const handleReactMessage = async (msg, emoji) => {
   // ══════════════════ AI QUIZ (ONBOARDING) ══════════════════
   if (showQuiz) {
     const handleQuizStart = () => {
-      setQuizQuestions([
-        { id: 1, question: 'What is your primary domain of expertise?', question_ur: 'آپ کی مہارت کا بنیادی شعبہ کون سا ہے؟', options: ['Software Development', 'Design/Creative', 'Management', 'Operations'], options_ur: ['سافٹ ویئر ڈیولپمنٹ', 'ڈیزائن/کریئیٹو', 'مینجمنٹ', 'آپریشنز'] },
-        { id: 2, question: 'Which programming languages are you most comfortable with?', question_ur: 'آپ کون سی پروگرامنگ زبانوں میں زیادہ مہارت رکھتے ہیں؟', options: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'Not Applicable'], options_ur: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'قابل اطلاق نہیں'] },
-        { id: 3, question: 'How many years of experience do you have?', question_ur: 'آپ کا کتنا تجربہ ہے؟', options: ['0-2 Years', '3-5 Years', '5-10 Years', '10+ Years'], options_ur: ['0-2 سال', '3-5 سال', '5-10 سال', '10+ سال'] }
-      ]);
+      if (currentUser?.role === 'student') {
+        setQuizQuestions([
+          { id: 1, question: 'What is your current education level?', options: ['High School', 'Undergraduate', 'Postgraduate', 'Other'] },
+          { id: 2, question: 'Which field are you most interested in?', options: ['Computer Science', 'Business/Management', 'Arts/Design', 'Engineering'] },
+          { id: 3, question: 'How much time can you dedicate weekly?', options: ['< 5 Hours', '5-10 Hours', '10-20 Hours', '20+ Hours'] }
+        ]);
+      } else {
+        setQuizQuestions([
+          { id: 1, question: 'What is your primary domain of expertise?', options: ['Software Development', 'Design/Creative', 'Management', 'Operations'] },
+          { id: 2, question: 'Which programming languages are you most comfortable with?', options: ['JavaScript/TypeScript', 'Python', 'Java/C#', 'Not Applicable'] },
+          { id: 3, question: 'How many years of experience do you have?', options: ['0-2 Years', '3-5 Years', '5-10 Years', '10+ Years'] }
+        ]);
+      }
       setQuizStep(1);
     };
 
-    const handleDemographicSubmit = () => {
+    const handleQuizSubmit = async () => {
       setQuizLoading(true);
-      setTimeout(() => {
-         const domainAnswer = quizAnswers[1] || 'Software Development';
-         const questions = getRandomQuestions(domainAnswer, 5);
-         setActualQuizQuestions(questions);
-         setActualQuizAnswers({});
-         setQuizLoading(false);
-         setQuizStep(2); // Move to actual quiz
-      }, 1000);
-    };
-
-    const handleActualQuizSubmit = async () => {
-      setQuizLoading(true);
+      // Simulate AI Processing
       setTimeout(async () => {
-        let correctCount = 0;
-        actualQuizQuestions.forEach(q => {
-           if (actualQuizAnswers[q.id] === q.correctAnswerIndex) {
-              correctCount++;
-           }
-        });
-        
-        setQuizScore(correctCount);
+        let newCategory = 'C';
+        let newDomain = currentUser?.domain || '';
 
-        if (correctCount >= 3) {
-            // PASS
-            let newCategory = 'C';
-            if (correctCount === 5) newCategory = 'A';
-            else if (correctCount === 4) newCategory = 'B';
-            
-            const newDomain = quizAnswers[1] || currentUser?.domain || 'Software Engineer';
-            const newSkills = [...(currentUser?.skills || [])];
-            if (!newSkills.includes('assessment_completed')) newSkills.push('assessment_completed');
-            
-            await supabase.from('profiles').update({ category: newCategory, domain: newDomain, skills: newSkills }).eq('id', currentUser.id);
-            setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain, skills: newSkills }));
-            setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain, skills: newSkills } : p));
-            setQuizFailed(false);
+        if (currentUser?.role === 'student') {
+          if (quizAnswers[3] === '20+ Hours') newCategory = 'A';
+          else if (quizAnswers[3] === '10-20 Hours') newCategory = 'B';
+          newDomain = quizAnswers[2] || 'Student';
         } else {
-            // FAIL
-            const cooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-            await supabase.from('profiles').update({ quiz_cooldown_until: cooldownUntil }).eq('id', currentUser.id);
-            setCurrentUser(prev => ({ ...prev, quiz_cooldown_until: cooldownUntil }));
-            setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, quiz_cooldown_until: cooldownUntil } : p));
-            setQuizFailed(true);
+          const score = Object.keys(quizAnswers).length;
+          if (score >= 3 && quizAnswers[3] === '10+ Years') newCategory = 'A';
+          else if (score >= 3 && quizAnswers[3] === '5-10 Years') newCategory = 'B';
+          
+          if (quizAnswers[1] === 'Software Development') {
+             if (quizAnswers[2] === 'JavaScript/TypeScript') newDomain = 'Frontend/Fullstack Dev';
+             else if (quizAnswers[2] === 'Python') newDomain = 'Backend/AI Dev';
+             else newDomain = 'Software Engineer';
+          } else if (quizAnswers[1]) {
+             newDomain = quizAnswers[1];
+          }
         }
+
+        await supabase.from('profiles').update({ category: newCategory, domain: newDomain }).eq('id', currentUser.id);
         
+        setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain }));
+        setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain } : p));
         setQuizLoading(false);
-        setQuizStep(3); // result step
+        setQuizStep(2); // result step
       }, 2000);
     };
 
@@ -2465,23 +2572,19 @@ const handleReactMessage = async (msg, emoji) => {
         <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-purple-900/20 blur-[120px] rounded-full pointer-events-none"></div>
         
         <div className="w-full max-w-lg glass-panel-glow border border-purple-500/30 rounded-3xl p-8 relative z-10">
-          <div className="text-center mb-8 relative">
-            <div className="absolute right-0 top-0 flex gap-2 bg-black/40 p-1 rounded-lg border border-purple-500/20">
-              <button onClick={() => setQuizLang('en')} className={`px-2 py-1 text-[10px] font-bold rounded ${quizLang === 'en' ? 'bg-purple-600 text-white' : 'text-purple-300 hover:text-white'}`}>EN</button>
-              <button onClick={() => setQuizLang('ur')} className={`px-2 py-1 text-[10px] font-bold rounded ${quizLang === 'ur' ? 'bg-purple-600 text-white' : 'text-purple-300 hover:text-white'}`}>UR</button>
-            </div>
-            <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center shadow-lg shadow-purple-500/30 mx-auto mb-4 mt-6">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 rounded-2xl accent-gradient flex items-center justify-center shadow-lg shadow-purple-500/30 mx-auto mb-4">
               <BrainCircuit className="text-white" size={32} />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">{quizLang === 'ur' ? 'اے آئی اسکلز اسسمنٹ' : 'AI Skills Assessment'}</h2>
-            <p className="text-xs text-purple-300">{quizLang === 'ur' ? 'AuraSuite AI کو آپ کا پروفائل تیار کرنے دیں۔' : 'Let AuraSuite AI tailor your workspace experience.'}</p>
+            <h2 className="text-2xl font-bold text-white mb-2">AI Skills Assessment</h2>
+            <p className="text-xs text-purple-300">Let AuraSuite AI tailor your workspace experience.</p>
           </div>
 
           {quizStep === 0 && (
             <div className="text-center space-y-6">
-              <p className="text-sm text-white/80">{quizLang === 'ur' ? 'AuraSuite میں خوش آمدید! ہمارے AI کو آپ کی مہارتوں کا اندازہ لگانا ہے تاکہ آپ کو درست ٹاسکس دیے جا سکیں۔' : 'Welcome to AuraSuite! As part of our onboarding, our AI needs to assess your skill level to properly tag your profile and assign you to relevant tasks.'}</p>
+              <p className="text-sm text-white/80">Welcome to AuraSuite! As part of our onboarding, our AI needs to assess your skill level to properly tag your profile and assign you to relevant tasks.</p>
               <button onClick={handleQuizStart} className="px-6 py-3 rounded-xl accent-gradient text-sm font-bold text-white glow-btn inline-flex items-center gap-2">
-                {quizLang === 'ur' ? 'اسسمنٹ شروع کریں' : 'Begin Assessment'} <ArrowRight size={16}/>
+                Begin Assessment <ArrowRight size={16}/>
               </button>
             </div>
           )}
@@ -2490,44 +2593,11 @@ const handleReactMessage = async (msg, emoji) => {
             <div className="space-y-6">
               {quizQuestions.map((q, idx) => (
                 <div key={q.id} className="space-y-2">
-                  <p className="text-xs font-bold text-purple-200">{idx + 1}. {quizLang === 'ur' ? q.question_ur : q.question}</p>
-                  <div className="relative">
-                    <input 
-                      list={`opts-${q.id}`}
-                      value={quizAnswers[q.id] || ''}
-                      onChange={(e) => setQuizAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                      placeholder={quizLang === 'ur' ? 'منتخب کریں یا ٹائپ کریں...' : 'Select or type...'}
-                      className="w-full bg-[#11081c] border border-purple-500/30 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 focus:shadow-[0_0_15px_rgba(168,85,247,0.3)] transition-all placeholder-purple-500/50"
-                    />
-                    <datalist id={`opts-${q.id}`}>
-                      {(quizLang === 'ur' ? q.options_ur : q.options).map((opt, i) => (
-                        <option key={i} value={opt} />
-                      ))}
-                    </datalist>
-                  </div>
-                </div>
-              ))}
-              <div className="pt-4 flex justify-end">
-                <button onClick={handleDemographicSubmit} disabled={quizLoading || Object.keys(quizAnswers).length < quizQuestions.length}
-                  className={`px-6 py-3 rounded-xl text-sm font-bold text-white flex items-center gap-2 transition-all ${quizLoading || Object.keys(quizAnswers).length < quizQuestions.length ? 'bg-purple-900/50 cursor-not-allowed opacity-50' : 'accent-gradient glow-btn'}`}>
-                  {quizLoading ? <><Loader2 size={16} className="animate-spin" /> {quizLang === 'ur' ? 'تیار ہو رہا ہے...' : 'Preparing...'}</> : (quizLang === 'ur' ? 'آگے بڑھیں' : 'Next Step')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {quizStep === 2 && (
-            <div className="space-y-6">
-              <div className="bg-purple-900/20 border border-purple-500/20 rounded-xl p-4 mb-4">
-                <p className="text-xs text-purple-300 text-center">{quizLang === 'ur' ? 'یہ آپ کی مہارت کا اصل ٹیسٹ ہے۔ اسے پاس کرنے کے لیے کم از کم 3 درست جوابات درکار ہیں۔' : 'This is your actual skill test. You need at least 3 correct answers to pass.'}</p>
-              </div>
-              {actualQuizQuestions.map((q, idx) => (
-                <div key={q.id} className="space-y-2">
-                  <p className="text-xs font-bold text-purple-200">{idx + 1}. {quizLang === 'ur' ? q.question_ur : q.question}</p>
-                  <div className="grid grid-cols-1 gap-2">
-                    {(quizLang === 'ur' ? q.options_ur : q.options).map((opt, i) => (
-                      <button key={i} onClick={() => setActualQuizAnswers(prev => ({ ...prev, [q.id]: i }))}
-                        className={`p-3 rounded-xl text-[11px] font-bold border transition-all text-left ${actualQuizAnswers[q.id] === i ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
+                  <p className="text-xs font-bold text-purple-200">{idx + 1}. {q.question}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {q.options.map(opt => (
+                      <button key={opt} onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt }))}
+                        className={`p-2 rounded-lg text-[10px] font-bold border transition-all ${quizAnswers[q.id] === opt ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
                         {opt}
                       </button>
                     ))}
@@ -2535,58 +2605,26 @@ const handleReactMessage = async (msg, emoji) => {
                 </div>
               ))}
               <div className="pt-4 flex justify-end">
-                <button onClick={handleActualQuizSubmit} disabled={quizLoading || Object.keys(actualQuizAnswers).length < actualQuizQuestions.length}
-                  className={`px-6 py-3 rounded-xl text-sm font-bold text-white flex items-center gap-2 transition-all ${quizLoading || Object.keys(actualQuizAnswers).length < actualQuizQuestions.length ? 'bg-purple-900/50 cursor-not-allowed opacity-50' : 'accent-gradient glow-btn'}`}>
-                  {quizLoading ? <><Loader2 size={16} className="animate-spin" /> {quizLang === 'ur' ? 'جانچ ہو رہی ہے...' : 'Analyzing...'}</> : (quizLang === 'ur' ? 'مکمل کریں' : 'Complete Assessment')}
+                <button onClick={handleQuizSubmit} disabled={quizLoading || Object.keys(quizAnswers).length < quizQuestions.length}
+                  className={`px-6 py-3 rounded-xl text-sm font-bold text-white flex items-center gap-2 transition-all ${quizLoading || Object.keys(quizAnswers).length < quizQuestions.length ? 'bg-purple-900/50 cursor-not-allowed opacity-50' : 'accent-gradient glow-btn'}`}>
+                  {quizLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> AI Analyzing...</> : 'Complete Assessment'}
                 </button>
               </div>
             </div>
           )}
 
-          {quizStep === 3 && (
+          {quizStep === 2 && (
             <div className="text-center space-y-6">
-              {quizFailed ? (
-                <>
-                  <div className="w-20 h-20 rounded-full bg-red-500/20 border border-red-500 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(239,68,68,0.3)]">
-                    <X className="text-red-400" size={40} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">{quizLang === 'ur' ? 'اسسمنٹ فیل' : 'Assessment Failed'}</h3>
-                    <p className="text-sm text-red-300 mt-2">{quizLang === 'ur' ? `آپ نے ${actualQuizQuestions.length} میں سے ${quizScore} کا صحیح جواب دیا۔ پاس ہونے کے لیے 3 درکار ہیں۔` : `You answered ${quizScore} out of ${actualQuizQuestions.length} correctly. Minimum 3 required to pass.`}</p>
-                  </div>
-                  <button onClick={() => {
-                      setQuizStep(1);
-                      setQuizAnswers({});
-                  }} className="w-full py-3 rounded-xl text-sm font-bold text-white bg-[#11081c] border border-purple-500/30 hover:bg-purple-900/40 transition-colors">
-                    {quizLang === 'ur' ? 'دوبارہ کوشش کریں' : 'Try Again'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="w-20 h-20 rounded-full bg-green-500/20 border border-green-500 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.3)]">
-                    <Check className="text-green-400" size={40} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">{quizLang === 'ur' ? 'اسسمنٹ مکمل' : 'Assessment Complete'}</h3>
-                    <p className="text-sm text-purple-200 mt-2">
-                       {quizLang === 'ur' ? `اسکور: ${quizScore}/5۔ آپ کو تفویض کیا گیا ہے ` : `Score: ${quizScore}/5. You have been assigned to `}
-                       <strong className="text-purple-400 border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 rounded">
-                         {quizLang === 'ur' ? 'ٹیئر' : 'Tier'} {currentUser.category || 'C'}
-                       </strong>
-                    </p>
-                  </div>
-                  <button onClick={() => {
-                      setIsEnteringDashboard(true);
-                      setTimeout(() => {
-                          setIsEnteringDashboard(false);
-                          setShowQuiz(false);
-                      }, 800);
-                  }} disabled={isEnteringDashboard} className={`w-full py-3 rounded-xl text-sm font-bold text-white flex items-center justify-center gap-2 ${isEnteringDashboard ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
-                    {isEnteringDashboard ? <Loader2 size={16} className="animate-spin" /> : null}
-                    {isEnteringDashboard ? (quizLang === 'ur' ? 'ری ڈائریکٹ ہو رہا ہے...' : 'Redirecting...') : (quizLang === 'ur' ? 'ڈیش بورڈ میں داخل ہوں' : 'Enter AuraSuite Dashboard')}
-                  </button>
-                </>
-              )}
+              <div className="w-20 h-20 rounded-full bg-green-500/20 border border-green-500 flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.3)]">
+                <Check className="text-green-400" size={40} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Assessment Complete</h3>
+                <p className="text-sm text-purple-200 mt-2">You have been assigned to <strong className="text-purple-400 border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 rounded">Tier {currentUser.category || 'C'}</strong></p>
+              </div>
+              <button onClick={() => { setActiveTab('dashboard'); setShowQuiz(false); }} className="w-full py-3 rounded-xl accent-gradient text-sm font-bold text-white glow-btn">
+                Enter AuraSuite Dashboard
+              </button>
             </div>
           )}
         </div>
@@ -2596,10 +2634,8 @@ const handleReactMessage = async (msg, emoji) => {
 
   // ══════════════════ MAIN APP ══════════════════
   return (
-    <div className="flex min-h-screen bg-luxury-bg text-[#f3f1f5] relative">
-      
-      {/* 1. TOP-LEVEL KICKOUT OVERLAY ALREADY HANDLED ABOVE */}
-
+    <main className="relative min-h-screen">
+      <div className="flex min-h-screen bg-luxury-bg text-[#f3f1f5] relative">
 
       {/* ── MEETING INVITE MODAL ── */}
       {meetingInviteModal && (
@@ -2653,9 +2689,10 @@ const handleReactMessage = async (msg, emoji) => {
                 className="flex-1 py-2 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs text-purple-300 font-semibold hover:bg-purple-900/40 transition-all">
                 Skip for Now
               </button>
-              <button onClick={handleSendMeetingInvites}
-                className="flex-1 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
-                Send Invites ({selectedInvitees.includes('__all__') ? 'All' : selectedInvitees.length})
+              <button onClick={handleSendMeetingInvites} disabled={isSendingMeetingInvites}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 ${isSendingMeetingInvites ? 'bg-purple-800 opacity-70 cursor-not-allowed' : 'accent-gradient glow-btn'}`}>
+                {isSendingMeetingInvites ? <Loader2 size={14} className="animate-spin" /> : null}
+                {isSendingMeetingInvites ? 'Sending...' : `Send Invites (${selectedInvitees.includes('__all__') ? 'All' : selectedInvitees.length})`}
               </button>
             </div>
           </div>
@@ -2748,8 +2785,11 @@ const handleReactMessage = async (msg, emoji) => {
             <div className="flex gap-3 pt-2 border-t border-purple-500/10">
               <button onClick={() => setEditingUser(null)}
                 className="flex-1 py-2 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs text-purple-300 font-semibold">Cancel</button>
-              <button onClick={handleSaveUserEdit}
-                className="flex-1 py-2 rounded-xl accent-gradient text-xs font-bold text-white">Save Changes</button>
+              <button onClick={handleSaveUserEdit} disabled={isSavingUserEdit}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 ${isSavingUserEdit ? 'bg-purple-800 opacity-70' : 'accent-gradient'}`}>
+                {isSavingUserEdit ? <Loader2 size={14} className="animate-spin" /> : null}
+                {isSavingUserEdit ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>
@@ -2763,7 +2803,7 @@ const handleReactMessage = async (msg, emoji) => {
             <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4 border border-red-500/30">
               <ShieldAlert size={32} />
             </div>
-            <h3 className="text-lg font-bold text-white mb-2">Access Restricted</h3>
+            <h3 className="text-lg font-bold text-white mb-2">Notice</h3>
             <p className="text-sm text-purple-300 mb-6">{customAlert}</p>
             <button onClick={() => setCustomAlert(null)} className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20">
               Got it
@@ -2771,6 +2811,37 @@ const handleReactMessage = async (msg, emoji) => {
           </div>
         </div>
       )}
+
+      {/* ── CONFIRM MODAL ── */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#11081c] border border-orange-500/30 shadow-[0_0_40px_rgba(249,115,22,0.2)] rounded-3xl p-6 text-center animate-in zoom-in-95 duration-300">
+            <div className="w-16 h-16 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center mx-auto mb-4 border border-orange-500/30">
+              <ShieldAlert size={32} />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">{confirmModal.title}</h3>
+            <p className="text-sm text-purple-300 mb-6">{confirmModal.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmModal(null)} disabled={isConfirming} className="flex-1 py-3 bg-purple-900/40 hover:bg-purple-900/60 text-purple-200 font-bold rounded-xl transition-all border border-purple-500/20 disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={async () => {
+                setIsConfirming(true);
+                try {
+                  await confirmModal.onConfirm();
+                } finally {
+                  setIsConfirming(false);
+                }
+              }} disabled={isConfirming} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 disabled:bg-red-500/50">
+                {isConfirming ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isConfirming ? 'Processing...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
 
       {showEndMeetingModal && (
         <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -2780,16 +2851,21 @@ const handleReactMessage = async (msg, emoji) => {
               <p className="text-xs text-purple-300 mt-1">Do you want to end the meeting for everyone or just leave?</p>
             </div>
             <div className="space-y-3">
-              <button onClick={() => { setShowEndMeetingModal(false); handleEndMeeting(true); }}
-                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-bold text-white transition-all">
-                End Meeting for All
+              <button onClick={async () => { setIsEndingMeeting(true); try { await handleEndMeeting(true); } finally { setIsEndingMeeting(false); setShowEndMeetingModal(false); } }}
+                disabled={isEndingMeeting}
+                className="w-full py-3 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 disabled:bg-red-600/50">
+                {isEndingMeeting ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isEndingMeeting ? 'Ending...' : 'End Meeting for All'}
               </button>
-              <button onClick={() => { setShowEndMeetingModal(false); handleEndMeeting(false); }}
-                className="w-full py-3 rounded-xl bg-[#150e1f] border border-purple-500/20 hover:border-purple-500/40 text-sm font-bold text-purple-200 transition-all">
-                Just Leave Meeting
+              <button onClick={async () => { setIsEndingMeeting(true); try { await handleEndMeeting(false); } finally { setIsEndingMeeting(false); setShowEndMeetingModal(false); } }}
+                disabled={isEndingMeeting}
+                className="w-full py-3 rounded-xl bg-[#150e1f] border border-purple-500/20 hover:border-purple-500/40 text-sm font-bold text-purple-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                {isEndingMeeting ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isEndingMeeting ? 'Leaving...' : 'Just Leave Meeting'}
               </button>
               <button onClick={() => setShowEndMeetingModal(false)}
-                className="w-full py-2 text-xs font-bold text-purple-400 hover:text-white transition-all mt-2">
+                disabled={isEndingMeeting}
+                className="w-full py-2 text-xs font-bold text-purple-400 hover:text-white transition-all mt-2 disabled:opacity-50">
                 Cancel
               </button>
             </div>
@@ -2977,10 +3053,10 @@ const handleReactMessage = async (msg, emoji) => {
                 </div>
                 <form onSubmit={handleSendLiveChat} className="p-3 border-t border-purple-500/10 flex gap-2 shrink-0 bg-[#07040d]">
                   <input type="text" placeholder={isChatLocked && currentUser.role !== 'admin' ? 'Chat locked' : 'Type message...'} value={newChatMessage}
-                    onChange={e => setNewChatMessage(e.target.value)} disabled={isChatLocked && currentUser.role !== 'admin'}
+                    onChange={e => setNewChatMessage(e.target.value)} disabled={isChatLocked && currentUser.role !== 'admin' || isSendingLiveChat}
                     className="bg-[#150e1f] border border-purple-500/20 rounded-xl p-2 text-xs text-white flex-1 focus:outline-none focus:border-purple-500/50" />
-                  <button type="submit" className="px-3 py-2 bg-purple-700 hover:bg-purple-600 rounded-xl text-xs font-bold text-white">
-                    <Send size={12} />
+                  <button type="submit" disabled={isSendingLiveChat} className={`px-3 py-2 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1 ${isSendingLiveChat ? 'bg-purple-800 opacity-70' : 'bg-purple-700 hover:bg-purple-600'}`}>
+                    {isSendingLiveChat ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
                   </button>
                 </form>
               </div>
@@ -3328,6 +3404,8 @@ const handleReactMessage = async (msg, emoji) => {
           <div className="flex flex-col gap-0.5">
             {[
               { id: 'dashboard', icon: <LayoutDashboard size={15} />, label: 'Dashboard' },
+              { id: 'approvals', icon: <CheckCircle size={15} />, label: 'Approvals', superAdminOnly: true },
+              { id: 'active_orgs', icon: <Server size={15} />, label: 'Active Orgs', superAdminOnly: true },
               { id: 'admin', icon: <Shield size={15} />, label: 'Admin Control', adminOnly: true },
               { id: 'users', icon: <Users size={15} />, label: 'Users', adminOnly: true },
               { id: 'meetings', icon: <Video size={15} />, label: 'Meetings' },
@@ -3335,6 +3413,7 @@ const handleReactMessage = async (msg, emoji) => {
               { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules', hideForClient: true },
               { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials', hideForClient: true },
             ].filter(item => {
+              if (item.superAdminOnly && currentUser.role !== 'super_admin') return false;
               if (item.adminOnly && !['admin', 'super_admin', 'sub_admin', 'manager'].includes(currentUser.role)) return false;
               if (item.hideForClient && currentUser.role === 'client') return false;
               return true;
@@ -3523,42 +3602,35 @@ const handleReactMessage = async (msg, emoji) => {
                 
                 <form onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!genInviteName || !inviteEmail) { alert('Please enter name and email'); return; }
+                  if (!genInviteName || !inviteEmail) { setCustomAlert('Please enter name and email'); return; }
+                  setIsGeneratingInvite(true);
                   
-                  // Check if this email is banned in Supabase
-                  const { data: bannedData } = await supabase.from('banned_emails').select('*').eq('email', inviteEmail.toLowerCase());
-                  if (bannedData && bannedData.length > 0) {
-                    const banRecord = bannedData[0];
-                    const bannedUntil = new Date(banRecord.banned_until).getTime();
-                    if (Date.now() < bannedUntil) {
-                      const availableDate = new Date(banRecord.banned_until).toLocaleDateString();
-                      addNotification(`This email is under a 30-day permanent ban. Re-invite available after ${availableDate}.`, 'error');
-                      return;
-                    } else {
-                      // Auto Unblock
-                      await supabase.from('banned_emails').delete().eq('email', inviteEmail.toLowerCase());
-                    }
+                  // Task A: STRICTLY QUERY banned_emails FIRST
+                  const { data: banRecord } = await supabase
+                    .from('banned_emails')
+                    .select('*')
+                    .eq('email', inviteEmail.toLowerCase())
+                    .single();
+
+                  if (banRecord && new Date(banRecord.banned_until) > new Date()) {
+                    setCustomAlert('This email is banned for 30 days.');
+                    return;
                   }
-
-                  const cleanEmail = inviteEmail.trim().toLowerCase();
-
-                  // Check if this email exists in DB (more robust than local state)
-                  const { data: existingDbProfiles } = await supabase.from('profiles').select('*').eq('email', cleanEmail).limit(1);
-                  const existingProfile = existingDbProfiles && existingDbProfiles.length > 0 ? existingDbProfiles[0] : null;
                   
-                  let finalProfileId = genId('user');
+                  let newProfileId = genId('user');
+                  
+                  // Check if this email exists - if it's a pending_worker, suspended, or banned, allow re-invite
+                  const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
                   let isUpdate = false;
-
-                  if (existingProfile && !existingProfile.email.includes('_deleted@') && !existingProfile.email.includes('_banned@')) {
-                    if (existingProfile.role === 'pending_worker' || existingProfile.role === 'worker') {
-                      // Reuse existing profile if they are pending or already a worker (re-inviting them to get a new card)
-                      finalProfileId = existingProfile.id;
+                  if (existingProfile) {
+                    if (['pending_worker', 'suspended', 'banned'].includes(existingProfile.role)) {
                       isUpdate = true;
-                      
-                      // Delete old digital card if exists
+                      newProfileId = existingProfile.id;
+                      // Delete old card so we can make a new one
                       await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
+                      setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
                     } else {
-                      alert('This email is already fully registered with a higher role in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
+                      setCustomAlert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
                       return;
                     }
                   }
@@ -3569,19 +3641,19 @@ const handleReactMessage = async (msg, emoji) => {
 
                   // Build the invite link using a single base64 token (no & in URL = no encoding issues)
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://aurasuite-kappa.vercel.app';
-                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername, orgType: activeOrg.type || 'software_house', orgName: activeOrg.org_name || 'AuraSuite' }));
+                  const loginToken = btoa(JSON.stringify({ card: cardNumber, username: tempUsername, orgType: activeOrg.type || 'software_house', orgName: activeOrg.name || 'AuraSuite' }));
                   const inviteLink = `${baseUrl}/?t=${loginToken}`;
 
-                  // 1. Create/Update Profile (as 'pending_worker' to hide from UI until they login)
+                  // 1. Create Profile (as 'pending_worker' to hide from UI until they login)
                   const newProfile = {
-                    id: finalProfileId,
+                    id: newProfileId,
                     organization_id: activeOrg.id,
-                    email: cleanEmail,
-                    full_name: genInviteName.trim(),
-                    role: isUpdate ? existingProfile.role : 'pending_worker',
-                    category: genInviteCategory || null,
-                    domain: genInviteDomain || '',
-                    skills: existingProfile ? existingProfile.skills : [],
+                    email: inviteEmail,
+                    full_name: genInviteName,
+                    role: 'pending_worker',
+                    category: isUpdate ? existingProfile.category : (genInviteCategory || null),
+                    domain: isUpdate ? existingProfile.domain : (genInviteDomain || ''),
+                    skills: isUpdate ? (existingProfile.skills || []) : [],
                     last_seen: now()
                   };
 
@@ -3590,25 +3662,24 @@ const handleReactMessage = async (msg, emoji) => {
                     card_number: cardNumber,
                     username: tempUsername,
                     temp_password: tempPassword,
-                    profile_id: finalProfileId,
+                    profile_id: newProfileId,
                     organization_id: activeOrg.id,
-                    email: cleanEmail,
-                    full_name: genInviteName.trim(),
+                    email: inviteEmail,
+                    full_name: genInviteName,
                     role: genInviteRole, // store real role here
                     category: genInviteCategory || null,
                     domain: genInviteDomain || '',
-                    is_pending: true
+                    is_pending: true,
+                    is_revoked: false
                   };
                   
                   try {
                     if (isUpdate) {
-                      const { error: pErr } = await supabase.from('profiles').update(newProfile).eq('id', finalProfileId);
-                      if (pErr) throw pErr;
-                      setProfiles(prev => prev.map(p => p.id === finalProfileId ? { ...p, ...newProfile } : p));
+                      const { error: pUpErr } = await supabase.from('profiles').update(newProfile).eq('id', newProfileId);
+                      if (pUpErr) throw pUpErr;
                     } else {
                       const { error: pErr } = await supabase.from('profiles').insert(newProfile);
                       if (pErr) throw pErr;
-                      setProfiles(prev => [...prev, newProfile]);
                     }
 
                     const { error: cErr } = await supabase.from('digital_cards').insert(newCard);
@@ -3642,7 +3713,9 @@ const handleReactMessage = async (msg, emoji) => {
                     setInviteEmail('');
                     setGenInviteDomain('');
                   } catch (err) {
-                    alert('Error creating card: ' + err.message);
+                    setCustomAlert('Error creating card: ' + err.message);
+                  } finally {
+                    setIsGeneratingInvite(false);
                   }
                 }} className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
@@ -3686,8 +3759,9 @@ const handleReactMessage = async (msg, emoji) => {
                       className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none" />
                   </div>
                   <div className="md:col-span-4 flex justify-end items-center pt-2">
-                    <button type="submit" className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn flex items-center gap-2">
-                      <Send size={14} /> Send Digital Access Card
+                    <button type="submit" disabled={isGeneratingInvite} className={`px-5 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-2 ${isGeneratingInvite ? 'bg-purple-800 opacity-70' : 'accent-gradient glow-btn'}`}>
+                      {isGeneratingInvite ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} 
+                      {isGeneratingInvite ? 'Sending...' : 'Send Digital Access Card'}
                     </button>
                   </div>
                 </form>
@@ -3710,25 +3784,85 @@ const handleReactMessage = async (msg, emoji) => {
           {activeTab === 'users' && ['admin', 'super_admin'].includes(currentUser.role) && (
             <div className="max-w-7xl mx-auto space-y-6">
               {/* User Management Table */}
+              <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden mb-6">
+                <div className="p-4 border-b border-purple-500/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Lock size={16} className="text-purple-400" /> Worker Access Control
+                    </h3>
+                    <p className="text-[10px] text-purple-300/70 mt-1">Manage working days and portal locks for all workers</p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+
+                    <div className={`flex gap-1 ${activeOrg?.working_hours?.is_24_7 ? 'opacity-30 pointer-events-none' : ''}`}>
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName, idx) => {
+                        const isWorking = (activeOrg?.working_days || [1,2,3,4,5]).includes(idx);
+                        return (
+                          <button key={idx} onClick={() => updateWorkingDays(idx)}
+                            className={`w-8 h-8 rounded-lg text-[10px] font-bold transition-all ${isWorking ? 'bg-purple-600/50 text-white border-purple-500/50 border' : 'bg-purple-950/30 text-purple-400/50 border-purple-900/30 border hover:bg-purple-900/50 hover:text-purple-300'}`}>
+                            {dayName.charAt(0)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    <div className={`flex items-center gap-1.5 bg-purple-950/30 rounded-lg p-1.5 border border-purple-500/10 h-8 ${activeOrg?.working_hours?.is_24_7 ? 'opacity-30 pointer-events-none' : ''}`}>
+                      <Clock size={12} className="text-purple-400" />
+                      <input type="time" value={activeOrg?.working_hours?.start || "00:00"} 
+                        onChange={(e) => updateWorkingHours('start', e.target.value)}
+                        className="bg-transparent text-[12px] font-mono text-white focus:outline-none w-[110px] cursor-text" 
+                        style={{ colorScheme: 'dark' }} />
+                      <span className="text-[10px] text-purple-500">-</span>
+                      <input type="time" value={activeOrg?.working_hours?.end || "23:59"} 
+                        onChange={(e) => updateWorkingHours('end', e.target.value)}
+                        className="bg-transparent text-[12px] font-mono text-white focus:outline-none w-[110px] cursor-text" 
+                        style={{ colorScheme: 'dark' }} />
+                    </div>
+
+                    <div className="flex bg-purple-950/30 rounded-lg p-1 border border-purple-500/10">
+                      <div 
+                        className={`flex items-center gap-2 rounded p-1 px-2 border cursor-pointer transition-all mr-2 ${!activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-950/30 border-emerald-500/30' : 'bg-gray-900/50 border-gray-700/30'}`} 
+                        onClick={() => updateWorkingHours('is_24_7', !activeOrg?.working_hours?.is_24_7)}
+                        title="When ON, system manages locks. When OFF, portals remain open 24/7."
+                      >
+                        <span className="text-[10px] font-bold text-white whitespace-nowrap">Auto System</span>
+                        <div className={`flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold transition-all ${!activeOrg?.working_hours?.is_24_7 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                          {!activeOrg?.working_hours?.is_24_7 ? 'ON' : 'OFF'}
+                        </div>
+                      </div>
+                      <button onClick={() => toggleLockAllWorkers('lock')} className="px-3 py-1 text-[10px] font-bold rounded bg-red-950/30 text-red-400 hover:bg-red-900/50 transition-colors">Lock All</button>
+                      <button onClick={() => toggleLockAllWorkers('unlock')} className="px-3 py-1 text-[10px] font-bold rounded bg-emerald-950/30 text-emerald-400 hover:bg-emerald-900/50 transition-colors ml-1">Unlock All</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-4 border-b border-purple-500/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 border-b border-purple-500/10 gap-3">
                   <div className="flex items-center gap-2">
                     <Users size={16} className="text-purple-400" />
                     <h3 className="text-sm font-bold text-white">User Management</h3>
                   </div>
-                  <span className="text-[10px] text-purple-400">{orgUsers.length} members in {activeOrg.name}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="flex bg-purple-950/30 rounded-lg p-1 border border-purple-500/10">
+                      <button onClick={() => setShowSuspendedUsers(false)} className={`px-3 py-1 text-[10px] font-bold rounded transition-colors ${!showSuspendedUsers ? 'bg-purple-600/40 text-white' : 'text-purple-400 hover:text-white'}`}>Active</button>
+                      <button onClick={() => setShowSuspendedUsers(true)} className={`px-3 py-1 text-[10px] font-bold rounded transition-colors ${showSuspendedUsers ? 'bg-red-600/40 text-white' : 'text-red-400 hover:text-white'}`}>Suspended & Banned</button>
+                    </div>
+                    <span className="text-[10px] text-purple-400">{!showSuspendedUsers ? orgUsers.length : suspendedOrgUsers.length} members</span>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-purple-500/10 text-left">
-                        {['User', 'Role', 'Category', 'AI Domain', 'Skills', 'Status', 'Actions'].map(h => (
-                          <th key={h} className="px-4 py-3 text-[10px] text-purple-400 uppercase font-bold tracking-wide">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orgUsers.map((user, i) => (
+                  {!showSuspendedUsers ? (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-purple-500/10 text-left">
+                          {['User', 'Role', 'Category', 'AI Domain', 'Skills', 'Status', 'Actions'].map(h => (
+                            <th key={h} className="px-4 py-3 text-[10px] text-purple-400 uppercase font-bold tracking-wide">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orgUsers.map((user, i) => (
                         <tr key={user.id} className={`border-b border-purple-500/5 hover:bg-purple-950/10 transition-colors ${i % 2 === 0 ? '' : 'bg-[#0c0818]/40'}`}>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
@@ -3780,6 +3914,15 @@ const handleReactMessage = async (msg, emoji) => {
                                 className="p-1.5 bg-purple-950/50 border border-purple-500/20 rounded-lg text-purple-300 hover:text-white hover:border-purple-500/50 transition-all">
                                 <Edit3 size={11} />
                               </button>
+                              {user.role === 'worker' && (() => {
+                                const isEffLocked = checkIsEffectivelyLocked(user, activeOrg);
+                                return (
+                                  <button onClick={() => toggleLockWorker(user)} title={isEffLocked ? (user.is_locked ? "Unlock Portal" : "Force Unlock (Holiday/Time)") : "Lock Portal"}
+                                    className={`p-1.5 border rounded-lg transition-all ${isEffLocked ? 'bg-red-950/30 border-red-500/20 text-red-400 hover:text-white hover:border-red-500/50' : user.force_unlocked ? 'bg-emerald-950/50 border-emerald-500/50 text-white shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-emerald-950/10 border-emerald-500/10 text-emerald-500/50 hover:text-emerald-300 hover:border-emerald-500/30'}`}>
+                                    {isEffLocked ? <Lock size={11} /> : <Unlock size={11} />}
+                                  </button>
+                                );
+                              })()}
                               {user.id !== currentUser.id && (
                                 <div className="flex gap-1">
                                   <button onClick={() => handleSuspendUser(user.id)} title="Delete / Suspend"
@@ -3798,6 +3941,65 @@ const handleReactMessage = async (msg, emoji) => {
                       ))}
                     </tbody>
                   </table>
+                  ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-purple-500/10 text-left">
+                        {['User', 'Role', 'Status', 'Suspended On', 'Eligible For Reactivation', 'Actions'].map(h => (
+                          <th key={h} className="px-4 py-3 text-[10px] text-red-400 uppercase font-bold tracking-wide">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {suspendedOrgUsers.map((user, i) => {
+                        const banRecord = bannedEmails.find(b => b.email === user.email?.toLowerCase());
+                        const banDate = banRecord ? new Date(banRecord.created_at) : null;
+                        const expiryDate = banRecord ? new Date(banRecord.banned_until) : null;
+                        
+                        return (
+                          <tr key={user.id} className={`border-b border-purple-500/5 hover:bg-red-950/10 transition-colors ${i % 2 === 0 ? '' : 'bg-[#0c0818]/40'}`}>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-red-950/60 flex items-center justify-center text-xs font-bold text-red-400 border border-red-500/20">
+                                  {user.full_name?.[0] || '?'}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-white">{user.full_name}</div>
+                                  <div className="text-[9px] text-red-400/70">{user.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase border bg-red-950/40 border-red-500/30 text-red-300">
+                                {user.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-[9px] font-semibold text-red-400">Access Revoked</span>
+                            </td>
+                            <td className="px-4 py-3 text-[10px] text-purple-300">
+                              {banDate ? banDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
+                            </td>
+                            <td className="px-4 py-3 text-[10px] font-mono text-yellow-400/80">
+                              {expiryDate ? expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <button onClick={() => handleDeletePermanentlyFromDB(user.id, user.email)} title="Permanently Delete From DB"
+                                className="px-3 py-1.5 bg-red-950/50 hover:bg-red-600/80 text-red-200 hover:text-white text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1">
+                                <UserX size={11} /> Delete Record
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {suspendedOrgUsers.length === 0 && (
+                        <tr>
+                          <td colSpan="6" className="text-center py-6 text-xs text-purple-400">No suspended or banned users found.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  )}
                 </div>
               </div>
 
@@ -3885,9 +4087,10 @@ const handleReactMessage = async (msg, emoji) => {
                         <input type="number" value={overrideBudget} onChange={e => setOverrideBudget(e.target.value)}
                           className="w-full bg-[#1d142d] border border-purple-500/20 rounded-xl p-1.5 text-xs text-white focus:outline-none" />
                       </div>
-                      <button onClick={handleApprovePayout}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold mt-4">
-                        Approve Payout
+                      <button onClick={handleApprovePayout} disabled={isApprovingPayout}
+                        className={`px-4 py-2 text-white rounded-xl text-xs font-bold mt-4 flex items-center justify-center gap-2 ${isApprovingPayout ? 'bg-emerald-800 opacity-70' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                        {isApprovingPayout ? <Loader2 size={14} className="animate-spin" /> : null}
+                        {isApprovingPayout ? 'Approving...' : 'Approve Payout'}
                       </button>
                     </div>
                   </div>
@@ -3918,8 +4121,9 @@ const handleReactMessage = async (msg, emoji) => {
                       className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none" />
                   </div>
                   <div className="flex items-end">
-                    <button type="submit" className="w-full py-2.5 rounded-xl accent-gradient text-xs font-bold text-white glow-btn flex items-center justify-center gap-2">
-                      <Video size={14} /> Create Meeting
+                    <button type="submit" disabled={isCreatingMeeting} className={`w-full py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 ${isCreatingMeeting ? 'bg-purple-800 opacity-70' : 'accent-gradient glow-btn'}`}>
+                      {isCreatingMeeting ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />} 
+                      {isCreatingMeeting ? 'Creating...' : 'Create Meeting'}
                     </button>
                   </div>
                 </form>
@@ -4115,7 +4319,7 @@ const handleReactMessage = async (msg, emoji) => {
                   <div className="flex-1 overflow-y-auto p-5 space-y-4">
                     {(() => {
                       const msgs = activeChat === 'group'
-                        ? groupMessages
+                        ? groupMessages.filter(m => m.organization_id === activeOrg?.id)
                         : activeDmUser ? (dmThreads[getDmKey(activeDmUser.id)] || []) : [];
                       if (msgs.length === 0) return (
                         <div className="flex flex-col items-center justify-center h-full text-center">
@@ -4167,12 +4371,14 @@ const handleReactMessage = async (msg, emoji) => {
                                       if (isImg) {
                                         return <img src={url} alt="attachment" className="max-w-[200px] rounded border border-purple-500/30 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxImage(url)} loading="lazy" onError={e => { e.target.style.display='none'; e.target.nextSibling && (e.target.nextSibling.style.display='flex'); }} />;
                                       }
+                                      // File attachment bubble
                                       let displayName = msg.fileName || 'Document';
                                       if (!msg.fileName) {
                                         try {
                                           const urlObj = new URL(url);
                                           const parts = urlObj.pathname.split('/');
                                           const lastSeg = decodeURIComponent(parts.pop() || '');
+                                          // Strip msgId_timestamp_ prefix
                                           const nameParts = lastSeg.split('_');
                                           displayName = nameParts.length > 2 ? nameParts.slice(2).join('_') : lastSeg || 'Document';
                                         } catch(e) { displayName = 'Document'; }
@@ -4305,6 +4511,217 @@ const handleReactMessage = async (msg, emoji) => {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ═══════ APPROVALS (Super Admin) ═══════ */}
+          {activeTab === 'approvals' && currentUser?.role === 'super_admin' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <div className="p-2 bg-red-500/10 rounded-lg border border-red-500/20"><Clock className="text-red-400" size={20} /></div> Pending Approvals
+              </h2>
+              {organizations.filter(o => o.status === 'pending_approval').length === 0 ? (
+                <div className="text-center py-20 bg-[#0f081c] border border-purple-500/10 rounded-3xl">
+                  <Shield className="mx-auto text-purple-500/30 mb-4" size={40} />
+                  <h3 className="text-xl font-bold text-white mb-2">No Pending Requests</h3>
+                  <p className="text-purple-300">All registrations have been processed.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {organizations.filter(o => o.status === 'pending_approval').map(org => (
+                    <div key={org.id} className="bg-[#11081c] border border-purple-500/20 rounded-2xl p-6 hover:border-red-500/40 transition-colors shadow-lg relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/10 rounded-full blur-2xl pointer-events-none" />
+                      <div className="flex justify-between items-start mb-6">
+                        <div>
+                          <h3 className="text-xl font-bold text-white mb-1">{org.name}</h3>
+                          <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider bg-purple-900/30 px-2 py-1 rounded">{org.working_hours?.business_type || 'Unknown Type'}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-3 mb-8 text-sm">
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Owner</span>
+                          <span className="text-white font-medium">{org.owner_name}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Email</span>
+                          <span className="text-white font-medium truncate ml-4">{org.email}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Phone</span>
+                          <span className="text-white font-medium">{org.phone || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Team Size</span>
+                          <span className="text-white font-medium">{org.working_hours?.team_size || '1-10'}</span>
+                        </div>
+                        {org.working_hours?.cnic && (
+                          <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                            <span className="text-red-400 font-semibold">CNIC</span>
+                            <span className="text-white font-medium tracking-wider">{org.working_hours.cnic}</span>
+                          </div>
+                        )}
+                        {org.working_hours?.city && (
+                          <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                            <span className="text-purple-400">City</span>
+                            <span className="text-white font-medium">{org.working_hours.city}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-3">
+                        <button onClick={async () => {
+                          if (!confirm(`Approve ${org.name}?`)) return;
+                          
+                          const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
+                          const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+                          const tempPassword = Math.random().toString(36).slice(-8);
+                          await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
+                          
+                          let finalProfileId = null;
+                          const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
+                          
+                          if (existingProfile) {
+                             finalProfileId = existingProfile.id;
+                             await supabase.from('profiles').update({
+                               organization_id: org.id, full_name: org.owner_name,
+                               role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+                               card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+                             }).eq('id', existingProfile.id);
+                          } else {
+                             const { data: profileData } = await supabase.from('profiles').insert({ id: genId('user'),
+                               organization_id: org.id, email: org.email, full_name: org.owner_name,
+                               role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+                               card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+                             }).select().single();
+                             if (profileData) finalProfileId = profileData.id;
+                          }
+
+                          let updatedOrNewProfile = null;
+                          if (finalProfileId) {
+                            if (existingProfile) {
+                              await supabase.from('digital_cards').update({
+                                card_number: cardNumber, username, temp_password: tempPassword,
+                                organization_id: org.id, email: org.email,
+                                is_revoked: false
+                              }).eq('profile_id', finalProfileId);
+                              
+                              updatedOrNewProfile = {
+                                ...existingProfile,
+                                organization_id: org.id, full_name: org.owner_name,
+                                role: 'admin', category: 'A', domain: 'Admin', username,
+                                card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+                              };
+                            } else {
+                              await supabase.from('digital_cards').insert({
+                                card_number: cardNumber, username, temp_password: tempPassword,
+                                profile_id: finalProfileId, organization_id: org.id, email: org.email,
+                                is_revoked: false
+                              });
+                            }
+                          }
+
+                          try {
+                            const res = await fetch('/api/send-invite', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name, role: 'admin' })
+                            });
+                            const data = await res.json();
+                            if (!data.success || data.message?.includes('skipped')) {
+                              console.warn('Email skipped or failed:', data);
+                              alert(`⚠️ Approval successful, but Email was NOT sent (Vercel config missing/failed).\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+                            } else {
+                              addNotification(`✅ Approved successfully and Email sent to ${org.email}!`, 'success');
+                            }
+                          } catch (e) {
+                            console.error("Email might have failed", e);
+                            alert(`⚠️ Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+                          }
+
+                          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o } : o));
+                        }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 transition-all">
+                          <CheckCircle size={18}/> Approve
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm('Reject this organization?')) return;
+                          // Delete associated cards and profiles first
+                          const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
+                          if (orgProfiles) {
+                              for (const p of orgProfiles) {
+                                  await supabase.from('digital_cards').delete().eq('profile_id', p.id);
+                                  await supabase.from('profiles').delete().eq('id', p.id);
+                              }
+                          }
+                          await supabase.from('organizations').delete().eq('id', org.id);
+                          setOrganizations(prev => prev.filter(o => o.id !== org.id));
+                        }} className="px-4 py-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
+                          <XCircle size={20} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ═══════ ACTIVE ORGS (Super Admin) ═══════ */}
+          {activeTab === 'active_orgs' && currentUser?.role === 'super_admin' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <div className="p-2 bg-green-500/10 rounded-lg border border-green-500/20"><Server className="text-green-400" size={20} /></div> Active Organizations
+              </h2>
+              {organizations.filter(o => o.status === 'active').length === 0 ? (
+                <div className="text-center py-20 bg-[#0f081c] border border-purple-500/10 rounded-3xl">
+                  <Shield className="mx-auto text-green-500/30 mb-4" size={40} />
+                  <h3 className="text-xl font-bold text-white mb-2">No Active Orgs</h3>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {organizations.filter(o => o.status === 'active').map(org => (
+                    <div key={org.id} className="bg-[#11081c] border border-green-500/20 rounded-2xl p-6 hover:border-green-500/40 transition-colors shadow-lg relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-green-600/10 rounded-full blur-2xl pointer-events-none" />
+                      <div className="flex justify-between items-start mb-6">
+                        <div>
+                          <h3 className="text-xl font-bold text-white mb-1">{org.name}</h3>
+                          <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider bg-green-900/30 px-2 py-1 rounded">{org.working_hours?.business_type || 'Unknown Type'}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-3 mb-6 text-sm">
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Owner</span>
+                          <span className="text-white font-medium">{org.owner_name}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
+                          <span className="text-purple-400">Email</span>
+                          <span className="text-white font-medium truncate ml-4">{org.email}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <button onClick={() => alert(`Management console for ${org.name} will open here.`)} className="flex-1 py-2.5 rounded-xl bg-purple-500/10 text-purple-300 border border-purple-500/20 hover:bg-purple-500/20 transition-colors flex items-center justify-center gap-2 text-sm font-bold">
+                          Manage Org
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm(`Delete ${org.name} forever?`)) return;
+                          const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
+                          if (orgProfiles) {
+                              for (const p of orgProfiles) {
+                                  await supabase.from('digital_cards').delete().eq('profile_id', p.id);
+                                  await supabase.from('presence').delete().eq('user_id', p.id);
+                                  await supabase.from('tasks').delete().eq('assigned_to', p.id);
+                                  await supabase.from('profiles').delete().eq('id', p.id);
+                              }
+                          }
+                          await supabase.from('meetings').delete().eq('organization_id', org.id);
+                          await supabase.from('tasks').delete().eq('organization_id', org.id);
+                          await supabase.from('organizations').delete().eq('id', org.id);
+                          setOrganizations(prev => prev.filter(o => o.id !== org.id));
+                        }} className="px-4 py-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors flex items-center justify-center">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -4650,22 +5067,10 @@ const handleReactMessage = async (msg, emoji) => {
             </div>
           )}
 
-      {confirmModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-[200] p-4">
-          <div className="bg-[#11081c] border border-purple-500/30 rounded-2xl p-6 max-w-sm w-full shadow-[0_0_30px_rgba(147,51,234,0.3)]">
-            <h3 className="text-lg font-bold text-white mb-2">{confirmModal.title}</h3>
-            <p className="text-sm text-purple-200 mb-6">{confirmModal.message}</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmModal(null)} className="flex-1 py-2 rounded-xl bg-purple-950/30 border border-purple-500/20 text-xs font-bold text-purple-300 hover:bg-purple-900/40">Cancel</button>
-              <button onClick={confirmModal.onConfirm} className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold text-white shadow-[0_0_15px_rgba(220,38,38,0.4)]">Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
-
         </div>
       </main>
-    
+    </div>
+  
       {lightboxImage && (
         <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setLightboxImage(null)}>
           <div className="relative max-w-full max-h-full flex flex-col items-center">
@@ -4688,7 +5093,7 @@ const handleReactMessage = async (msg, emoji) => {
           </div>
         </div>
       )}
-
+      
       {isCameraOpen && (
         <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4">
           <div className="relative w-full max-w-lg aspect-video bg-black rounded-2xl overflow-hidden mb-6 border border-purple-500/30">
@@ -4724,41 +5129,7 @@ const handleReactMessage = async (msg, emoji) => {
           </div>
         </div>
       )}
-        {isCameraOpen && (
-        <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4">
-          <div className="relative w-full max-w-lg aspect-video bg-black rounded-2xl overflow-hidden mb-6 border border-purple-500/30">
-            <video ref={cameraVideoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
-          </div>
-          <div className="flex gap-4">
-            <button type="button" onClick={() => {
-              if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
-              setIsCameraOpen(false);
-            }} className="px-6 py-3 rounded-xl bg-purple-900/40 text-white font-medium hover:bg-purple-900/60 border border-purple-500/30 transition-colors">
-              Cancel
-            </button>
-            <button type="button" onClick={() => {
-              if (!cameraVideoRef.current) return;
-              const canvas = document.createElement('canvas');
-              canvas.width = cameraVideoRef.current.videoWidth;
-              canvas.height = cameraVideoRef.current.videoHeight;
-              const ctx = canvas.getContext('2d');
-              ctx.translate(canvas.width, 0);
-              ctx.scale(-1, 1);
-              ctx.drawImage(cameraVideoRef.current, 0, 0, canvas.width, canvas.height);
-              canvas.toBlob(blob => {
-                if (blob) {
-                  const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
-                  setAttachmentFiles([file]);
-                }
-                if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
-                setIsCameraOpen(false);
-              }, 'image/jpeg', 0.9);
-            }} className="px-8 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-[0_0_20px_rgba(147,51,234,0.4)] transition-all flex items-center gap-2">
-              <Camera size={20} /> Capture
-            </button>
-          </div>
-        </div>
-      )}
+        
 
       {reactionModalData && (
         <div className="fixed inset-0 z-[100] bg-black/10" onClick={() => setReactionModalData(null)}>
@@ -4801,6 +5172,6 @@ const handleReactMessage = async (msg, emoji) => {
           </div>
         </div>
       )}
-    </div>
+  </main>
   );
 }
