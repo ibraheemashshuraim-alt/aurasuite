@@ -501,10 +501,11 @@ export default function AppContainer() {
       const params = new URLSearchParams(window.location.search);
       const hasInviteToken = params.get('t');
       const hasOldInvite = params.get('inviteToken');
+      const hasCard = params.get('card');
 
       // If an invite token is present, let the URL params effect handle the login flow.
       // Do not auto-login from localStorage, otherwise it overrides the token!
-      if (hasInviteToken || hasOldInvite) {
+      if (hasInviteToken || hasOldInvite || hasCard) {
         setIsCheckingSession(false);
         return;
       }
@@ -849,16 +850,24 @@ export default function AppContainer() {
       const loginTokenParam = params.get('t');
       const inviteToken = params.get('inviteToken');
 
-      // If no invite/token params, nothing to do
-      if (!loginTokenParam && !inviteToken) return;
+      const cardParam = params.get('card');
+      const userParam = params.get('user');
 
-      // If there's an invite token in the URL, it ALWAYS takes priority.
+      // If no invite/token/card params, nothing to do
+      if (!loginTokenParam && !inviteToken && !cardParam) return;
+
       // Clear any tab-specific worker session so the correct portal opens.
       sessionStorage.removeItem('aura_session');
       // We don't clear localStorage here, because we don't want to log the admin out in their other tab.
       setIsLoggedIn(false);
       setCurrentUser(null);
       setActiveOrg(null);
+
+      if (cardParam && userParam) {
+        setAuthCardNumber(cardParam);
+        setAuthUsername(userParam);
+        setLoginMode('worker');
+      }
 
       // Process the invite token
       if (loginTokenParam) {
