@@ -2251,8 +2251,8 @@ export default function AppContainer() {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
         <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
-          <p className="text-red-400 text-sm mb-6">Access Revoked: Your access card has been suspended by the Admin.</p>
+          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked (POPUP MODAL DASHBOARD)</h2>
+          <p className="text-red-400 text-sm mb-6">KickoutModal triggered in Dashboard.</p>
           <button
             onClick={() => {
               try {
