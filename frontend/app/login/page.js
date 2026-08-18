@@ -851,6 +851,19 @@ export default function AppContainer() {
         setIsCardLoginOnly(true);
         setLoginMode('worker');
         
+        supabase.from('digital_cards').select('is_revoked, profile_id').eq('card_number', cardParam).single().then(async ({data, error}) => {
+             if (error || !data) {
+                 setCardError("Access Revoked: Your access card has been suspended by the Admin.");
+                 return;
+             }
+             if (data.is_revoked === true) {
+                 const { data: user } = await supabase.from('profiles').select('role').eq('id', data.profile_id).single();
+                 if (user && (user.role === 'admin' || user.role === 'super_admin')) {
+                     return; // Do not block admins prematurely
+                 }
+                 setCardError("Access Revoked: Your access card has been suspended by the Admin.");
+             }
+        });
       }
 
       if (loginTokenParam || inviteToken) {

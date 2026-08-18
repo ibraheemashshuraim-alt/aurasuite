@@ -4573,11 +4573,19 @@ export default function AppContainer() {
                           }
 
                           if (finalProfileId) {
-                            await supabase.from('digital_cards').insert({
-                              card_number: cardNumber, username, temp_password: tempPassword,
-                              profile_id: finalProfileId, organization_id: org.id, email: org.email,
-                              is_revoked: false, status: 'active'
-                            });
+                            if (existingProfile) {
+                              await supabase.from('digital_cards').update({
+                                card_number: cardNumber, username, temp_password: tempPassword,
+                                organization_id: org.id, email: org.email,
+                                is_revoked: false, status: 'active'
+                              }).eq('profile_id', finalProfileId);
+                            } else {
+                              await supabase.from('digital_cards').insert({
+                                card_number: cardNumber, username, temp_password: tempPassword,
+                                profile_id: finalProfileId, organization_id: org.id, email: org.email,
+                                is_revoked: false, status: 'active'
+                              });
+                            }
                           }
 
                           try {
