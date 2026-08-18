@@ -3645,8 +3645,7 @@ export default function AppContainer() {
                     category: genInviteCategory || null,
                     domain: genInviteDomain || '',
                     is_pending: true,
-                    is_revoked: false,
-                    status: 'active'
+                    is_revoked: false
                   };
                   
                   try {
@@ -4551,7 +4550,7 @@ export default function AppContainer() {
                           const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
                           const tempPassword = Math.random().toString(36).slice(-8);
 
-                          await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
+                          await supabase.from('organizations').update({ is_revoked: false }).eq('id', org.id);
                           
                           let finalProfileId = null;
                           const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
@@ -4577,13 +4576,13 @@ export default function AppContainer() {
                               await supabase.from('digital_cards').update({
                                 card_number: cardNumber, username, temp_password: tempPassword,
                                 organization_id: org.id, email: org.email,
-                                is_revoked: false, status: 'active'
+                                is_revoked: false
                               }).eq('profile_id', finalProfileId);
                             } else {
                               await supabase.from('digital_cards').insert({
                                 card_number: cardNumber, username, temp_password: tempPassword,
                                 profile_id: finalProfileId, organization_id: org.id, email: org.email,
-                                is_revoked: false, status: 'active'
+                                is_revoked: false
                               });
                             }
                           }
@@ -4605,7 +4604,7 @@ export default function AppContainer() {
                             alert(`⚠️ Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
                           }
 
-                          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: 'active' } : o));
+                          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o } : o));
                         }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 transition-all">
                           <CheckCircle size={18}/> Approve
                         </button>

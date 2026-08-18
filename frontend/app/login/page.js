@@ -1036,7 +1036,7 @@ export default function AppContainer() {
 
       // If they are an admin, ALWAYS auto-fix their revoked card
       if (user && (user.role === 'admin' || user.role === 'super_admin') && (card.is_revoked || card.status === 'suspended')) {
-        await supabase.from('digital_cards').update({ is_revoked: false, status: 'active' }).eq('id', card.id);
+        await supabase.from('digital_cards').update({ is_revoked: false }).eq('id', card.id);
         card.is_revoked = false;
         card.status = 'active';
       }
@@ -1048,7 +1048,7 @@ export default function AppContainer() {
       
       // Auto-fix card if it was incorrectly revoked on creation
       if (card.is_revoked && card.is_first_login) {
-        await supabase.from('digital_cards').update({ is_revoked: false, status: 'active' }).eq('id', card.id);
+        await supabase.from('digital_cards').update({ is_revoked: false }).eq('id', card.id);
         card.is_revoked = false;
         card.status = 'active';
       }
