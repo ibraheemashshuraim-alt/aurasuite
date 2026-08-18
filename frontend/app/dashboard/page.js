@@ -4566,8 +4566,7 @@ export default function AppContainer() {
                           const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
                           const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
                           const tempPassword = Math.random().toString(36).slice(-8);
-
-                          await supabase.from('organizations').update({ is_revoked: false }).eq('id', org.id);
+                          await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
                           
                           let finalProfileId = null;
                           const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
