@@ -1977,7 +1977,7 @@ export default function AppContainer() {
         await supabase.from('presence').delete().eq('user_id', userId);
         await supabase.from('tasks').delete().eq('assigned_to', userId);
         await supabase.from('group_messages').delete().eq('from_id', userId);
-        await supabase.from('dm_messages').delete().or(`from_id.eq.${userId},to_id.eq.${userId}`);
+        await supabase.from('dm_messages').delete().like('thread_key', `%${userId}%`);
         const { data: userMeetings } = await supabase.from('meetings').select('id').eq('host_id', userId);
         if (userMeetings && userMeetings.length > 0) {
             const meetingIds = userMeetings.map(m => m.id);
@@ -2031,7 +2031,7 @@ export default function AppContainer() {
         setTimeout(async () => {
           try {
             await supabase.from('group_messages').delete().eq('from_id', userId);
-            await supabase.from('dm_messages').delete().or(`from_id.eq.${userId}`);
+            await supabase.from('dm_messages').delete().like('thread_key', `%${userId}%`);
             await supabase.from('meeting_states').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
             await supabase.from('meeting_invites').delete().in('meeting_id', (await supabase.from('meetings').select('id').eq('host_id', userId)).data?.map(m=>m.id) || []);
             await supabase.from('meetings').delete().eq('host_id', userId);
@@ -4579,7 +4579,7 @@ export default function AppContainer() {
                                card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
                              }).eq('id', existingProfile.id);
                           } else {
-                             const { data: profileData } = await supabase.from('profiles').insert({
+                             const { data: profileData } = await supabase.from('profiles').insert({ id: genId('user'),
                                organization_id: org.id, email: org.email, full_name: org.owner_name,
                                role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
                                card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
