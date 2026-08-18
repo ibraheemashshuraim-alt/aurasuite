@@ -1014,9 +1014,16 @@ export default function AppContainer() {
         return;
       }
       const card = cards[0];
-      if (card.is_revoked === true || card.status === 'suspended') {
+      if ((card.is_revoked === true || card.status === 'suspended') && !card.is_first_login) {
         setCardError('Access Revoked: Your card access has been suspended by the Admin.');
         return;
+      }
+      
+      // Auto-fix card if it was incorrectly revoked on creation
+      if (card.is_revoked && card.is_first_login) {
+        await supabase.from('digital_cards').update({ is_revoked: false, status: 'active' }).eq('id', card.id);
+        card.is_revoked = false;
+        card.status = 'active';
       }
       if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
         alert('Invalid Password');

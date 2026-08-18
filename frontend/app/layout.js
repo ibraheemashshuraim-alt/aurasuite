@@ -22,6 +22,26 @@ export default function RootLayout({ children }) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              const currentVersion = '1.0.1';
+              const storedVersion = localStorage.getItem('app_version');
+              if (storedVersion !== currentVersion) {
+                localStorage.setItem('app_version', currentVersion);
+                caches.keys().then((names) => {
+                  for (let name of names) caches.delete(name);
+                });
+                window.location.reload(true);
+              }
+            `,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
