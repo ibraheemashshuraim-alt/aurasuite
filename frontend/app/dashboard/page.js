@@ -527,9 +527,17 @@ export default function AppContainer() {
           supabase.from('profiles').select('*').eq('id', userId).single().then(({data: savedUser, error: pError}) => {
             if (pError) {
               console.warn('Session check error (network?):', pError);
-              // Do NOT delete session on network error! Just show login to be safe.
+              const isWorker = ['worker', 'client'].includes(parsed.loginMode);
+              if (isWorker && loadedMode === 'admin') {
+                localStorage.removeItem('aura_session');
+                setIsCheckingSession(false);
+                return;
+              }
+              setCurrentUser({ id: userId, role: parsed.loginMode || 'worker', organization_id: parsed.orgId });
+              setActiveOrg({ id: parsed.orgId, name: 'Offline Mode', type: 'software_house' });
+              setIsLoggedIn(true);
               setIsCheckingSession(false);
-              addNotification('Network error checking session. Please refresh to try again.', 'warning');
+              addNotification('Network error connecting to database. Using cached session.', 'warning');
               return;
             }
             if (!savedUser) {
@@ -1968,6 +1976,15 @@ export default function AppContainer() {
         await supabase.from('digital_cards').delete().eq('profile_id', userId);
         await supabase.from('presence').delete().eq('user_id', userId);
         await supabase.from('tasks').delete().eq('assigned_to', userId);
+        await supabase.from('group_messages').delete().eq('from_id', userId);
+        await supabase.from('dm_messages').delete().or(`from_id.eq.${userId},to_id.eq.${userId}`);
+        const { data: userMeetings } = await supabase.from('meetings').select('id').eq('host_id', userId);
+        if (userMeetings && userMeetings.length > 0) {
+            const meetingIds = userMeetings.map(m => m.id);
+            await supabase.from('meeting_states').delete().in('meeting_id', meetingIds);
+            await supabase.from('meeting_invites').delete().in('meeting_id', meetingIds);
+        }
+        await supabase.from('meetings').delete().eq('host_id', userId);
         await supabase.from('profiles').delete().eq('id', userId);
         
         setProfiles(prev => prev.filter(p => p.id !== userId));
