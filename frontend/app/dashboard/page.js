@@ -529,6 +529,7 @@ export default function AppContainer() {
               console.warn('Session check error (network?):', pError);
               // Do NOT delete session on network error! Just show login to be safe.
               setIsCheckingSession(false);
+              addNotification('Network error checking session. Please refresh to try again.', 'warning');
               return;
             }
             if (!savedUser) {
@@ -3633,7 +3634,9 @@ export default function AppContainer() {
                     role: genInviteRole, // store real role here
                     category: genInviteCategory || null,
                     domain: genInviteDomain || '',
-                    is_pending: true
+                    is_pending: true,
+                    is_revoked: false,
+                    status: 'active'
                   };
                   
                   try {
@@ -4548,7 +4551,8 @@ export default function AppContainer() {
                           if (profileData) {
                             await supabase.from('digital_cards').insert({
                               card_number: cardNumber, username, temp_password: tempPassword,
-                              profile_id: profileData.id, organization_id: org.id, email: org.email
+                              profile_id: profileData.id, organization_id: org.id, email: org.email,
+                              is_revoked: false, status: 'active'
                             });
                           }
 

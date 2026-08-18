@@ -616,9 +616,13 @@ export default function AppContainer() {
                   window.location.href = '/login?kickout=true';
                   return null;
               }
-              return updated || prev;
             });
           }
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'organizations' }, () => {
+        supabase.from('organizations').select('*').then(({ data }) => {
+          if (data) setOrganizations(data);
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
