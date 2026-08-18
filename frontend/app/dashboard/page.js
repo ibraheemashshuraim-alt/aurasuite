@@ -2249,7 +2249,7 @@ export default function AppContainer() {
   };
 
   // ─────────────────── Derived ───────────────────
-  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'pending_worker' && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
+  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
   const suspendedOrgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && ['banned', 'suspended'].includes(p.role));
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
