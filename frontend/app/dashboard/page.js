@@ -786,11 +786,17 @@ export default function AppContainer() {
       }
     }, 3000);
     
-    // Polling fallback for organizations (in case Realtime is disabled on the table)
+    // Polling fallback for organizations and profiles (in case Realtime is disabled on the table)
     const orgsInterval = setInterval(() => {
-      if (currentUserRef.current?.role === 'super_admin') {
-        supabase.from('organizations').select('*').then(({ data }) => {
-          if (data) setOrganizations(data);
+      const currentRole = currentUserRef.current?.role;
+      if (currentRole === 'super_admin' || currentRole === 'admin') {
+        if (currentRole === 'super_admin') {
+          supabase.from('organizations').select('*').then(({ data }) => {
+            if (data) setOrganizations(data);
+          });
+        }
+        supabase.from('profiles').select('*').then(({ data }) => {
+          if (data) setProfiles(data);
         });
       }
     }, 5000);
