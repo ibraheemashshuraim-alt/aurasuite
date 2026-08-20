@@ -483,7 +483,7 @@ export default function AppContainer() {
         if (tsk.data) setTasks(tsk.data);
         if (meets.data) setActiveMeetings(meets.data);
         if (scheds.data) setSchedules(scheds.data);
-        if (msgs.data) setGroupMessages(msgs.data.map(m => ({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
+        if (msgs.data) setGroupMessages(msgs.data.map(m => ({ id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
         if (invites.data) setMeetingInvites(invites.data.map(i => ({ meetingId: i.meeting_id, invitees: i.invitees })));
         if (mStates.data) {
           const statesMap = {};
@@ -654,7 +654,7 @@ export default function AppContainer() {
             if (exists) {
               return prev.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg);
             }
-            return [...prev, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }];
+            return [...prev, { id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }];
           });
         } else if (payload.eventType === 'DELETE') {
           setGroupMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
@@ -1013,7 +1013,7 @@ export default function AppContainer() {
       const user = profiles.find(u => u.id === card.profile_id);
       if (user) {
         if (user.role === 'banned' || user.role === 'suspended' || user.status === 'suspended') {
-          alert('This account has been permanently banned/suspended.');
+          setKickoutModal(true);
           return;
         }
         if (user.role === 'deleted') {
@@ -1053,8 +1053,8 @@ export default function AppContainer() {
       const user = profiles.find(u => u.email.toLowerCase() === trimmedEmail);
       if (!user) { alert('Email not registered! Please register your portal first.'); return; }
       
-      if (user.role === 'banned') {
-        alert('This account has been permanently banned/suspended.');
+      if (user.role === 'banned' || user.role === 'suspended' || user.status === 'suspended') {
+        setKickoutModal(true);
         return;
       }
       if (user.role === 'deleted') {
@@ -2282,22 +2282,20 @@ export default function AppContainer() {
     </div>
   );
 
-  // ── KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) ──
-  if (kickoutModal || currentUser?.role === 'suspended' || currentUser?.status === 'suspended') {
+  if (kickoutModal || currentUser?.role === 'suspended' || currentUser?.status === 'suspended' || currentUser?.role === 'banned') {
     return (
-      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-        <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
-          <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
-          <button
-            onClick={() => {
-              try {
-                window.close();
-              } catch (e) {}
-            }}
-            className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
-          >
-            Close Portal
+      <div className="fixed inset-0 z-[999999] flex flex-col items-center justify-center bg-[#05010a] text-white p-4">
+        <div className="w-full max-w-md bg-[#0a0515] p-8 rounded-3xl border border-red-500/30 text-center shadow-[0_0_50px_rgba(220,38,38,0.1)] relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6 border border-red-500/20 shadow-[0_0_20px_rgba(220,38,38,0.2)]">
+            <Lock className="text-red-400" size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Access Revoked</h2>
+          <p className="text-sm text-red-200/70 mb-8">
+            Your access card has been suspended by the Admin. You can no longer access this portal.
+          </p>
+          <button onClick={() => { localStorage.removeItem('aura_session'); sessionStorage.removeItem('aura_session'); window.location.href = '/'; }} className="w-full py-3 rounded-xl bg-red-900/40 text-red-300 font-bold border border-red-500/30 hover:bg-red-800/60 transition-all">
+            Return to Login
           </button>
         </div>
       </div>
@@ -2644,36 +2642,7 @@ export default function AppContainer() {
       </div>
     );
   }
-  const amILocked = checkIsEffectivelyLocked(currentUser, activeOrg);
-  if (amILocked) {
-    return (
-      <div className="min-h-screen bg-[#05010a] text-white flex flex-col items-center justify-center p-4 bg-[url('/grid-pattern.svg')] bg-repeat bg-center">
-        <div className="w-full max-w-md bg-[#0a0515] p-8 rounded-3xl border border-red-500/30 text-center shadow-[0_0_50px_rgba(220,38,38,0.1)] relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6 border border-red-500/20 shadow-[0_0_20px_rgba(220,38,38,0.2)]">
-            <Lock className="text-red-400" size={32} />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Access Locked</h2>
-          <p className="text-sm text-red-200/70 mb-8">
-            You are currently outside your designated working hours, or an Admin has temporarily locked your access card.
-          </p>
-          <div className="bg-[#11081c] rounded-xl p-4 border border-purple-500/20 text-left space-y-3 mb-8">
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-purple-400">Current Time</span>
-              <span className="text-white font-mono">{now()}</span>
-            </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-purple-400">Working Hours</span>
-              <span className="text-white font-mono">{activeOrg?.working_hours?.start || '00:00'} - {activeOrg?.working_hours?.end || '23:59'}</span>
-            </div>
-          </div>
-          <button onClick={() => { localStorage.removeItem('aura_session'); sessionStorage.removeItem('aura_session'); window.location.href = '/'; }} className="px-6 py-2 rounded-xl text-xs font-bold bg-purple-900/40 text-purple-300 hover:bg-purple-800/60 border border-purple-500/30 transition-all">
-            Logout
-          </button>
-        </div>
-      </div>
-    );
-  }
+
 
   // ══════════════════ MAIN APP ══════════════════
   return (
