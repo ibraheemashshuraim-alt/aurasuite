@@ -568,6 +568,7 @@ export default function AppContainer() {
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
                 setIsCheckingSession(false);
+                if (isWorker) setActiveTab('dashboard');
               });
             };
 
@@ -1011,7 +1012,7 @@ export default function AppContainer() {
       // Proceed to login
       const user = profiles.find(u => u.id === card.profile_id);
       if (user) {
-        if (user.role === 'banned') {
+        if (user.role === 'banned' || user.role === 'suspended' || user.status === 'suspended') {
           alert('This account has been permanently banned/suspended.');
           return;
         }
@@ -1025,6 +1026,8 @@ export default function AppContainer() {
         setActiveOrg(org);
         setIsLoggedIn(true);
         setIsCheckingSession(false);
+        setActiveTab('dashboard');
+        if (user.role === 'worker' || user.role === 'student') setShowQuiz(true);
         if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
         addNotification(`Welcome back, ${user.full_name}!`, 'success');
       } else {
@@ -1683,7 +1686,7 @@ export default function AppContainer() {
           
           // Optimistic UI - show blob preview immediately
           const blobUrl = URL.createObjectURL(file);
-          const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: blobUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size };
+          const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: blobUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size };
           if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
           else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
 
@@ -1710,7 +1713,7 @@ export default function AppContainer() {
         const msgTime = now();
         let audioUrl = null;
         
-        const optimisticMsg = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null, reactions: {} };
+        const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null, reactions: {} };
         if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
         else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
 
@@ -2637,6 +2640,36 @@ export default function AppContainer() {
               </button>
             </div>
           )}
+        </div>
+      </div>
+    );
+  }
+  const amILocked = checkIsEffectivelyLocked(currentUser, activeOrg);
+  if (amILocked) {
+    return (
+      <div className="min-h-screen bg-[#05010a] text-white flex flex-col items-center justify-center p-4 bg-[url('/grid-pattern.svg')] bg-repeat bg-center">
+        <div className="w-full max-w-md bg-[#0a0515] p-8 rounded-3xl border border-red-500/30 text-center shadow-[0_0_50px_rgba(220,38,38,0.1)] relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6 border border-red-500/20 shadow-[0_0_20px_rgba(220,38,38,0.2)]">
+            <Lock className="text-red-400" size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Access Locked</h2>
+          <p className="text-sm text-red-200/70 mb-8">
+            You are currently outside your designated working hours, or an Admin has temporarily locked your access card.
+          </p>
+          <div className="bg-[#11081c] rounded-xl p-4 border border-purple-500/20 text-left space-y-3 mb-8">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-purple-400">Current Time</span>
+              <span className="text-white font-mono">{now()}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-purple-400">Working Hours</span>
+              <span className="text-white font-mono">{activeOrg?.working_hours?.start || '00:00'} - {activeOrg?.working_hours?.end || '23:59'}</span>
+            </div>
+          </div>
+          <button onClick={() => { localStorage.removeItem('aura_session'); sessionStorage.removeItem('aura_session'); window.location.href = '/'; }} className="px-6 py-2 rounded-xl text-xs font-bold bg-purple-900/40 text-purple-300 hover:bg-purple-800/60 border border-purple-500/30 transition-all">
+            Logout
+          </button>
         </div>
       </div>
     );
