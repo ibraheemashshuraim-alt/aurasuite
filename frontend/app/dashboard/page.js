@@ -366,6 +366,7 @@ export default function AppContainer() {
   const [showMeetingParticipants, setShowMeetingParticipants] = useState(false);
   const [showHostTools, setShowHostTools] = useState(false);
   const [customAlert, setCustomAlert] = useState(null);
+  const [lockModal, setLockModal] = useState(false);
   const [kickoutModal, setKickoutModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
   const [isConfirming, setIsConfirming] = useState(false);
