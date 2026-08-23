@@ -341,8 +341,8 @@ export default function AppContainer() {
 
   // ── Nav ──
   const [activeTab, setActiveTab] = useState('dashboard');
-  useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
-  useEffect(() => { localStorage.setItem('aura_admin_tab', activeTab); }, [activeTab]);
+  useEffect(() => { const saved = sessionStorage.getItem('aura_worker_tab') || (currentUser?.role === 'worker' ? 'dashboard' : null); if (saved) setActiveTab(saved); }, []);
+  useEffect(() => { sessionStorage.setItem('aura_worker_tab', activeTab); }, [activeTab]);
 
   // ── Meeting ──
   const [isInMeeting, setIsInMeeting] = useState(false);
@@ -576,7 +576,7 @@ export default function AppContainer() {
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
                 setIsCheckingSession(false);
-                if (isWorker) setActiveTab('dashboard');
+                // if (isWorker) setActiveTab('dashboard');
               });
             };
 
@@ -641,6 +641,11 @@ export default function AppContainer() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         supabase.from('tasks').select('*').then(({ data }) => { if (data) setTasks(data); });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, () => {
+        supabase.from('group_messages').select('*').order('created_at', { ascending: true }).then(({ data }) => {
+          if (data) setGroupMessages(data.map(m => ({ id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
+        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, () => {
         supabase.from('meetings').select('*').eq('is_active', true).then(({ data }) => { if (data) setActiveMeetings(data); });
@@ -767,6 +772,19 @@ export default function AppContainer() {
           setKickoutModal(true);
         } else {
           console.log('ℹ️ Broadcast ignored. Target ID:', targetId, 'Current ID:', currentId);
+        }
+      })
+      .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
+        const targetId = payload?.payload?.userId;
+        const currentId = currentUserRef.current?.id;
+        if (targetId && currentId && targetId === currentId) {
+          setCurrentUser(prev => prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev);
+        }
+      })
+      .on('broadcast', { event: 'org-updated' }, (payload) => {
+        const updatedOrg = payload?.payload;
+        if (updatedOrg && activeOrg?.id === updatedOrg.orgId) {
+          setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
         }
       })
       .subscribe((status) => {
@@ -2295,25 +2313,7 @@ export default function AppContainer() {
     </div>
   );
 
-  if (kickoutModal || currentUser?.role === 'suspended' || currentUser?.status === 'suspended' || currentUser?.role === 'banned') {
-    return (
-      <div className="fixed inset-0 z-[999999] flex flex-col items-center justify-center bg-[#05010a] text-white p-4">
-        <div className="w-full max-w-md bg-[#0a0515] p-8 rounded-3xl border border-red-500/30 text-center shadow-[0_0_50px_rgba(220,38,38,0.1)] relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6 border border-red-500/20 shadow-[0_0_20px_rgba(220,38,38,0.2)]">
-            <Lock className="text-red-400" size={32} />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Access Revoked</h2>
-          <p className="text-sm text-red-200/70 mb-8">
-            Your access card has been suspended by the Admin. You can no longer access this portal.
-          </p>
-          <button onClick={() => { localStorage.removeItem('aura_session'); sessionStorage.removeItem('aura_session'); window.location.href = '/'; }} className="w-full py-3 rounded-xl bg-red-900/40 text-red-300 font-bold border border-red-500/30 hover:bg-red-800/60 transition-all">
-            Return to Login
-          </button>
-        </div>
-      </div>
-    );
-  }
+  
   // ── LOGIN SCREEN ──
   if (!isLoggedIn) {
     if (authTab === 'invite_register') {
@@ -2618,14 +2618,18 @@ export default function AppContainer() {
               {quizQuestions.map((q, idx) => (
                 <div key={q.id} className="space-y-2">
                   <p className="text-xs font-bold text-purple-200">{idx + 1}. {q.question}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {q.options.map(opt => (
-                      <button key={opt} onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt }))}
-                        className={`p-2 rounded-lg text-[10px] font-bold border transition-all ${quizAnswers[q.id] === opt ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
+                    {q.question_ur && <p className="text-xs font-bold text-purple-300 mb-2" dir="rtl" style={{fontFamily: 'Jameel Noori Nastaleeq, Noto Nastaliq Urdu, sans-serif'}}>{q.question_ur}</p>}
+                    <div className="grid grid-cols-2 gap-2">
+                      {q.options.map((opt, optIdx) => (
+                        <button key={opt} onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt }))}
+                          className={`p-2 rounded-lg text-[10px] font-bold border transition-all ${quizAnswers[q.id] === opt ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
+                          <div className="flex flex-col gap-1 items-center justify-center">
+                            <span>{opt}</span>
+                            {q.options_ur && q.options_ur[optIdx] && <span dir="rtl" className="text-[9px] opacity-80" style={{fontFamily: 'Jameel Noori Nastaleeq, Noto Nastaliq Urdu, sans-serif'}}>{q.options_ur[optIdx]}</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                 </div>
               ))}
               <div className="pt-4 flex justify-end">
