@@ -14,6 +14,7 @@ import {
 , Type
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { getRandomQuestions } from '../../lib/questionBank';
 import JSZip from 'jszip';
 
 // ─── Utility ────────────────────────────────────────────────────
@@ -260,6 +261,14 @@ export default function AppContainer() {
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizStep, setQuizStep] = useState(0);
   const [quizLoading, setQuizLoading] = useState(false);
+  const [quizLang, setQuizLang] = useState('en');
+  const [actualQuizQuestions, setActualQuizQuestions] = useState([]);
+  const [actualQuizAnswers, setActualQuizAnswers] = useState({});
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizFailed, setQuizFailed] = useState(false);
+  const [isEnteringDashboard, setIsEnteringDashboard] = useState(false);
+  const [lockModal, setLockModal] = useState(false);
+  const [kickoutModal, setKickoutModal] = useState(false);
 
   const [signUpName, setSignUpName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
@@ -875,6 +884,7 @@ export default function AppContainer() {
         setAuthCardNumber(cardParam);
         setAuthUsername(userParam);
         setLoginMode('worker');
+        supabase.from('digital_cards').select('is_revoked').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(({data}) => { if (data?.is_revoked) setKickoutModal(true); });
       }
 
       // Process the invite token
@@ -1006,6 +1016,10 @@ export default function AppContainer() {
         return;
       }
       const card = cards[0];
+      if (card.is_revoked) {
+        setKickoutModal(true);
+        return;
+      }
       if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
         alert('Invalid Password');
         return;
@@ -1034,7 +1048,7 @@ export default function AppContainer() {
         setIsLoggedIn(true);
         setIsCheckingSession(false);
         setActiveTab('dashboard');
-        if (user.role === 'worker' || user.role === 'student') setShowQuiz(true);
+        if ((user.role === 'worker' || user.role === 'student') && !(user.skills || []).includes('assessment_completed')) setShowQuiz(true);
         if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
         addNotification(`Welcome back, ${user.full_name}!`, 'success');
       } else {
@@ -1148,7 +1162,7 @@ export default function AppContainer() {
       setActiveOrg(org);
       setIsLoggedIn(true);
       if (window.history.replaceState) window.history.replaceState({}, document.title, window.location.pathname);
-      if (user.role === 'worker' || user.role === 'student') setShowQuiz(true);
+      if ((user.role === 'worker' || user.role === 'student') && !(user.skills || []).includes('assessment_completed')) setShowQuiz(true);
       else setShowQuiz(false);
       setForcePasswordChange(false);
       setTempDigitalCard(null);
@@ -1979,7 +1993,7 @@ export default function AppContainer() {
           setTimeout(async () => {
             try {
               await supabase.from('presence').delete().eq('user_id', userId);
-              await supabase.from('digital_cards').delete().eq('profile_id', userId);
+              await supabase.from('digital_cards').update({ is_revoked: true }).eq('profile_id', userId);
               // We NO LONGER delete the profile here, so it can show in the Suspended tab!
             } catch (err) {
               console.warn('Silenced DB deletion error:', err);
@@ -1999,7 +2013,7 @@ export default function AppContainer() {
       title: 'Delete User Profile Only?',
       message: 'This will delete the user profile and card. However, if they are banned, their 30-day ban record will REMAIN active in the system.',
       onConfirm: async () => {
-        await supabase.from('digital_cards').delete().eq('profile_id', userId);
+        await supabase.from('digital_cards').update({ is_revoked: true }).eq('profile_id', userId);
         await supabase.from('presence').delete().eq('user_id', userId);
         await supabase.from('tasks').delete().eq('assigned_to', userId);
         await supabase.from('group_messages').delete().eq('from_id', userId);
@@ -2063,7 +2077,7 @@ export default function AppContainer() {
             await supabase.from('meetings').delete().eq('host_id', userId);
             await supabase.from('tasks').delete().eq('assigned_to', userId);
             await supabase.from('presence').delete().eq('user_id', userId);
-            await supabase.from('digital_cards').delete().eq('profile_id', userId);
+            await supabase.from('digital_cards').update({ is_revoked: true }).eq('profile_id', userId);
             // We NO LONGER delete the profile here, so it can show in the Suspended tab!
           } catch (err) {
             console.warn('Silenced cascade delete error:', err);
@@ -2649,7 +2663,58 @@ export default function AppContainer() {
       </div>
     );
   }
-  // ══════════════════ MAIN APP ══════════════════
+  
+  // ── KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) ──
+  if (kickoutModal || currentUser?.role === "suspended" || currentUser?.status === "suspended") {
+    return (
+      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
+          <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
+          <button
+            onClick={() => {
+              try { window.close(); } catch (e) {}
+              localStorage.removeItem("aura_session");
+              sessionStorage.removeItem("aura_session");
+              window.location.href = "/";
+            }}
+            className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
+          >
+            Close Portal
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── LOCK MODAL OVERLAY ──
+  const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
+  if (isEffectivelyLocked && currentUser?.role === "worker") {
+    return (
+      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <div className="flex justify-center mb-4">
+             <Lock size={48} className="text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-4">Off-Day / Access Locked</h2>
+          <p className="text-yellow-400 text-sm mb-6">Your portal access is currently locked for an off-day or by an admin. Enjoy your break!</p>
+          <button
+            onClick={() => {
+              try { window.close(); } catch (e) {}
+              localStorage.removeItem("aura_session");
+              sessionStorage.removeItem("aura_session");
+              window.location.href = "/";
+            }}
+            className="px-8 py-3 bg-yellow-950/60 hover:bg-yellow-900/80 text-white font-semibold rounded-xl border border-yellow-500/30 transition-all"
+          >
+            Close Portal
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+// ══════════════════ MAIN APP ══════════════════
   return (
     <main className="relative min-h-screen">
       <div className="flex min-h-screen bg-luxury-bg text-[#f3f1f5] relative">
@@ -3645,7 +3710,7 @@ export default function AppContainer() {
                       newProfileId = existingProfile.id;
                       // Delete old card so we can make a new one
                       await supabase.from('digital_cards').delete().eq('profile_id', existingProfile.id);
-                      setProfiles(prev => prev.filter(p => p.id !== existingProfile.id));
+                      // setProfiles removed
                     } else {
                       setCustomAlert('This email is already fully registered in the system!\n\nIf this person has already logged in, they cannot be re-invited.\nFor testing, try a Gmail alias like: yourname+test2@gmail.com');
                       return;
@@ -3701,6 +3766,8 @@ export default function AppContainer() {
 
                     const { error: cErr } = await supabase.from('digital_cards').insert(newCard);
                     if (cErr) throw cErr;
+                    if (!isUpdate) setProfiles(prev => [...prev, newProfile]);
+                    if (isUpdate) setProfiles(prev => prev.map(p => p.id === newProfile.id ? newProfile : p));
                     
                     // Send Email with invite link
                     const res = await fetch('/api/send-invite', {
@@ -4591,7 +4658,8 @@ export default function AppContainer() {
                           const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
                           const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
                           const tempPassword = Math.random().toString(36).slice(-8);
-                          await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
+
+                          await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
                           
                           let finalProfileId = null;
                           const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
