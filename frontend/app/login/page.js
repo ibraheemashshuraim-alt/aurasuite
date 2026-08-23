@@ -267,8 +267,6 @@ export default function AppContainer() {
   const [quizScore, setQuizScore] = useState(0);
   const [quizFailed, setQuizFailed] = useState(false);
   const [isEnteringDashboard, setIsEnteringDashboard] = useState(false);
-  const [lockModal, setLockModal] = useState(false);
-  const [kickoutModal, setKickoutModal] = useState(false);
 
   const [signUpName, setSignUpName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
