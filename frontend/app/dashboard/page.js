@@ -215,7 +215,10 @@ function DigitalCardVisual({ cardData }) {
 
 export default function AppContainer() {
   const [mounted, setMounted] = useState(false);
+  const [timeTick, setTimeTick] = useState(0);
 
+    
+  
   useEffect(() => {
     // Force purge legacy service workers and caches
     if ('serviceWorker' in navigator) {
@@ -2219,7 +2222,7 @@ export default function AppContainer() {
 
   const updateWorkingHours = async (type, value) => {
     if (!activeOrg) return;
-    const currentHours = activeOrg.working_hours || { start: "00:00", end: "23:59" };
+    const currentHours = activeOrg.working_hours || { start: "09:00", end: "17:00" };
     const newHours = { ...currentHours, [type]: value };
     const { error } = await supabase.from('organizations').update({ working_hours: newHours }).eq('id', activeOrg.id);
     if (!error) {
@@ -3837,9 +3840,9 @@ export default function AppContainer() {
                     email: inviteEmail,
                     full_name: genInviteName,
                     role: 'pending_worker',
-                    category: isUpdate ? existingProfile.category : (genInviteCategory || null),
-                    domain: isUpdate ? existingProfile.domain : (genInviteDomain || ''),
-                    skills: isUpdate ? (existingProfile.skills || []) : [],
+                    category: genInviteCategory || null,
+                      domain: genInviteDomain || '',
+                      skills: [],
                     last_seen: now()
                   };
 
@@ -3996,12 +3999,12 @@ export default function AppContainer() {
                     
                     <div className={`flex items-center gap-1.5 bg-purple-950/30 rounded-lg p-1.5 border border-purple-500/10 h-8 ${activeOrg?.working_hours?.is_24_7 ? 'opacity-30 pointer-events-none' : ''}`}>
                       <Clock size={12} className="text-purple-400" />
-                      <input type="time" value={activeOrg?.working_hours?.start || "00:00"} 
+                      <input type="time" value={activeOrg?.working_hours?.start || "09:00"} 
                         onChange={(e) => updateWorkingHours('start', e.target.value)}
                         className="bg-transparent text-[12px] font-mono text-white focus:outline-none w-[110px] cursor-text" 
                         style={{ colorScheme: 'dark' }} />
                       <span className="text-[10px] text-purple-500">-</span>
-                      <input type="time" value={activeOrg?.working_hours?.end || "23:59"} 
+                      <input type="time" value={activeOrg?.working_hours?.end || "17:00"} 
                         onChange={(e) => updateWorkingHours('end', e.target.value)}
                         className="bg-transparent text-[12px] font-mono text-white focus:outline-none w-[110px] cursor-text" 
                         style={{ colorScheme: 'dark' }} />

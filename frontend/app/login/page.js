@@ -925,9 +925,14 @@ export default function AppContainer() {
             setIsInviteFlow(true);
             if (decoded.orgType) setAuthOrgType(decoded.orgType);
             if (decoded.orgName) setAuthOrgName(decoded.orgName);
-          }
-        } catch(e) { /* ignore invalid token */ }
-      }
+              
+              // NEW FIX: Immediately check if revoked and block the screen!
+              supabase.from('digital_cards').select('is_revoked').eq('card_number', decoded.card).eq('username', decoded.username).maybeSingle().then(({data}) => { 
+                if (data?.is_revoked) setKickoutModal(true); 
+              });
+            }
+          } catch(e) { /* ignore invalid token */ }
+        }
 
       if (inviteToken) {
         setInviteToken(inviteToken);
