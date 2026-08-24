@@ -40,10 +40,10 @@ function checkIsEffectivelyLocked(user, org) {
       const now = new Date();
       const currentMin = now.getHours() * 60 + now.getMinutes();
       
-      const [sh, sm] = (start || "00:00").split(':').map(Number);
+      const [sh, sm] = (start || "09:00").split(':').map(Number);
       const startMin = sh * 60 + sm;
       
-      const [eh, em] = (end || "23:59").split(':').map(Number);
+      const [eh, em] = (end || "17:00").split(':').map(Number);
       const endMin = eh * 60 + em;
 
       if (startMin <= endMin) {
@@ -377,6 +377,8 @@ export default function AppContainer() {
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const currentUserRef = useRef(currentUser);
+  const activeOrgRef = useRef(activeOrg);
+  useEffect(() => { activeOrgRef.current = activeOrg; }, [activeOrg]);
   const kickoutChannelRef = useRef(null);
   
   useEffect(() => {
