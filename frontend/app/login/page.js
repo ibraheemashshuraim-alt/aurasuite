@@ -514,7 +514,7 @@ export default function AppContainer() {
       // If an invite token is present, let the URL params effect handle the login flow.
       // Do not auto-login from localStorage, otherwise it overrides the token!
       if (hasInviteToken || hasOldInvite || hasCard) {
-        setIsCheckingSession(false);
+        // Handled by second effect
         return;
       }
 
@@ -641,11 +641,6 @@ export default function AppContainer() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         supabase.from('tasks').select('*').then(({ data }) => { if (data) setTasks(data); });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, () => {
-        supabase.from('group_messages').select('*').order('id', { ascending: true }).then(({ data }) => {
-          if (data) setGroupMessages(data.map(m => ({ id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
-        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, () => {
         supabase.from('meetings').select('*').eq('is_active', true).then(({ data }) => { if (data) setActiveMeetings(data); });
@@ -906,7 +901,12 @@ export default function AppContainer() {
         setAuthCardNumber(cardParam);
         setAuthUsername(userParam);
         setLoginMode('worker');
-        supabase.from('digital_cards').select('is_revoked').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(({data}) => { if (data?.is_revoked) setKickoutModal(true); });
+        supabase.from('digital_cards').select('is_revoked').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(({data}) => { 
+          if (data?.is_revoked) setKickoutModal(true); 
+          setIsCheckingSession(false);
+        }).catch(() => setIsCheckingSession(false));
+      } else {
+        setIsCheckingSession(false);
       }
 
       // Process the invite token
@@ -2339,31 +2339,6 @@ export default function AppContainer() {
 
   // ─────────────────── Render ───────────────────
 
-
-  // 🚨🚨 KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) 🚨🚨
-  if (kickoutModal || currentUser?.role === "suspended" || currentUser?.status === "suspended") {
-    return (
-      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-        <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
-          <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
-          <button
-            onClick={() => {
-              try { window.close(); } catch (e) {}
-              localStorage.removeItem("aura_session");
-              sessionStorage.removeItem("aura_session");
-              window.location.href = "/";
-            }}
-            className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
-          >
-            Close Portal
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-
   // 🚨🚨 KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) 🚨🚨
   if (kickoutModal || currentUser?.role === "suspended" || currentUser?.status === "suspended") {
     return (
@@ -2390,57 +2365,6 @@ export default function AppContainer() {
   // 🚨🚨 LOCK MODAL OVERLAY 🚨🚨
   const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
   if (isEffectivelyLocked && currentUser?.role === "worker") {
-    return (
-      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-        <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <div className="flex justify-center mb-4">
-             <Lock size={48} className="text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-4">Off-Day / Access Locked</h2>
-          <p className="text-yellow-400 text-sm mb-6">Your portal access is currently locked for an off-day or by an admin. Enjoy your break!</p>
-          <button
-            onClick={() => {
-              try { window.close(); } catch (e) {}
-              localStorage.removeItem("aura_session");
-              sessionStorage.removeItem("aura_session");
-              window.location.href = "/";
-            }}
-            className="px-8 py-3 bg-yellow-950/60 hover:bg-yellow-900/80 text-white font-semibold rounded-xl border border-yellow-500/30 transition-all"
-          >
-            Close Portal
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-
-  // 🚨🚨 KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) 🚨🚨
-  if (kickoutModal || currentUser?.role === "suspended" || currentUser?.status === "suspended") {
-    return (
-      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-        <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
-          <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
-          <button
-            onClick={() => {
-              try { window.close(); } catch (e) {}
-              localStorage.removeItem("aura_session");
-              sessionStorage.removeItem("aura_session");
-              window.location.href = "/";
-            }}
-            className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
-          >
-            Close Portal
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // 🚨🚨 LOCK MODAL OVERLAY 🚨🚨
-  const isEffectivelyLockedDuplicate = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
-  if (isEffectivelyLockedDuplicate && currentUser?.role === "worker") {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
         <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
@@ -2745,10 +2669,11 @@ export default function AppContainer() {
           }
         }
 
-        await supabase.from('profiles').update({ category: newCategory, domain: newDomain }).eq('id', currentUser.id);
+        const newSkills = [...(currentUser?.skills || []), 'assessment_completed'];
+          await supabase.from('profiles').update({ category: newCategory, domain: newDomain, skills: newSkills }).eq('id', currentUser.id);
         
-        setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain }));
-        setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain } : p));
+        setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain, skills: newSkills }));
+        setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain, skills: newSkills } : p));
         setQuizLoading(false);
         setQuizStep(2); // result step
       }, 2000);
