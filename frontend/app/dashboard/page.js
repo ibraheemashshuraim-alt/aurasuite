@@ -786,12 +786,30 @@ export default function AppContainer() {
           setCurrentUser(prev => prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev);
         }
       })
-      .on('broadcast', { event: 'org-updated' }, (payload) => {
-        const updatedOrg = payload?.payload;
-        if (updatedOrg && activeOrg?.id === updatedOrg.orgId) {
-          setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
-        }
-      })
+        .on('broadcast', { event: 'org-updated' }, (payload) => {
+          const updatedOrg = payload?.payload;
+          if (updatedOrg && activeOrgRef.current?.id === updatedOrg.orgId) {
+            setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
+          }
+        })
+        .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
+          const orgId = payload?.payload?.orgId;
+          if (orgId && activeOrgRef.current?.id === orgId) {
+            setCurrentUser(prev => prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev);
+          }
+        })
+        .on('broadcast', { event: 'org-working-hours' }, (payload) => {
+          const orgId = payload?.payload?.orgId;
+          if (orgId && activeOrgRef.current?.id === orgId) {
+            setActiveOrg(prev => prev ? { ...prev, working_hours: payload.payload.working_hours } : prev);
+          }
+        })
+        .on('broadcast', { event: 'org-working-days' }, (payload) => {
+          const orgId = payload?.payload?.orgId;
+          if (orgId && activeOrgRef.current?.id === orgId) {
+            setActiveOrg(prev => prev ? { ...prev, working_days: payload.payload.working_days } : prev);
+          }
+        })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           kickoutChannelRef.current = channel;
@@ -1678,28 +1696,11 @@ export default function AppContainer() {
       const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, blob);
       if (error) throw error;
       audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
-    } catch(err) { console.error(err); if (activeChat === 'group' && kickoutChannelRef.current) {
-      kickoutChannelRef.current.send({
-        type: 'broadcast',
-        event: 'new-group-message',
-        payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
-        }
-      });
-    }
+    } catch(err) { console.error(err);
     setIsSendingChat(false); return; }
     
     if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
     else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
-    if (activeChat === 'group' && kickoutChannelRef.current) {
-      kickoutChannelRef.current.send({
-        type: 'broadcast',
-        event: 'new-group-message',
-        payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
-        }
-      });
-    }
     setIsSendingChat(false);
   };
 
@@ -1787,16 +1788,6 @@ export default function AppContainer() {
         else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
       }
     } catch(err) { console.error('Send message error:', err); }
-    
-    if (activeChat === 'group' && kickoutChannelRef.current) {
-      kickoutChannelRef.current.send({
-        type: 'broadcast',
-        event: 'new-group-message',
-        payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
-        }
-      });
-    }
     setIsSendingChat(false);
   };
   
