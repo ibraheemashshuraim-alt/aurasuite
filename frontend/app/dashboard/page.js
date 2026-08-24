@@ -2339,6 +2339,40 @@ export default function AppContainer() {
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
+  // ----------------------------------------------------
+  // INJECTED POLLERS
+  // ----------------------------------------------------
+  useEffect(() => {
+    if (!mounted || !activeOrg?.id) return;
+    const chatInterval = setInterval(async () => {
+      // Group Messages
+      const { data } = await supabase.from('group_messages').select('*').eq('organization_id', activeOrg.id).order('id', { ascending: true });
+      if (data) {
+        setGroupMessages(data.map(m => ({ id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {} })));
+      }
+      
+      // DM Messages
+      const { data: dmData } = await supabase.from('dm_messages').select('*').or(`thread_key.ilike.%${currentUserRef.current?.id}%`).order('id', { ascending: true });
+      if (dmData) {
+         const newThreads = {};
+         dmData.forEach(m => {
+            if (!newThreads[m.thread_key]) newThreads[m.thread_key] = [];
+            newThreads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, audioUrl: m.audio_url, attachmentUrl: m.attachment_url, deletedFor: m.deleted_for || [], reactions: m.reactions || {} });
+         });
+         setDmThreads(newThreads);
+      }
+    }, 3000);
+    return () => clearInterval(chatInterval);
+  }, [mounted, activeOrg?.id]);
+  // ----------------------------------------------------
+
+  useEffect(() => {
+    const int = setInterval(() => setTimeTick(t => t + 1), 30000);
+    return () => clearInterval(int);
+  }, []);
+
+
+
   // ─────────────────── Render ───────────────────
 
   // 🚨🚨 KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) 🚨🚨
@@ -3840,9 +3874,9 @@ export default function AppContainer() {
                     email: inviteEmail,
                     full_name: genInviteName,
                     role: 'pending_worker',
-                    category: genInviteCategory || null,
-                      domain: genInviteDomain || '',
-                      skills: [],
+                    category: isUpdate ? existingProfile.category : (genInviteCategory || null),
+                      domain: isUpdate ? existingProfile.domain : (genInviteDomain || ''),
+                      skills: isUpdate ? (existingProfile.skills || []) : [],
                     last_seen: now()
                   };
 
