@@ -1,0 +1,27 @@
+
+import re
+
+def fix_file(filename):
+    with open(filename, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Find the kickout block
+    pattern = re.compile(r"(  if \(kickoutModal \|\| currentUser\?\.role === \x27suspended\x27 \|\| currentUser\?\.status === \x27suspended\x27\) \{[\s\S]*?    }\n)", re.MULTILINE)
+    match = pattern.search(content)
+    
+    if match:
+        block = match.group(1)
+        content = content.replace(block, "")
+        
+        insert_point = "  if (!mounted || isCheckingSession) return ("
+        content = content.replace(insert_point, block + "\n" + insert_point)
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"Moved kickout modal in {filename}")
+    else:
+        print(f"Kickout modal not found in {filename}")
+
+fix_file("frontend/app/login/page.js")
+fix_file("frontend/app/dashboard/page.js")
+

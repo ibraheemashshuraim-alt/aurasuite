@@ -1,4 +1,4 @@
-/* eslint-disable */
+﻿/* eslint-disable */
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -17,7 +17,7 @@ import { supabase } from '../../lib/supabase';
 import { getRandomQuestions } from '../../lib/questionBank';
 import JSZip from 'jszip';
 
-// ─── Utility ────────────────────────────────────────────────────
+// ÔöÇÔöÇÔöÇ Utility ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 const genId = (prefix = 'id') => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
 const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const today = () => new Date().toISOString().split('T')[0];
@@ -58,14 +58,14 @@ function checkIsEffectivelyLocked(user, org) {
   return false;
 }
 
-// ─── Participant Video Tile ──────────────────────────────────────
+// ÔöÇÔöÇÔöÇ Participant Video Tile ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, streamTrigger }) {
   const videoRef = React.useRef(null);
   const audioRef = React.useRef(null);
 
   // Attach stream to video element for visual.
   // streamTrigger forces this to re-run when a remote track arrives (stream ref changes).
-  // NOTE: audio element does NOT depend on streamTrigger — this is intentional.
+  // NOTE: audio element does NOT depend on streamTrigger ÔÇö this is intentional.
   // If audio depended on streamTrigger it would be interrupted every time any stream changed.
   React.useEffect(() => {
     if (videoRef.current && stream && !part.isVideoOff) {
@@ -106,7 +106,7 @@ function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, st
             </span>
           )}
           {!part.isVideoOff && !stream && (
-            <span className="text-[10px] text-purple-500">Connecting…</span>
+            <span className="text-[10px] text-purple-500">ConnectingÔÇª</span>
           )}
         </div>
       )}
@@ -149,7 +149,7 @@ function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, st
   );
 }
 
-// ─── Digital Card Visual ────────────────────────────────────────
+// ÔöÇÔöÇÔöÇ Digital Card Visual ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 function DigitalCardVisual({ cardData }) {
   if (!cardData) return null;
   const { role, full_name, card_number, domain } = cardData;
@@ -196,7 +196,7 @@ function DigitalCardVisual({ cardData }) {
         <div>
           <div className="text-[10px] uppercase font-bold text-white/70 tracking-wider mb-1" style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>AuraSuite Premium Access</div>
           <div className="text-lg font-bold text-white leading-tight drop-shadow-md">{full_name}</div>
-          <div className="text-xs text-white/90 mt-0.5 drop-shadow-md font-semibold">{roleTitle} {domain && `• ${domain}`}</div>
+          <div className="text-xs text-white/90 mt-0.5 drop-shadow-md font-semibold">{roleTitle} {domain && `ÔÇó ${domain}`}</div>
         </div>
         <div className="p-2.5 bg-black/40 rounded-xl border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-md">
           {icon}
@@ -234,7 +234,7 @@ export default function AppContainer() {
     }
   }, []);
 
-  // ── Auth ──
+  // ÔöÇÔöÇ Auth ÔöÇÔöÇ
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [authTab, setAuthTab] = useState('login');
@@ -275,7 +275,7 @@ export default function AppContainer() {
   const [signUpOrgName, setSignUpOrgName] = useState('');
   const [signUpRole, setSignUpRole] = useState('admin');
 
-  // ── Global data ──
+  // ÔöÇÔöÇ Global data ÔöÇÔöÇ
   const [organizations, setOrganizations] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [bannedEmails, setBannedEmails] = useState([]);
@@ -287,7 +287,7 @@ export default function AppContainer() {
   const [materials, setMaterials] = useState([]);
   const [attendanceLogs, setAttendanceLogs] = useState([]);
 
-  // ── Chat ──
+  // ÔöÇÔöÇ Chat ÔöÇÔöÇ
   const [groupMessages, setGroupMessages] = useState([]);       // org-wide group chat
   const [dmThreads, setDmThreads] = useState({});              // { userId: [{id,from,text,time}] }
   const [activeDmUser, setActiveDmUser] = useState(null);
@@ -332,19 +332,19 @@ export default function AppContainer() {
   const audioChunksRef = useRef([]);
   const mediaStreamRef = useRef(null);
 
-  // ── Session ──
+  // ÔöÇÔöÇ Session ÔöÇÔöÇ
   const [currentUser, setCurrentUser] = useState(null);
   const [activeOrg, setActiveOrg] = useState(null);
   const [notifications, setNotifications] = useState([
     { id: 1, text: 'AuraSuite loaded. Welcome!', type: 'info' }
   ]);
 
-  // ── Nav ──
+  // ÔöÇÔöÇ Nav ÔöÇÔöÇ
   const [activeTab, setActiveTab] = useState('dashboard');
-  useEffect(() => { const saved = sessionStorage.getItem('aura_worker_tab') || (currentUser?.role === 'worker' ? 'dashboard' : null); if (saved) setActiveTab(saved); }, []);
-  useEffect(() => { sessionStorage.setItem('aura_worker_tab', activeTab); }, [activeTab]);
+  useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
+  useEffect(() => { localStorage.setItem('aura_admin_tab', activeTab); }, [activeTab]);
 
-  // ── Meeting ──
+  // ÔöÇÔöÇ Meeting ÔöÇÔöÇ
   const [isInMeeting, setIsInMeeting] = useState(false);
   const [currentMeetingSession, setCurrentMeetingSession] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -388,7 +388,7 @@ export default function AppContainer() {
   const [showReactionsPanel, setShowReactionsPanel] = useState(false);
   const [floatingReactions, setFloatingReactions] = useState([]); // [{id, emoji, userId, name}]
 
-  // ── AI Onboarding ──
+  // ÔöÇÔöÇ AI Onboarding ÔöÇÔöÇ
   const [onboardSkills, setOnboardSkills] = useState('React, Next.js, Node.js, CSS');
   const [onboardBio, setOnboardBio] = useState('Full Stack Engineer interested in dashboard systems.');
   const [onboardLoading, setOnboardLoading] = useState(false);
@@ -401,13 +401,13 @@ export default function AppContainer() {
   const [isEndingMeeting, setIsEndingMeeting] = useState(false);
   const [isSendingLiveChat, setIsSendingLiveChat] = useState(false);
 
-  // ── Admin edit ──
+  // ÔöÇÔöÇ Admin edit ÔöÇÔöÇ
   const [editingUser, setEditingUser] = useState(null);
   const [editCategory, setEditCategory] = useState('');
   const [editDomain, setEditDomain] = useState('');
   const [editRole, setEditRole] = useState('');
 
-  // ── Budget ──
+  // ÔöÇÔöÇ Budget ÔöÇÔöÇ
   const [budgetTaskId, setBudgetTaskId] = useState('');
   const [budgetComplexity, setBudgetComplexity] = useState('medium');
   const [budgetHours, setBudgetHours] = useState(10);
@@ -416,21 +416,21 @@ export default function AppContainer() {
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [overrideBudget, setOverrideBudget] = useState('');
 
-  // ── Academy ──
+  // ÔöÇÔöÇ Academy ÔöÇÔöÇ
   const [newAssignmentTitle, setNewAssignmentTitle] = useState('');
   const [newAssignmentDesc, setNewAssignmentDesc] = useState('');
   const [submittedTasks, setSubmittedTasks] = useState({});
   
-  // ── Schedules & Financials ──
+  // ÔöÇÔöÇ Schedules & Financials ÔöÇÔöÇ
   const [schedules, setSchedules] = useState([]);
   const [orgBudget, setOrgBudget] = useState(150000);
 
-  // ── Online & Presence ──
+  // ÔöÇÔöÇ Online & Presence ÔöÇÔöÇ
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [presenceMap, setPresenceMap] = useState({});
   const [showPresenceModal, setShowPresenceModal] = useState(false);
 
-  // ── WebRTC Refs & Streams ──
+  // ÔöÇÔöÇ WebRTC Refs & Streams ÔöÇÔöÇ
   const streamsRef = useRef({});
   const pcsRef = useRef({});
   const channelRef = useRef(null);
@@ -439,10 +439,10 @@ export default function AppContainer() {
   const [screenStream, setScreenStream] = useState(null);
   const [streamTrigger, setStreamTrigger] = useState(0);
 
-  // ── Meeting Live States Sync ──
+  // ÔöÇÔöÇ Meeting Live States Sync ÔöÇÔöÇ
   const [meetingStates, setMeetingStates] = useState({}); // { [meetingId]: { participants: [], chat: [], isChatLocked: false, areAllMuted: false } }
 
-  // ── Onboarding / Invite Link States ──
+  // ÔöÇÔöÇ Onboarding / Invite Link States ÔöÇÔöÇ
   const [inviteToken, setInviteToken] = useState('');
   const [inviteOrgId, setInviteOrgId] = useState('');
   const [inviteOrgName, setInviteOrgName] = useState('');
@@ -461,13 +461,13 @@ export default function AppContainer() {
   const [generatedLink, setGeneratedLink] = useState('');
   const [generatedCardData, setGeneratedCardData] = useState(null);
   
-  // ── Pre-Meeting Checklist ──
+  // ÔöÇÔöÇ Pre-Meeting Checklist ÔöÇÔöÇ
   const [preMeetingMeet, setPreMeetingMeet] = useState(null);
   const [preMeetingChecklist, setPreMeetingChecklist] = useState({ micOn: false, camOn: false });
   const [showEndMeetingModal, setShowEndMeetingModal] = useState(false);
   const [processingHostAction, setProcessingHostAction] = useState(null);
 
-  // ─────────────────── Supabase Data Load ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Supabase Data Load ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   useEffect(() => {
     setMounted(true);
     const loadAll = async () => {
@@ -562,7 +562,7 @@ export default function AppContainer() {
               setKickoutModal(true);
             }
 
-            // 🚨 STRICT ISOLATION: If localStorage was corrupted with a worker session from an older bug, reject it!
+            // ­ƒÜ¿ STRICT ISOLATION: If localStorage was corrupted with a worker session from an older bug, reject it!
             const isWorker = ['worker', 'client'].includes(savedUser.role);
             if (isWorker && loadedMode === 'admin') {
               localStorage.removeItem('aura_session');
@@ -576,7 +576,7 @@ export default function AppContainer() {
                 setActiveOrg(savedOrg || { id: 'org-1', name: 'AuraSuite Org', type: 'software_house' });
                 setIsLoggedIn(true);
                 setIsCheckingSession(false);
-                // if (isWorker) setActiveTab('dashboard');
+                if (isWorker) setActiveTab('dashboard');
               });
             };
 
@@ -604,7 +604,7 @@ export default function AppContainer() {
     });
   }, []);
 
-  // ── Session persistence ──
+  // ÔöÇÔöÇ Session persistence ÔöÇÔöÇ
   useEffect(() => {
     if (currentUser && activeOrg) {
       const sessionData = JSON.stringify({ userId: currentUser.id, orgId: activeOrg.id, loginMode });
@@ -616,7 +616,7 @@ export default function AppContainer() {
     }
   }, [currentUser, activeOrg, loginMode]);
 
-  // ─────────────────── Supabase Realtime Subscriptions ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Supabase Realtime Subscriptions ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   useEffect(() => {
     if (!mounted) return;
 
@@ -641,11 +641,6 @@ export default function AppContainer() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         supabase.from('tasks').select('*').then(({ data }) => { if (data) setTasks(data); });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, () => {
-        supabase.from('group_messages').select('*').order('created_at', { ascending: true }).then(({ data }) => {
-          if (data) setGroupMessages(data.map(m => ({ id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
-        });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'meetings' }, () => {
         supabase.from('meetings').select('*').eq('is_active', true).then(({ data }) => { if (data) setActiveMeetings(data); });
@@ -756,47 +751,26 @@ export default function AppContainer() {
   }, [currentUser]);
 
 
-  // ─────────────────── Unified Kickout & Poller ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Unified Kickout & Poller ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   useEffect(() => {
     // 1. Clean Broadcast Listener (subscribed & stored in ref for admin to reuse)
     const channel = supabase
       .channel('global-kickout-clean', { config: { broadcast: { self: true } } })
       .on('broadcast', { event: 'user-suspended' }, (payload) => {
-        console.log('🚨 KICKOUT BROADCAST RECEIVED:', payload);
         const targetId = payload?.payload?.userId;
         const currentId = currentUserRef.current?.id;
-        
-        // Only kick out if the broadcast was targeted at the currently logged-in user
         if (targetId && currentId && targetId === currentId) {
-          console.log('🚨 TARGET MATCHED! Kicking out user:', currentId);
           setKickoutModal(true);
-        } else {
-          console.log('ℹ️ Broadcast ignored. Target ID:', targetId, 'Current ID:', currentId);
         }
       })
-      .on('broadcast', { event: 'new-group-message' }, (payload) => {
-          if (payload?.payload) {
-            setGroupMessages(prev => {
-              if (prev.find(m => m.id === payload.payload.id)) return prev;
-              return [...prev, payload.payload];
-            });
-          }
-        })
-        .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
+      .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
         const targetId = payload?.payload?.userId;
         const currentId = currentUserRef.current?.id;
         if (targetId && currentId && targetId === currentId) {
           setCurrentUser(prev => prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev);
         }
       })
-      .on('broadcast', { event: 'org-updated' }, (payload) => {
-        const updatedOrg = payload?.payload;
-        if (updatedOrg && activeOrg?.id === updatedOrg.orgId) {
-          setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
-        }
-      })
       .subscribe((status) => {
-        console.log('📡 Kickout channel status:', status);
         if (status === 'SUBSCRIBED') {
           kickoutChannelRef.current = channel;
         }
@@ -815,12 +789,15 @@ export default function AppContainer() {
 
         // Trigger kickout if role is suspended/banned/deleted
         if (data && ['suspended', 'banned', 'deleted'].includes(data.role)) {
-          console.log('🚨 POLLER KICKOUT: profile suspended', { data, error });
           setKickoutModal(true);
         } else if (data) {
-          if (currentUserRef.current?.is_locked !== data.is_locked || currentUserRef.current?.force_unlocked !== data.force_unlocked) {
-            setCurrentUser(prev => prev ? { ...prev, is_locked: data.is_locked, force_unlocked: data.force_unlocked } : prev);
-          }
+          setCurrentUser(prev => {
+            if (!prev) return prev;
+            if (prev.is_locked !== data.is_locked || prev.force_unlocked !== data.force_unlocked) {
+              return { ...prev, is_locked: data.is_locked, force_unlocked: data.force_unlocked };
+            }
+            return prev;
+          });
         }
       } catch (err) {
         // Silence errors
@@ -850,7 +827,7 @@ export default function AppContainer() {
     };
   }, []);
 
-  // ─────────────────── Custom Presence Heartbeat ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Custom Presence Heartbeat ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   useEffect(() => {
     if (!mounted || !isLoggedIn || !currentUser) return;
 
@@ -955,7 +932,7 @@ export default function AppContainer() {
       if (myInfo) {
         const prev = prevMediaStateRef.current;
 
-        // ── Audio: only act when hostMuted flag changes ──
+        // ÔöÇÔöÇ Audio: only act when hostMuted flag changes ÔöÇÔöÇ
         if (myInfo.hostMuted && !prev.hostMuted) {
           // Host just muted us
           setIsMuted(true);
@@ -963,10 +940,10 @@ export default function AppContainer() {
           if (ls) ls.getAudioTracks().forEach(t => { t.enabled = false; });
           addNotification('Host has muted your microphone.', 'warning');
         } else if (!myInfo.hostMuted && prev.hostMuted) {
-          // Host just un-restricted our mic — don't force unmute, let user decide
+          // Host just un-restricted our mic ÔÇö don't force unmute, let user decide
         }
 
-        // ── Video: only act when hostVideoOff flag changes ──
+        // ÔöÇÔöÇ Video: only act when hostVideoOff flag changes ÔöÇÔöÇ
         if (myInfo.hostVideoOff && !prev.hostVideoOff) {
           setIsVideoOff(true);
           const ls = streamsRef.current[currentUser?.id];
@@ -974,7 +951,7 @@ export default function AppContainer() {
           addNotification('Host has turned off your camera.', 'warning');
         }
 
-        // ── Screen share sync ──
+        // ÔöÇÔöÇ Screen share sync ÔöÇÔöÇ
         if (myInfo.isScreenSharing !== undefined && myInfo.isScreenSharing !== isScreenSharing) {
           setIsScreenSharing(myInfo.isScreenSharing);
           if (!myInfo.isScreenSharing && screenStream) {
@@ -1019,7 +996,7 @@ export default function AppContainer() {
     }
   }, [generatedLink, generatedCardData]);
 
-  // ─────────────────── Auth ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Auth ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   const handleLogin = async (e) => {
     e.preventDefault();
     if (loginMode === 'worker') {
@@ -1301,7 +1278,7 @@ export default function AppContainer() {
     if (typeof window !== 'undefined') window.history.replaceState({}, document.title, window.location.pathname);
   };
 
-  // ─────────────────── Meeting ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Meeting ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   const handleStartMeeting = async (e) => {
     e.preventDefault();
     if (!newMeetingTitle) return;
@@ -1352,9 +1329,9 @@ export default function AppContainer() {
     setIsVideoOff(myParticipant.isVideoOff); setIsScreenSharing(false);
     setIsChatLocked(newState.isChatLocked); setAreAllMuted(newState.areAllMuted);
 
-    // Only request microphone on join — camera is requested only when user explicitly turns it on
+    // Only request microphone on join ÔÇö camera is requested only when user explicitly turns it on
     try {
-      // These exact constraints were stable in commit 2e6f49a — do NOT change noiseSuppression to false,
+      // These exact constraints were stable in commit 2e6f49a ÔÇö do NOT change noiseSuppression to false,
       // it makes the voice sound distant and slow every time it's been tried.
       const audioConstraints = { echoCancellation: true, noiseSuppression: true };
       const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints });
@@ -1579,7 +1556,7 @@ export default function AppContainer() {
       
       if (selectedInvitees.includes('__all__')) {
         const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
-          text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
+          text: `­ƒô╣ Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
           msg_time: now() };
         await supabase.from('group_messages').insert(inviteMsg);
       } else {
@@ -1587,7 +1564,7 @@ export default function AppContainer() {
           const key = [currentUser.id, inviteeId].sort().join('_');
           return {
              id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
-             text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
+             text: `­ƒô╣ Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
              msg_time: now()
           };
         });
@@ -1651,7 +1628,7 @@ export default function AppContainer() {
     }
   };
 
-  // ─────────────────── Chat ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Chat ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   const orgMembers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id);
 
   const renderTextWithLinks = (text) => {
@@ -1679,28 +1656,10 @@ export default function AppContainer() {
       const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, blob);
       if (error) throw error;
       audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
-    } catch(err) { console.error(err); if (activeChat === 'group' && kickoutChannelRef.current) {
-      kickoutChannelRef.current.send({
-        type: 'broadcast',
-        event: 'new-group-message',
-        payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
-        }
-      });
-    }
-    setIsSendingChat(false); return; }
+    } catch(err) { console.error(err); setIsSendingChat(false); return; }
     
     if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
     else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
-    if (activeChat === 'group' && kickoutChannelRef.current) {
-      kickoutChannelRef.current.send({
-        type: 'broadcast',
-        event: 'new-group-message',
-        payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
-        }
-      });
-    }
     setIsSendingChat(false);
   };
 
@@ -1789,15 +1748,6 @@ export default function AppContainer() {
       }
     } catch(err) { console.error('Send message error:', err); }
     
-    if (activeChat === 'group' && kickoutChannelRef.current) {
-      kickoutChannelRef.current.send({
-        type: 'broadcast',
-        event: 'new-group-message',
-        payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
-        }
-      });
-    }
     setIsSendingChat(false);
   };
   
@@ -1960,7 +1910,7 @@ export default function AppContainer() {
 
   const getDmKey = (userId) => [currentUser?.id, userId].sort().join('_');
 
-  // ─────────────────── AI Onboarding ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ AI Onboarding ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   const handleOnboarding = (e) => {
     e.preventDefault();
     setOnboardLoading(true);
@@ -1990,7 +1940,7 @@ export default function AppContainer() {
     }, 1200);
   };
 
-  // ─────────────────── Admin ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Admin ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   const handleAdminEditUser = (user) => {
     setEditingUser(user);
     setEditCategory(user.category || '');
@@ -2031,7 +1981,7 @@ export default function AppContainer() {
               event: 'user-suspended',
               payload: { userId, email: targetEmail }
             });
-            console.log('📢 BROADCAST RESULT:', res);
+            console.log('­ƒôó BROADCAST RESULT:', res);
           }
 
           // 3. Optimistic UI update
@@ -2140,7 +2090,7 @@ export default function AppContainer() {
     });
   };
 
-  // ─────────────────── Off-Day / Locking System ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Off-Day / Locking System ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   const toggleLockWorker = async (user) => {
     const isEffectivelyLocked = checkIsEffectivelyLocked(user, activeOrg);
     let newIsLocked = false;
@@ -2281,7 +2231,7 @@ export default function AppContainer() {
     }
   };
 
-  // ─────────────────── Budget ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Budget ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   const handleSuggestBudget = (e) => {
     e.preventDefault();
     setSuggestLoading(true);
@@ -2331,37 +2281,14 @@ export default function AppContainer() {
     addNotification(`Attendance clocked at ${timeNow}`, 'success');
   };
 
-  // ─────────────────── Derived ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Derived ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
   const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
   const suspendedOrgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && ['banned', 'suspended'].includes(p.role));
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
-  // ─────────────────── Render ───────────────────
+  // ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ Render ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
 
-
-  // 🚨🚨 KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) 🚨🚨
-  if (kickoutModal || currentUser?.role === "suspended" || currentUser?.status === "suspended") {
-    return (
-      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-        <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
-          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
-          <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
-          <button
-            onClick={() => {
-              try { window.close(); } catch (e) {}
-              localStorage.removeItem("aura_session");
-              sessionStorage.removeItem("aura_session");
-              window.location.href = "/";
-            }}
-            className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
-          >
-            Close Portal
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // Show loading until: (1) component mounted AND (2) session check done
   if (!mounted || isCheckingSession) return (
@@ -2375,8 +2302,26 @@ export default function AppContainer() {
     </div>
   );
 
-  
-  // ── LOGIN SCREEN ──
+  if (kickoutModal || currentUser?.role === 'suspended' || currentUser?.status === 'suspended' || currentUser?.role === 'banned') {
+    return (
+      <div className="fixed inset-0 z-[999999] flex flex-col items-center justify-center bg-[#05010a] text-white p-4">
+        <div className="w-full max-w-md bg-[#0a0515] p-8 rounded-3xl border border-red-500/30 text-center shadow-[0_0_50px_rgba(220,38,38,0.1)] relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6 border border-red-500/20 shadow-[0_0_20px_rgba(220,38,38,0.2)]">
+            <Lock className="text-red-400" size={32} />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Access Revoked</h2>
+          <p className="text-sm text-red-200/70 mb-8">
+            Your access card has been suspended by the Admin. You can no longer access this portal.
+          </p>
+          <button onClick={() => { localStorage.removeItem('aura_session'); sessionStorage.removeItem('aura_session'); window.location.href = '/'; }} className="w-full py-3 rounded-xl bg-red-900/40 text-red-300 font-bold border border-red-500/30 hover:bg-red-800/60 transition-all">
+            Return to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+  // ÔöÇÔöÇ LOGIN SCREEN ÔöÇÔöÇ
   if (!isLoggedIn) {
     if (authTab === 'invite_register') {
       return (
@@ -2405,7 +2350,7 @@ export default function AppContainer() {
               </div>
               <div>
                 <label className="text-xs font-semibold text-purple-300 block mb-1">Set Password</label>
-                <input type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} required placeholder="••••••••"
+                <input type="password" value={invitePassword} onChange={e => setInvitePassword(e.target.value)} required placeholder="ÔÇóÔÇóÔÇóÔÇóÔÇóÔÇóÔÇóÔÇó"
                   className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2.5 text-xs text-white focus:outline-none" />
               </div>
               <div className="grid grid-cols-2 gap-3 bg-purple-950/20 p-3 rounded-xl border border-purple-500/10 text-xs">
@@ -2546,7 +2491,7 @@ export default function AppContainer() {
               </button>
               
               <button type="button" onClick={() => {
-                if (confirm('⚠️ This will delete ALL data and accounts. Continue?')) {
+                if (confirm('ÔÜá´©Å This will delete ALL data and accounts. Continue?')) {
                   localStorage.clear();
                   window.location.reload();
                 }
@@ -2599,7 +2544,7 @@ export default function AppContainer() {
     );
   }
 
-  // ══════════════════ AI QUIZ (ONBOARDING) ══════════════════
+  // ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ AI QUIZ (ONBOARDING) ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   if (showQuiz) {
     const handleQuizStart = () => {
       if (currentUser?.role === 'student') {
@@ -2680,18 +2625,14 @@ export default function AppContainer() {
               {quizQuestions.map((q, idx) => (
                 <div key={q.id} className="space-y-2">
                   <p className="text-xs font-bold text-purple-200">{idx + 1}. {q.question}</p>
-                    {q.question_ur && <p className="text-xs font-bold text-purple-300 mb-2" dir="rtl" style={{fontFamily: 'Jameel Noori Nastaleeq, Noto Nastaliq Urdu, sans-serif'}}>{q.question_ur}</p>}
-                    <div className="grid grid-cols-2 gap-2">
-                      {q.options.map((opt, optIdx) => (
-                        <button key={opt} onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt }))}
-                          className={`p-2 rounded-lg text-[10px] font-bold border transition-all ${quizAnswers[q.id] === opt ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
-                          <div className="flex flex-col gap-1 items-center justify-center">
-                            <span>{opt}</span>
-                            {q.options_ur && q.options_ur[optIdx] && <span dir="rtl" className="text-[9px] opacity-80" style={{fontFamily: 'Jameel Noori Nastaleeq, Noto Nastaliq Urdu, sans-serif'}}>{q.options_ur[optIdx]}</span>}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {q.options.map(opt => (
+                      <button key={opt} onClick={() => setQuizAnswers(prev => ({ ...prev, [q.id]: opt }))}
+                        className={`p-2 rounded-lg text-[10px] font-bold border transition-all ${quizAnswers[q.id] === opt ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_10px_rgba(147,51,234,0.4)]' : 'bg-[#11081c] border-purple-500/20 text-purple-300 hover:border-purple-500/50'}`}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ))}
               <div className="pt-4 flex justify-end">
@@ -2721,10 +2662,8 @@ export default function AppContainer() {
       </div>
     );
   }
-
-
   
-  // ── KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) ──
+  // ÔöÇÔöÇ KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) ÔöÇÔöÇ
   if (kickoutModal || currentUser?.role === "suspended" || currentUser?.status === "suspended") {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
@@ -2747,7 +2686,7 @@ export default function AppContainer() {
     );
   }
 
-  // ── LOCK MODAL OVERLAY ──
+  // ÔöÇÔöÇ LOCK MODAL OVERLAY ÔöÇÔöÇ
   const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
   if (isEffectivelyLocked && currentUser?.role === "worker") {
     return (
@@ -2774,19 +2713,19 @@ export default function AppContainer() {
     );
   }
 
-// ══════════════════ MAIN APP ══════════════════
+// ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ MAIN APP ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ
   return (
     <main className="relative min-h-screen">
       <div className="flex min-h-screen bg-luxury-bg text-[#f3f1f5] relative">
 
-      {/* ── MEETING INVITE MODAL ── */}
+      {/* ÔöÇÔöÇ MEETING INVITE MODAL ÔöÇÔöÇ */}
       {meetingInviteModal && (
         <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4">
           <div className="w-full max-w-md glass-panel-glow border border-purple-500/30 rounded-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white">Invite Members to Meeting</h3>
-                <p className="text-[10px] text-purple-300 mt-0.5">&quot;{meetingInviteModal.title}&quot; · ID: {meetingInviteModal.meeting_id}</p>
+                <p className="text-[10px] text-purple-300 mt-0.5">&quot;{meetingInviteModal.title}&quot; ┬À ID: {meetingInviteModal.meeting_id}</p>
               </div>
               <button onClick={() => setMeetingInviteModal(null)} className="p-1.5 hover:bg-purple-900/40 rounded-lg text-purple-400">
                 <X size={16} />
@@ -2819,7 +2758,7 @@ export default function AppContainer() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold text-white truncate">{user.full_name}</div>
-                    <div className="text-[10px] text-purple-400">{user.role} {user.domain ? `· ${user.domain}` : ''}</div>
+                    <div className="text-[10px] text-purple-400">{user.role} {user.domain ? `┬À ${user.domain}` : ''}</div>
                   </div>
                   {onlineUsers.includes(user.id) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />}
                 </label>
@@ -2841,7 +2780,7 @@ export default function AppContainer() {
         </div>
       )}
 
-      {/* ── Presence Modal ── */}
+      {/* ÔöÇÔöÇ Presence Modal ÔöÇÔöÇ */}
       {showPresenceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-sm glass-panel p-6 rounded-3xl border border-purple-500/20 shadow-2xl relative">
@@ -2889,7 +2828,7 @@ export default function AppContainer() {
         </div>
       )}
 
-      {/* ── ADMIN USER EDIT MODAL ── */}
+      {/* ÔöÇÔöÇ ADMIN USER EDIT MODAL ÔöÇÔöÇ */}
       {editingUser && (
         <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4">
           <div className="w-full max-w-sm glass-panel-glow border border-purple-500/30 rounded-2xl p-6 space-y-4">
@@ -2912,9 +2851,9 @@ export default function AppContainer() {
                 <select value={editCategory} onChange={e => setEditCategory(e.target.value)}
                   className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2 text-xs text-white focus:outline-none">
                   <option value="">Unset</option>
-                  <option value="A">A – Senior / Lead</option>
-                  <option value="B">B – Mid Level</option>
-                  <option value="C">C – Junior</option>
+                  <option value="A">A ÔÇô Senior / Lead</option>
+                  <option value="B">B ÔÇô Mid Level</option>
+                  <option value="C">C ÔÇô Junior</option>
                 </select>
               </div>
               <div>
@@ -2937,8 +2876,8 @@ export default function AppContainer() {
         </div>
       )}
 
-      {/* ── END MEETING MODAL ── */}
-      {/* ── CUSTOM ALERT MODAL ── */}
+      {/* ÔöÇÔöÇ END MEETING MODAL ÔöÇÔöÇ */}
+      {/* ÔöÇÔöÇ CUSTOM ALERT MODAL ÔöÇÔöÇ */}
       {customAlert && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
           <div className="w-full max-w-sm bg-[#11081c] border border-red-500/30 shadow-[0_0_40px_rgba(239,68,68,0.2)] rounded-3xl p-6 text-center animate-in zoom-in-95 duration-300">
@@ -2954,7 +2893,7 @@ export default function AppContainer() {
         </div>
       )}
 
-      {/* ── CONFIRM MODAL ── */}
+      {/* ÔöÇÔöÇ CONFIRM MODAL ÔöÇÔöÇ */}
       {confirmModal && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
           <div className="w-full max-w-sm bg-[#11081c] border border-orange-500/30 shadow-[0_0_40px_rgba(249,115,22,0.2)] rounded-3xl p-6 text-center animate-in zoom-in-95 duration-300">
@@ -3015,7 +2954,7 @@ export default function AppContainer() {
         </div>
       )}
 
-      {/* ── PRE-MEETING CHECKLIST MODAL ── */}
+      {/* ÔöÇÔöÇ PRE-MEETING CHECKLIST MODAL ÔöÇÔöÇ */}
       {preMeetingMeet && (
         <div className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm glass-panel-glow border border-purple-500/30 rounded-3xl p-8 relative">
@@ -3067,7 +3006,7 @@ export default function AppContainer() {
       )}
 
 
-      {/* ── ZOOM MEETING OVERLAY ── */}
+      {/* ÔöÇÔöÇ ZOOM MEETING OVERLAY ÔöÇÔöÇ */}
       {isInMeeting && currentMeetingSession && (
         <div className="absolute inset-0 bg-[#070509]/98 z-50 flex flex-col p-5 space-y-4">
           <header className="flex justify-between items-center border-b border-purple-500/15 pb-4 shrink-0">
@@ -3172,7 +3111,7 @@ export default function AppContainer() {
                 ))}
               </div>
 
-              {/* Audio is played via persistent JS Audio objects in audioElementsRef — no JSX audio tags needed */}
+              {/* Audio is played via persistent JS Audio objects in audioElementsRef ÔÇö no JSX audio tags needed */}
             </div>
 
             {/* Chat Sidebar */}
@@ -3425,7 +3364,7 @@ export default function AppContainer() {
                   action: () => isScreenSharing ? handleStopScreenShare() : handleStartScreenShare()
                 },
                 { 
-                  icon: <span style={{fontSize:16}}>😊</span>, 
+                  icon: <span style={{fontSize:16}}>­ƒÿè</span>, 
                   active: showReactionsPanel, 
                   label: 'Reactions',
                   action: () => setShowReactionsPanel(p => !p)
@@ -3443,7 +3382,7 @@ export default function AppContainer() {
             {showReactionsPanel && (
               <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 bg-[#0d0820] border border-purple-500/30 rounded-3xl shadow-2xl shadow-purple-900/40 p-4 w-72 animate-in slide-in-from-bottom-4 duration-200">
                 <div className="text-[10px] uppercase font-bold text-purple-400 mb-3 tracking-widest">Reactions</div>
-                {/* Raise Hand — top prominent */}
+                {/* Raise Hand ÔÇö top prominent */}
                 {(() => {
                   const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
                   const isRaised = myInfo?.isHandRaised;
@@ -3463,7 +3402,7 @@ export default function AppContainer() {
                           ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300 shadow-[0_0_20px_rgba(234,179,8,0.2)]'
                           : 'bg-purple-900/20 border-purple-500/20 text-white hover:bg-yellow-500/10 hover:border-yellow-500/30'
                       }`}>
-                      <span style={{fontSize: 22}}>✋</span>
+                      <span style={{fontSize: 22}}>Ô£ï</span>
                       <span>{isRaised ? 'Lower Hand' : 'Raise Hand'}</span>
                       {isRaised && <span className="ml-auto text-[10px] bg-yellow-500/20 px-2 py-0.5 rounded-full">Active</span>}
                     </button>
@@ -3472,7 +3411,7 @@ export default function AppContainer() {
                 {/* Emoji Reactions */}
                 <div className="text-[10px] uppercase font-bold text-purple-500 mb-2 tracking-widest">Send Reaction</div>
                 <div className="grid grid-cols-6 gap-2">
-                  {['👍', '❤️', '😂', '😮', '👏', '🎉', '🔥', '💯', '😢', '🤔', '👎', '⭐'].map(emoji => (
+                  {['­ƒæì', 'ÔØñ´©Å', '­ƒÿé', '­ƒÿ«', '­ƒæÅ', '­ƒÄë', '­ƒöÑ', '­ƒÆ»', '­ƒÿó', '­ƒñö', '­ƒæÄ', 'Ô¡É'].map(emoji => (
                     <button
                       key={emoji}
                       onClick={async () => {
@@ -3529,7 +3468,7 @@ export default function AppContainer() {
         </div>
       )}
 
-      {/* ═══════════════════ SIDEBAR ═══════════════════ */}
+      {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ SIDEBAR ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
       <aside className="w-64 glass-panel border-r border-[#9333ea]/15 flex-col p-5 hidden md:flex shrink-0">
         <div className="flex items-center gap-3 mb-7">
           <div className="w-10 h-10 rounded-xl accent-gradient flex items-center justify-center shadow-lg shadow-purple-500/20">
@@ -3596,13 +3535,13 @@ export default function AppContainer() {
             </div>
             <div className="min-w-0 flex-1 text-left">
               <div className="text-xs font-semibold text-white truncate">{currentUser.full_name}</div>
-              <div className="text-[9px] text-purple-400 uppercase font-bold mt-0.5">{currentUser.role} {currentUser.category ? `· Cat. ${currentUser.category}` : ''}</div>
+              <div className="text-[9px] text-purple-400 uppercase font-bold mt-0.5">{currentUser.role} {currentUser.category ? `┬À Cat. ${currentUser.category}` : ''}</div>
             </div>
           </button>
         </div>
       </aside>
 
-      {/* ═══════════════════ MAIN ═══════════════════ */}
+      {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ MAIN ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
       <main className="flex-1 flex flex-col min-w-0">
 
         <header className="h-14 glass-panel border-b border-[#9333ea]/15 px-6 flex items-center justify-between shrink-0">
@@ -3628,7 +3567,7 @@ export default function AppContainer() {
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
-          {/* ── Meeting invites for current user ── */}
+          {/* ÔöÇÔöÇ Meeting invites for current user ÔöÇÔöÇ */}
           {myInvitedMeetings.map(meet => (
             <div key={meet.id} className="glass-panel-glow border border-purple-500/40 p-4 rounded-2xl flex items-center justify-between shadow-lg relative overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-r from-purple-600/5 to-indigo-600/5 pointer-events-none" />
@@ -3641,7 +3580,7 @@ export default function AppContainer() {
                     <span className="text-xs font-bold text-white">Meeting Invite</span>
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
                   </div>
-                  <p className="text-xs text-purple-200 mt-0.5">&quot;{meet.title}&quot; by {meet.host_name} · ID: <span className="font-mono text-purple-300">{meet.meeting_id}</span></p>
+                  <p className="text-xs text-purple-200 mt-0.5">&quot;{meet.title}&quot; by {meet.host_name} ┬À ID: <span className="font-mono text-purple-300">{meet.meeting_id}</span></p>
                 </div>
               </div>
               <div className="flex gap-2 relative">
@@ -3664,7 +3603,7 @@ export default function AppContainer() {
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
                 <div>
                   <span className="text-xs font-bold text-white">Your Active Meeting: &quot;{meet.title}&quot;</span>
-                  <p className="text-[10px] text-purple-300 mt-0.5">ID: {meet.meeting_id} · Passcode: {meet.passcode}</p>
+                  <p className="text-[10px] text-purple-300 mt-0.5">ID: {meet.meeting_id} ┬À Passcode: {meet.passcode}</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -3684,7 +3623,7 @@ export default function AppContainer() {
             </div>
           ))}
 
-          {/* ═══════ ADMIN PANEL ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ ADMIN PANEL ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'admin' && ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) && (
             <div className="space-y-6">
 
@@ -3721,7 +3660,7 @@ export default function AppContainer() {
                       <div key={m.id} className="flex items-center justify-between p-3 bg-[#0f0b18] border border-purple-500/10 rounded-xl">
                         <div>
                           <span className="text-xs font-bold text-white">{m.title}</span>
-                          <div className="text-[10px] text-purple-400 mt-0.5">Host: {m.host_name} · ID: {m.meeting_id}</div>
+                          <div className="text-[10px] text-purple-400 mt-0.5">Host: {m.host_name} ┬À ID: {m.meeting_id}</div>
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => handleJoinMeeting(m)}
@@ -3917,7 +3856,7 @@ export default function AppContainer() {
                     </button>
                     <DigitalCardVisual cardData={generatedCardData} />
                     <div className="text-xs text-white bg-[#0a0510] p-2.5 rounded-lg border border-purple-500/10 font-mono break-all leading-relaxed text-center">
-                      Email Sent Successfully! ✅
+                      Email Sent Successfully! Ô£à
                     </div>
                   </div>
                 )}
@@ -4033,9 +3972,9 @@ export default function AppContainer() {
                                 user.category === 'B' ? 'bg-blue-950/40 border-blue-500/30 text-blue-300' :
                                 'bg-orange-950/30 border-orange-500/20 text-orange-300'
                               }`}>Tier {user.category}</span>
-                            ) : <span className="text-purple-600">—</span>}
+                            ) : <span className="text-purple-600">ÔÇö</span>}
                           </td>
-                          <td className="px-4 py-3 text-purple-200">{user.domain || '—'}</td>
+                          <td className="px-4 py-3 text-purple-200">{user.domain || 'ÔÇö'}</td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1 max-w-[160px]">
                               {(user.skills || []).slice(0, 3).map(sk => (
@@ -4159,7 +4098,7 @@ export default function AppContainer() {
                     <div key={tier.cat} className={`glass-panel p-5 rounded-2xl border border-${tier.color}-500/20`}>
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <span className={`text-[10px] font-bold text-${tier.color}-400 uppercase tracking-wider`}>Tier {tier.cat} — {tier.label}</span>
+                          <span className={`text-[10px] font-bold text-${tier.color}-400 uppercase tracking-wider`}>Tier {tier.cat} ÔÇö {tier.label}</span>
                           <p className="text-[9px] text-purple-400 mt-0.5">{tier.desc}</p>
                         </div>
                         <div className={`text-3xl font-bold text-${tier.color}-400`}>{count}</div>
@@ -4243,7 +4182,7 @@ export default function AppContainer() {
             </div>
           )}
 
-          {/* ═══════ MEETINGS TAB ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ MEETINGS TAB ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'meetings' && (
             <div className="space-y-5">
               <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
@@ -4301,7 +4240,7 @@ export default function AppContainer() {
                                 {isMine && <span className="px-1.5 py-0.5 bg-purple-900/60 border border-purple-500/30 rounded text-[9px] text-purple-300">Your Meeting</span>}
                                 {invited && !isMine && <span className="px-1.5 py-0.5 bg-red-900/50 border border-red-500/30 rounded text-[9px] text-red-300 animate-pulse">Invited</span>}
                               </div>
-                              <div className="text-[10px] text-purple-400 mt-0.5">Host: {meet.host_name} · ID: <span className="font-mono text-purple-300">{meet.meeting_id}</span> · Code: <span className="font-mono text-purple-300">{meet.passcode}</span></div>
+                              <div className="text-[10px] text-purple-400 mt-0.5">Host: {meet.host_name} ┬À ID: <span className="font-mono text-purple-300">{meet.meeting_id}</span> ┬À Code: <span className="font-mono text-purple-300">{meet.passcode}</span></div>
                             </div>
                           </div>
                           <div className="flex gap-2 shrink-0">
@@ -4331,7 +4270,7 @@ export default function AppContainer() {
             </div>
           )}
 
-          {/* ═══════ CHAT TAB ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ CHAT TAB ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'chat' && (
             <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>
               <div className="flex h-full">
@@ -4432,7 +4371,7 @@ export default function AppContainer() {
                             const myMeet = activeMeetings.find(m => m.host_id === currentUser.id);
                             if (myMeet) {
                               const key = getDmKey(activeDmUser.id);
-                              const msgText = `📹 Join my meeting: "${myMeet.title}" | ID: ${myMeet.meeting_id} | Code: ${myMeet.passcode} | [MEET_ID:${myMeet.id}]`;
+                              const msgText = `­ƒô╣ Join my meeting: "${myMeet.title}" | ID: ${myMeet.meeting_id} | Code: ${myMeet.passcode} | [MEET_ID:${myMeet.id}]`;
                               const msgId = genId('msg');
                               const msgTime = now();
                               // Save to DB
@@ -4487,7 +4426,7 @@ export default function AppContainer() {
                                   </button>
                                   <div className={`absolute top-full mt-1 ${isMine ? 'right-0' : 'left-0'} hidden group-hover/del:flex flex-col bg-[#1a0e2a] border border-purple-500/30 rounded-lg p-1 z-50 w-36 shadow-xl`}>
                                     <div className="flex gap-2 justify-center p-1 border-b border-purple-500/20 mb-1">
-                                      {['👍', '❤️', '😂', '🔥', '👀'].map(emoji => (
+                                      {['­ƒæì', 'ÔØñ´©Å', '­ƒÿé', '­ƒöÑ', '­ƒæÇ'].map(emoji => (
                                         <button key={emoji} onClick={() => handleReactMessage(msg, emoji)} className="hover:scale-125 transition-transform text-sm">{emoji}</button>
                                       ))}
                                     </div>
@@ -4497,7 +4436,7 @@ export default function AppContainer() {
                                     )}
                                   </div>
                                 </div>
-                                <span className="text-[9px] text-purple-400">{msg.fromName} · {msg.time}</span>
+                                <span className="text-[9px] text-purple-400">{msg.fromName} ┬À {msg.time}</span>
                               </div>
                               <div className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
                                 msg.type === 'meeting_invite' || msg.text.includes('[MEET_ID:')
@@ -4562,7 +4501,7 @@ export default function AppContainer() {
                                     if (meet) { setPreMeetingMeet(meet); setPreMeetingChecklist({ micOn: false, camOn: false }); }
                                     else addNotification('Meeting may have ended.', 'warning');
                                   }} className="block mt-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-bold text-white w-full text-center">
-                                    Join Meeting →
+                                    Join Meeting ÔåÆ
                                   </button>
                                 )}
                               </div>
@@ -4658,7 +4597,7 @@ export default function AppContainer() {
             </div>
           )}
 
-          {/* ═══════ APPROVALS (Super Admin) ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ APPROVALS (Super Admin) ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'approvals' && currentUser?.role === 'super_admin' && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-white flex items-center gap-3">
@@ -4772,13 +4711,13 @@ export default function AppContainer() {
                             const data = await res.json();
                             if (!data.success || data.message?.includes('skipped')) {
                               console.warn('Email skipped or failed:', data);
-                              alert(`⚠️ Approval successful, but Email was NOT sent (Vercel config missing/failed).\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+                              alert(`ÔÜá´©Å Approval successful, but Email was NOT sent (Vercel config missing/failed).\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
                             } else {
-                              addNotification(`✅ Approved successfully and Email sent to ${org.email}!`, 'success');
+                              addNotification(`Ô£à Approved successfully and Email sent to ${org.email}!`, 'success');
                             }
                           } catch (e) {
                             console.error("Email might have failed", e);
-                            alert(`⚠️ Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+                            alert(`ÔÜá´©Å Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
                           }
 
                           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o } : o));
@@ -4808,7 +4747,7 @@ export default function AppContainer() {
             </div>
           )}
 
-          {/* ═══════ ACTIVE ORGS (Super Admin) ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ ACTIVE ORGS (Super Admin) ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'active_orgs' && currentUser?.role === 'super_admin' && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-white flex items-center gap-3">
@@ -4870,7 +4809,7 @@ export default function AppContainer() {
             </div>
           )}
 
-          {/* ═══════ DASHBOARD ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ DASHBOARD ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'dashboard' && (
             <div className="space-y-5">
               {/* ADMIN QUICK VIEW */}
@@ -5025,8 +4964,8 @@ export default function AppContainer() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {[
-                          { key: 'todo', label: 'Backlog', next: 'in_progress', nextLabel: 'Start →', color: 'text-purple-400' },
-                          { key: 'in_progress', label: 'In Progress', next: 'done', nextLabel: 'Complete →', color: 'text-blue-400' },
+                          { key: 'todo', label: 'Backlog', next: 'in_progress', nextLabel: 'Start ÔåÆ', color: 'text-purple-400' },
+                          { key: 'in_progress', label: 'In Progress', next: 'done', nextLabel: 'Complete ÔåÆ', color: 'text-blue-400' },
                           { key: 'done', label: 'Completed', next: null, nextLabel: null, color: 'text-emerald-400' },
                         ].map(col => (
                           <div key={col.key} className="bg-[#0f0a1b] p-4 rounded-2xl border border-purple-500/5 space-y-3">
@@ -5086,7 +5025,7 @@ export default function AppContainer() {
             </div>
           )}
 
-          {/* ═══════ SCHEDULES TAB ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ SCHEDULES TAB ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'schedules' && (
             <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
               <div className="flex items-center gap-2 mb-4">
@@ -5123,7 +5062,7 @@ export default function AppContainer() {
             </div>
           )}
 
-          {/* ═══════ FINANCIALS TAB ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ FINANCIALS TAB ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'financials' && (
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -5172,7 +5111,7 @@ export default function AppContainer() {
             </div>
           )}
 
-          {/* ═══════ SETTINGS TAB ═══════ */}
+          {/* ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ SETTINGS TAB ÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ */}
           {activeTab === 'settings' && (
             <div className="glass-panel p-5 rounded-2xl border border-purple-500/10 space-y-5 max-w-lg">
               <h3 className="text-sm font-bold text-white">Workspace Settings</h3>

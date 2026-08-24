@@ -768,7 +768,15 @@ export default function AppContainer() {
           setKickoutModal(true);
         }
       })
-      .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
+      .on('broadcast', { event: 'new-group-message' }, (payload) => {
+          if (payload?.payload) {
+            setGroupMessages(prev => {
+              if (prev.find(m => m.id === payload.payload.id)) return prev;
+              return [...prev, payload.payload];
+            });
+          }
+        })
+        .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
         const targetId = payload?.payload?.userId;
         const currentId = currentUserRef.current?.id;
         if (targetId && currentId && targetId === currentId) {
@@ -1667,10 +1675,28 @@ export default function AppContainer() {
       const { data, error } = await supabase.storage.from('chat_attachments').upload(fileName, blob);
       if (error) throw error;
       audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(fileName).data.publicUrl;
-    } catch(err) { console.error(err); setIsSendingChat(false); return; }
+    } catch(err) { console.error(err); if (activeChat === 'group' && kickoutChannelRef.current) {
+      kickoutChannelRef.current.send({
+        type: 'broadcast',
+        event: 'new-group-message',
+        payload: {
+          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
+        }
+      });
+    }
+    setIsSendingChat(false); return; }
     
     if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
     else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
+    if (activeChat === 'group' && kickoutChannelRef.current) {
+      kickoutChannelRef.current.send({
+        type: 'broadcast',
+        event: 'new-group-message',
+        payload: {
+          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
+        }
+      });
+    }
     setIsSendingChat(false);
   };
 
@@ -1759,6 +1785,15 @@ export default function AppContainer() {
       }
     } catch(err) { console.error('Send message error:', err); }
     
+    if (activeChat === 'group' && kickoutChannelRef.current) {
+      kickoutChannelRef.current.send({
+        type: 'broadcast',
+        event: 'new-group-message',
+        payload: {
+          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
+        }
+      });
+    }
     setIsSendingChat(false);
   };
   
@@ -2303,6 +2338,29 @@ export default function AppContainer() {
 
   // ─────────────────── Render ───────────────────
 
+
+  // 🚨🚨 KICKOUT MODAL OVERLAY (HIGHEST PRIORITY) 🚨🚨
+  if (kickoutModal || currentUser?.role === "suspended" || currentUser?.status === "suspended") {
+    return (
+      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div className="bg-slate-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <h2 className="text-2xl font-bold text-white mb-4">Access Revoked</h2>
+          <p className="text-red-400 text-sm mb-6">Your access card has been suspended by the Admin.</p>
+          <button
+            onClick={() => {
+              try { window.close(); } catch (e) {}
+              localStorage.removeItem("aura_session");
+              sessionStorage.removeItem("aura_session");
+              window.location.href = "/";
+            }}
+            className="px-8 py-3 bg-red-950/60 hover:bg-red-900/80 text-white font-semibold rounded-xl border border-red-500/30 transition-all"
+          >
+            Close Portal
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading until: (1) component mounted AND (2) session check done
   if (!mounted || isCheckingSession) return (
