@@ -214,6 +214,7 @@ function DigitalCardVisual({ cardData }) {
 }
 
 export default function AppContainer() {
+
   const [mounted, setMounted] = useState(false);
   const [timeTick, setTimeTick] = useState(0);
 
