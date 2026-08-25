@@ -458,7 +458,7 @@ export default function AppContainer() {
   const [onboardLoading, setOnboardLoading] = useState(false);
   const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
   const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
-  const [isSendingChat, setIsSendingChat] = useState(false);
+  const [isChatSendingNow, setIsChatSendingNow] = useState(false);
   const [isSavingUserEdit, setIsSavingUserEdit] = useState(false);
   const [isApprovingPayout, setIsApprovingPayout] = useState(false);
   const [isSendingMeetingInvites, setIsSendingMeetingInvites] = useState(false);
@@ -839,31 +839,46 @@ export default function AppContainer() {
           }
         })
         .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
-        const targetId = payload?.payload?.userId;
-        const currentId = currentUserRef.current?.id;
-        if (targetId && currentId && targetId === currentId) {
-          setCurrentUser(prev => prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev);
-        }
-      })
-        .on('broadcast', { event: 'org-updated' }, (payload) => {
-          const updatedOrg = payload?.payload;
-          if (updatedOrg && activeOrgRef.current?.id === updatedOrg.orgId) {
-            setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
+          const targetId = payload?.payload?.userId;
+          const currentId = currentUserRef.current?.id;
+          if (targetId && currentId && targetId === currentId) {
+            setCurrentUser(prev => {
+              const nextUser = prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev;
+              if (checkIsEffectivelyLocked(nextUser, activeOrgRef.current)) setLockModal(true);
+              else setLockModal(false);
+              return nextUser;
+            });
           }
         })
-        .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
-          const orgId = payload?.payload?.orgId;
-          if (orgId && activeOrgRef.current?.id === orgId) {
-            setCurrentUser(prev => prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev);
-          }
-        })
-        .on('broadcast', { event: 'org-working-hours' }, (payload) => {
-          const orgId = payload?.payload?.orgId;
-          if (orgId && activeOrgRef.current?.id === orgId) {
-            setActiveOrg(prev => prev ? { ...prev, working_hours: payload.payload.working_hours } : prev);
-          }
-        })
-        .on('broadcast', { event: 'org-working-days' }, (payload) => {
+          .on('broadcast', { event: 'org-updated' }, (payload) => {
+            const updatedOrg = payload?.payload;
+            if (updatedOrg && activeOrgRef.current?.id === updatedOrg.orgId) {
+              setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
+            }
+          })
+          .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
+            const orgId = payload?.payload?.orgId;
+            if (orgId && activeOrgRef.current?.id === orgId) {
+              setCurrentUser(prev => {
+                const nextUser = prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev;
+                if (checkIsEffectivelyLocked(nextUser, activeOrgRef.current)) setLockModal(true);
+                else setLockModal(false);
+                return nextUser;
+              });
+            }
+          })
+          .on('broadcast', { event: 'org-working-hours' }, (payload) => {
+            const orgId = payload?.payload?.orgId;
+            if (orgId && activeOrgRef.current?.id === orgId) {
+              setActiveOrg(prev => {
+                const nextOrg = prev ? { ...prev, working_hours: payload.payload.working_hours } : prev;
+                if (checkIsEffectivelyLocked(currentUserRef.current, nextOrg)) setLockModal(true);
+                else setLockModal(false);
+                return nextOrg;
+              });
+            }
+          })
+          .on('broadcast', { event: 'org-working-days' }, (payload) => {
           const orgId = payload?.payload?.orgId;
           if (orgId && activeOrgRef.current?.id === orgId) {
             setActiveOrg(prev => prev ? { ...prev, working_days: payload.payload.working_days } : prev);
@@ -1739,8 +1754,8 @@ export default function AppContainer() {
   };
   
   const handleDirectAudioSend = async (blob) => {
-    setIsSendingChat(true);
-    setTimeout(() => setIsSendingChat(false), 2000);
+    setIsChatSendingNow(true);
+    setTimeout(() => setIsChatSendingNow(false), 2000);
     try {
       const msgId = genId('msg');
       const msgTime = now();
@@ -1776,7 +1791,7 @@ export default function AppContainer() {
       }
     } catch(err) {
       console.error('Direct audio send error:', err);
-    } finally { setIsSendingChat(false); }
+    } finally { setIsChatSendingNow(false); }
   };
 
   const handleSendMessage = async (e) => {
@@ -1796,7 +1811,7 @@ export default function AppContainer() {
     setAttachmentFiles([]);
     setAttachmentSource(null);
     setAudioBlob(null);
-    if (currentAttachmentFiles.length > 0 || currentAudioBlob) { setIsSendingChat(true); setTimeout(() => setIsSendingChat(false), 2000); }
+    if (currentAttachmentFiles.length > 0 || currentAudioBlob) { setIsChatSendingNow(true); setTimeout(() => setIsChatSendingNow(false), 2000); }
     try {
       let filesToProcess = currentAttachmentFiles;
       if (filesToProcess.length > 1 && attachmentSource !== 'gallery') {
@@ -1874,7 +1889,7 @@ export default function AppContainer() {
       }
     } catch(err) {
       console.error('Send message error:', err);
-    } finally { setIsSendingChat(false); }
+    } finally { setIsChatSendingNow(false); }
   };
   
   const toggleDictation = () => {
@@ -4735,8 +4750,8 @@ export default function AppContainer() {
                              ))}
                            </div>
                         </div>
-                        <button type="button" disabled={isSendingChat} onClick={() => { audioShouldSendRef.current = true; stopRecording(); }} className="p-2.5 rounded-full accent-gradient hover:opacity-90 transition-all text-white shadow-lg shadow-purple-500/20">
-                          {isSendingChat ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                        <button type="button" disabled={isChatSendingNow} onClick={() => { audioShouldSendRef.current = true; stopRecording(); }} className="p-2.5 rounded-full accent-gradient hover:opacity-90 transition-all text-white shadow-lg shadow-purple-500/20">
+                          <Send size={16} />
                         </button>
                       </div>
                     ) : (
@@ -4781,8 +4796,8 @@ export default function AppContainer() {
                           <button type="button" onClick={() => { audioShouldSendRef.current = false; startRecording(); }} className="p-2.5 rounded-full bg-purple-900/30 text-purple-300 hover:bg-purple-900/60 hover:text-white transition-colors">
                             <Mic size={18} />
                           </button>
-                          <button type="submit" disabled={isSendingChat} className={`p-2.5 rounded-full text-white font-bold transition-all flex items-center justify-center ${isSendingChat ? 'bg-purple-800 opacity-70' : 'accent-gradient hover:opacity-90 shadow-lg shadow-purple-500/20'}`}>
-                            {isSendingChat ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />} 
+                          <button type="submit" disabled={isChatSendingNow} className={`p-2.5 rounded-full text-white font-bold transition-all flex items-center justify-center ${isChatSendingNow ? 'bg-purple-800 opacity-70' : 'accent-gradient hover:opacity-90 shadow-lg shadow-purple-500/20'}`}>
+                            <Send size={18} /> 
                           </button>
                         </div>
                       </form>
