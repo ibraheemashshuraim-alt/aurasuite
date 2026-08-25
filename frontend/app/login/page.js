@@ -707,24 +707,35 @@ export default function AppContainer() {
             if (!threads[m.thread_key]) threads[m.thread_key] = [];
             threads[m.thread_key].push({ id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size });
           });
-          setDmThreads(threads);
+          setDmThreads(prev => {
+            const next = { ...threads };
+            Object.entries(prev).forEach(([key, messages]) => {
+              const serverIds = new Set((next[key] || []).map(msg => msg.id));
+              const pending = messages.filter(msg => !serverIds.has(msg.id) && (msg.attachmentUrl?.startsWith?.('blob:') || msg.audioUrl?.startsWith?.('blob:')));
+              if (pending.length > 0) next[key] = [...(next[key] || []), ...pending];
+            });
+            return next;
+          });
         }
       } catch (err) {
         console.error('Failed to load DMs', err);
       }
     };
     loadDMs();
+    const dmPollInterval = setInterval(loadDMs, 5000);
     
     // Listen for incoming DMs or DELETES specifically for this user
     const dmChannel = supabase.channel(`dm-chat-${currentUser.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages', filter: `thread_key=like.%${currentUser.id}%` }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages' }, payload => {
+        const row = payload.new || payload.old;
+        if (!row?.thread_key?.includes(currentUser.id)) return;
         if (payload.eventType === 'INSERT') {
           const m = payload.new;
           setDmThreads(prev => {
             const thread = prev[m.thread_key] || [];
             const exists = thread.find(msg => msg.id === m.id);
             if (exists) {
-              return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg) };
+              return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time, fileName: m.file_name, fileSize: m.file_size } : msg) };
             }
             if (m.from_id !== currentUser.id && activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
             return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }] };
@@ -752,6 +763,7 @@ export default function AppContainer() {
 
     return () => {
       supabase.removeChannel(dmChannel);
+      clearInterval(dmPollInterval);
     };
   }, [currentUser]);
 
