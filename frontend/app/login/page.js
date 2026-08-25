@@ -1832,8 +1832,8 @@ export default function AppContainer() {
 
           // Insert message to DB (only use existing columns)
           const msgText = i === 0 && currentChatInput ? currentChatInput : '';
-          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: realUrl };
-          if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
+          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, audio_url: null, attachment_url: realUrl };
+          if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id, type: 'chat' });
           else if (activeChat === 'dm' && activeDmUser) {
             const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
             const { data: inserted, error: insertErr } = await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }).select('*').single();
