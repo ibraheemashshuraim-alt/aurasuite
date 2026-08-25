@@ -711,7 +711,7 @@ export default function AppContainer() {
             const next = { ...threads };
             Object.entries(prev).forEach(([key, messages]) => {
               const serverIds = new Set((next[key] || []).map(msg => msg.id));
-              const pending = messages.filter(msg => !serverIds.has(msg.id) && (msg.attachmentUrl?.startsWith?.('blob:') || msg.audioUrl?.startsWith?.('blob:')));
+              const pending = messages.filter(msg => !serverIds.has(msg.id) && (msg.isPending || msg.attachmentUrl?.startsWith?.('blob:') || msg.audioUrl?.startsWith?.('blob:')));
               if (pending.length > 0) next[key] = [...(next[key] || []), ...pending];
             });
             return next;
@@ -1815,7 +1815,7 @@ export default function AppContainer() {
           
           // Optimistic UI - show blob preview immediately
           const blobUrl = URL.createObjectURL(file);
-          const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: blobUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size };
+          const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: blobUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size, isPending: true };
           if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
           else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
 
@@ -1828,13 +1828,27 @@ export default function AppContainer() {
 
           // Update optimistic message with real URL
           if (activeChat === 'group') setGroupMessages(prev => prev.map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m));
-          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl } : m) })); }
+          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msgId ? { ...m, attachmentUrl: realUrl, isPending: true } : m) })); }
 
           // Insert message to DB (only use existing columns)
           const msgText = i === 0 && currentChatInput ? currentChatInput : '';
           const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: realUrl };
           if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
-          else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }); }
+          else if (activeChat === 'dm' && activeDmUser) {
+            const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
+            const { data: inserted, error: insertErr } = await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }).select('*').single();
+            if (insertErr) throw insertErr;
+            setDmThreads(prev => ({
+              ...prev,
+              [key]: (prev[key] || []).map(m => m.id === msgId ? {
+                ...m,
+                attachmentUrl: inserted?.attachment_url || realUrl,
+                audioUrl: inserted?.audio_url || null,
+                time: inserted?.msg_time || msgTime,
+                isPending: false
+              } : m)
+            }));
+          }
         }
       } else {
         // Text only or audio message
