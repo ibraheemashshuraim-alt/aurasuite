@@ -1796,9 +1796,7 @@ export default function AppContainer() {
     setAttachmentFiles([]);
     setAttachmentSource(null);
     setAudioBlob(null);
-    setIsSendingChat(true);
-    setTimeout(() => setIsSendingChat(false), 2000);
-
+    if (currentAttachmentFiles.length > 0 || currentAudioBlob) { setIsSendingChat(true); setTimeout(() => setIsSendingChat(false), 2000); }
     try {
       let filesToProcess = currentAttachmentFiles;
       if (filesToProcess.length > 1 && attachmentSource !== 'gallery') {
