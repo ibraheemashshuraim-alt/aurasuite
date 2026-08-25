@@ -217,6 +217,30 @@ export default function AppContainer() {
   const [mounted, setMounted] = useState(false);
   const [timeTick, setTimeTick] = useState(0);
 
+  // Non-destructive chat poller
+  useEffect(() => {
+    const int = setInterval(async () => {
+      if (activeOrgRef.current?.id) {
+        const { data: msgs } = await supabase.from('group_messages').select('*').eq('organization_id', activeOrgRef.current.id).order('id', { ascending: true });
+        if (msgs) {
+          setGroupMessages(prev => {
+            const newMsgs = [...prev];
+            let changed = false;
+            msgs.forEach(m => {
+              if (!newMsgs.find(existing => existing.id === m.id)) {
+                newMsgs.push({ id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size });
+                changed = true;
+              }
+            });
+            return changed ? newMsgs : prev;
+          });
+        }
+      }
+    }, 5000);
+    return () => clearInterval(int);
+  }, []);
+
+
   const [currentMinute, setCurrentMinute] = useState(new Date().getMinutes());
   useEffect(() => {
     const int = setInterval(() => {
@@ -1729,9 +1753,7 @@ export default function AppContainer() {
       }
     } catch(err) {
       console.error('Direct audio send error:', err);
-    } finally {
-      setIsSendingChat(false);
-    }
+    } finally { setIsSendingChat(false); setTimeout(() => setIsSendingChat(false), 3000); }
   };
 
   const handleSendMessage = async (e) => {
@@ -1830,9 +1852,7 @@ export default function AppContainer() {
       }
     } catch(err) {
       console.error('Send message error:', err);
-    } finally {
-      setIsSendingChat(false);
-    }
+    } finally { setIsSendingChat(false); setTimeout(() => setIsSendingChat(false), 3000); }
   };
   
   const toggleDictation = () => {
