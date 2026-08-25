@@ -2913,6 +2913,9 @@ export default function AppContainer() {
   // ══════════════════ MAIN APP ══════════════════
   return (
     <main className="relative min-h-screen">
+        <div className="fixed bottom-4 right-4 z-[9999999999] bg-green-500 text-white font-bold px-4 py-2 rounded-full shadow-lg">
+          Deployed: Aug 25 19:55
+        </div>
       <div className="flex min-h-screen bg-luxury-bg text-[#f3f1f5] relative">
 
       {/* ── MEETING INVITE MODAL ── */}
