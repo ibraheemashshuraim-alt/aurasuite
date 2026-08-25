@@ -891,7 +891,12 @@ export default function AppContainer() {
           .on('broadcast', { event: 'org-working-days' }, (payload) => {
           const orgId = payload?.payload?.orgId;
           if (orgId && activeOrgRef.current?.id === orgId) {
-            setActiveOrg(prev => prev ? { ...prev, working_days: payload.payload.working_days } : prev);
+            setActiveOrg(prev => {
+              const nextOrg = prev ? { ...prev, working_days: payload.payload.working_days } : prev;
+              if (checkIsEffectivelyLocked(currentUserRef.current, nextOrg)) setLockModal(true);
+              else setLockModal(false);
+              return nextOrg;
+            });
           }
         })
       .subscribe((status) => {
@@ -949,6 +954,18 @@ export default function AppContainer() {
       clearInterval(interval);
       clearInterval(orgsInterval);
     };
+  }, []);
+
+  useEffect(() => {
+    const checkWorkerAutoLock = () => {
+      const user = currentUserRef.current;
+      if (user?.role !== 'worker') return;
+      setLockModal(checkIsEffectivelyLocked(user, activeOrgRef.current));
+    };
+
+    checkWorkerAutoLock();
+    const interval = setInterval(checkWorkerAutoLock, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // ─────────────────── Custom Presence Heartbeat ───────────────────

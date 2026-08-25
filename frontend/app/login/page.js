@@ -786,13 +786,47 @@ export default function AppContainer() {
         const targetId = payload?.payload?.userId;
         const currentId = currentUserRef.current?.id;
         if (targetId && currentId && targetId === currentId) {
-          setCurrentUser(prev => prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev);
+          setCurrentUser(prev => {
+            const nextUser = prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev;
+            setLockModal(checkIsEffectivelyLocked(nextUser, activeOrgRef.current));
+            return nextUser;
+          });
         }
       })
       .on('broadcast', { event: 'org-updated' }, (payload) => {
         const updatedOrg = payload?.payload;
-        if (updatedOrg && activeOrg?.id === updatedOrg.orgId) {
+        if (updatedOrg && activeOrgRef.current?.id === updatedOrg.orgId) {
           setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
+        }
+      })
+      .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
+        const orgId = payload?.payload?.orgId;
+        if (orgId && activeOrgRef.current?.id === orgId) {
+          setCurrentUser(prev => {
+            const nextUser = prev ? { ...prev, is_locked: payload.payload.is_locked, force_unlocked: payload.payload.force_unlocked } : prev;
+            setLockModal(checkIsEffectivelyLocked(nextUser, activeOrgRef.current));
+            return nextUser;
+          });
+        }
+      })
+      .on('broadcast', { event: 'org-working-hours' }, (payload) => {
+        const orgId = payload?.payload?.orgId;
+        if (orgId && activeOrgRef.current?.id === orgId) {
+          setActiveOrg(prev => {
+            const nextOrg = prev ? { ...prev, working_hours: payload.payload.working_hours } : prev;
+            setLockModal(checkIsEffectivelyLocked(currentUserRef.current, nextOrg));
+            return nextOrg;
+          });
+        }
+      })
+      .on('broadcast', { event: 'org-working-days' }, (payload) => {
+        const orgId = payload?.payload?.orgId;
+        if (orgId && activeOrgRef.current?.id === orgId) {
+          setActiveOrg(prev => {
+            const nextOrg = prev ? { ...prev, working_days: payload.payload.working_days } : prev;
+            setLockModal(checkIsEffectivelyLocked(currentUserRef.current, nextOrg));
+            return nextOrg;
+          });
         }
       })
       .subscribe((status) => {
@@ -848,6 +882,18 @@ export default function AppContainer() {
       clearInterval(interval);
       clearInterval(orgsInterval);
     };
+  }, []);
+
+  useEffect(() => {
+    const checkWorkerAutoLock = () => {
+      const user = currentUserRef.current;
+      if (user?.role !== 'worker') return;
+      setLockModal(checkIsEffectivelyLocked(user, activeOrgRef.current));
+    };
+
+    checkWorkerAutoLock();
+    const interval = setInterval(checkWorkerAutoLock, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // ─────────────────── Custom Presence Heartbeat ───────────────────
@@ -1797,18 +1843,11 @@ export default function AppContainer() {
         if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
         else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
       }
-    } catch(err) { console.error('Send message error:', err); }
-    
-    if (activeChat === 'group' && kickoutChannelRef.current) {
-      kickoutChannelRef.current.send({
-        type: 'broadcast',
-        event: 'new-group-message',
-        payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
-        }
-      });
+    } catch(err) {
+      console.error('Send message error:', err);
+    } finally {
+      setIsSendingChat(false);
     }
-    setIsSendingChat(false);
   };
   
   const toggleDictation = () => {
