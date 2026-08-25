@@ -217,6 +217,19 @@ export default function AppContainer() {
   const [mounted, setMounted] = useState(false);
   const [timeTick, setTimeTick] = useState(0);
 
+  const [currentMinute, setCurrentMinute] = useState(new Date().getMinutes());
+  useEffect(() => {
+    const int = setInterval(() => {
+      const min = new Date().getMinutes();
+      setCurrentMinute(prev => {
+        if (prev !== min) return min;
+        return prev;
+      });
+    }, 1000);
+    return () => clearInterval(int);
+  }, []);
+
+
     
   
   useEffect(() => {
