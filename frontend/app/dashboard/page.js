@@ -1850,7 +1850,7 @@ export default function AppContainer() {
     setAttachmentFiles([]);
     setAttachmentSource(null);
     setAudioBlob(null);
-    if (currentAttachmentFiles.length > 0 || currentAudioBlob) { setIsChatSendingNow(true); setTimeout(() => setIsChatSendingNow(false), 2000); }
+    setIsChatSendingNow(true);
     try {
       let filesToProcess = currentAttachmentFiles;
       if (filesToProcess.length > 1 && attachmentSource !== 'gallery') {
@@ -4805,7 +4805,7 @@ export default function AppContainer() {
                            </div>
                         </div>
                         <button type="button" disabled={isChatSendingNow} onClick={() => { audioShouldSendRef.current = true; stopRecording(); }} className="p-2.5 rounded-full accent-gradient hover:opacity-90 transition-all text-white shadow-lg shadow-purple-500/20">
-                          <Send size={16} />
+                          {isChatSendingNow ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                         </button>
                       </div>
                     ) : (
@@ -4851,7 +4851,7 @@ export default function AppContainer() {
                             <Mic size={18} />
                           </button>
                           <button type="submit" disabled={isChatSendingNow} className={`p-2.5 rounded-full text-white font-bold transition-all flex items-center justify-center ${isChatSendingNow ? 'bg-purple-800 opacity-70' : 'accent-gradient hover:opacity-90 shadow-lg shadow-purple-500/20'}`}>
-                            <Send size={18} /> 
+                            {isChatSendingNow ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                           </button>
                         </div>
                       </form>
