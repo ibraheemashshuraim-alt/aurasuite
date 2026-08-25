@@ -1694,7 +1694,10 @@ export default function AppContainer() {
       let audioUrl = null;
       
       const fileName = `${msgId}_audio.webm`;
-      const { error: uploadErr } = await supabase.storage.from('chat_attachments').upload(fileName, blob);
+      const { error: uploadErr } = await Promise.race([
+        supabase.storage.from('chat_attachments').upload(fileName, blob),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timed out after 15 seconds")), 15000))
+      ]);
       if (uploadErr) {
           console.error('Audio upload error:', uploadErr);
           // Insert failed message so user knows
@@ -1761,7 +1764,10 @@ export default function AppContainer() {
 
           const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
           const storageFileName = `${msgId}_${safeFileName}`;
-          const { error: uploadErr } = await supabase.storage.from('chat_attachments').upload(storageFileName, file, { contentType: file.type });
+          const { error: uploadErr } = await Promise.race([
+        supabase.storage.from('chat_attachments').upload(storageFileName, file, { contentType: file.type }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timed out after 15 seconds")), 15000))
+      ]);
           if (uploadErr) { console.error('Upload error:', uploadErr); continue; }
           const realUrl = supabase.storage.from('chat_attachments').getPublicUrl(storageFileName).data.publicUrl;
 
@@ -1784,7 +1790,10 @@ export default function AppContainer() {
 
         if (currentAudioBlob) {
           const audioFileName = `${msgId}_audio.webm`;
-          const { error: audioErr } = await supabase.storage.from('chat_attachments').upload(audioFileName, currentAudioBlob);
+          const { error: audioErr } = await Promise.race([
+        supabase.storage.from('chat_attachments').upload(audioFileName, currentAudioBlob),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timed out after 15 seconds")), 15000))
+      ]);
           if (!audioErr) audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(audioFileName).data.publicUrl;
         }
 
