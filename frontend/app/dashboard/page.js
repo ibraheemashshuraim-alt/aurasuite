@@ -217,7 +217,28 @@ export default function AppContainer() {
   const [mounted, setMounted] = useState(false);
   const [timeTick, setTimeTick] = useState(0);
 
-  // Non-destructive chat poller
+  
+    // Robust Worker State Poller (Guarantees live lock/unlock and org hours sync)
+    useEffect(() => {
+      const int = setInterval(async () => {
+        if (currentUserRef.current?.role !== 'worker') return;
+        if (currentUserRef.current?.id) {
+          const { data: userData } = await supabase.from('profiles').select('is_locked, force_unlocked').eq('id', currentUserRef.current.id).single();
+          if (userData) {
+            setCurrentUser(prev => prev ? { ...prev, is_locked: userData.is_locked, force_unlocked: userData.force_unlocked } : prev);
+          }
+        }
+        if (activeOrgRef.current?.id) {
+          const { data: orgData } = await supabase.from('organizations').select('working_hours').eq('id', activeOrgRef.current.id).single();
+          if (orgData) {
+            setActiveOrg(prev => prev ? { ...prev, working_hours: orgData.working_hours } : prev);
+          }
+        }
+      }, 5000);
+      return () => clearInterval(int);
+    }, []);
+
+    // Non-destructive chat poller
   useEffect(() => {
     const int = setInterval(async () => {
       if (activeOrgRef.current?.id) {
@@ -1718,6 +1739,7 @@ export default function AppContainer() {
   
   const handleDirectAudioSend = async (blob) => {
     setIsSendingChat(true);
+    setTimeout(() => setIsSendingChat(false), 2000);
     try {
       const msgId = genId('msg');
       const msgTime = now();
@@ -1774,6 +1796,7 @@ export default function AppContainer() {
     setAttachmentSource(null);
     setAudioBlob(null);
     setIsSendingChat(true);
+    setTimeout(() => setIsSendingChat(false), 2000);
 
     try {
       let filesToProcess = currentAttachmentFiles;
