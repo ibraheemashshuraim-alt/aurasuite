@@ -1720,6 +1720,9 @@ export default function AppContainer() {
       
       if (activeChat === 'group' && activeOrg?.id) {
           await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+            if (kickoutChannelRef.current) {
+                kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: '', time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {} } });
+            }
       } else if (activeChat === 'dm' && activeDmUser) { 
           const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); 
           await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); 
@@ -1789,7 +1792,12 @@ export default function AppContainer() {
 
           const msgText = i === 0 && currentChatInput ? currentChatInput : '';
           const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, type: 'chat', audio_url: null, attachment_url: realUrl };
-          if (activeChat === 'group' && activeOrg?.id) await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
+          if (activeChat === 'group' && activeOrg?.id) {
+              await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id });
+              if (kickoutChannelRef.current) {
+                  kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: msgTime, type: 'chat', attachmentUrl: msgData.attachment_url, audioUrl: null, reactions: {} } });
+              }
+            }
           else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }); }
         }
       } else {
@@ -1812,6 +1820,9 @@ export default function AppContainer() {
 
         if (activeChat === 'group' && activeOrg?.id) {
             await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+            if (kickoutChannelRef.current) {
+                kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {} } });
+            }
         } else if (activeChat === 'dm' && activeDmUser) { 
             const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); 
             await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); 
@@ -2253,6 +2264,9 @@ export default function AppContainer() {
       setOrganizations(prev => prev.map(o => o.id === activeOrg.id ? { ...o, working_hours: newHours } : o));
       setActiveOrg(prev => ({ ...prev, working_hours: newHours }));
       addNotification('Working hours updated.', 'success');
+        if (kickoutChannelRef.current) {
+            kickoutChannelRef.current.send({ type: 'broadcast', event: 'org-working-hours', payload: { orgId: activeOrg.id, working_hours: newHours } });
+        }
       
       // If turning Auto System ON (is_24_7 becomes false), clear all manual locks
       if (type === 'is_24_7' && value === false) {
@@ -2364,24 +2378,7 @@ export default function AppContainer() {
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
   useEffect(() => {
-    const int = setInterval(async () => {
-      setTimeTick(t => t + 1);
-      const rand = Date.now().toString();
-      
-      // 1. Force fetch organizations (Bust cache with neq)
-      if (activeOrgRef.current?.id) {
-        const { data } = await supabase.from('organizations').select('*').eq('id', activeOrgRef.current.id).neq('name', rand).single();
-        if (data) setActiveOrg(data);
-      }
-
-      // 2. Force fetch group messages (Bust cache with neq)
-      if (activeOrgRef.current?.id) {
-        const { data: msgs } = await supabase.from('group_messages').select('*').eq('organization_id', activeOrgRef.current.id).neq('id', rand).order('id', { ascending: true });
-        if (msgs) {
-          setGroupMessages(msgs.map(m => ({ id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
-        }
-      }
-    }, 5000);
+    const int = setInterval(() => setTimeTick(t => t + 1), 30000);
     return () => clearInterval(int);
   }, []);
 
