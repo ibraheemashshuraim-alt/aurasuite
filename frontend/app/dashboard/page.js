@@ -1776,7 +1776,7 @@ export default function AppContainer() {
       }
     } catch(err) {
       console.error('Direct audio send error:', err);
-    } finally { setIsSendingChat(false); setTimeout(() => setIsSendingChat(false), 3000); }
+    } finally { if (needsSpinner) { setIsSendingChat(false); } }
   };
 
   const handleSendMessage = async (e) => {
@@ -1876,7 +1876,7 @@ export default function AppContainer() {
       }
     } catch(err) {
       console.error('Send message error:', err);
-    } finally { setIsSendingChat(false); setTimeout(() => setIsSendingChat(false), 3000); }
+    } finally { if (needsSpinner) { setIsSendingChat(false); } }
   };
   
   const toggleDictation = () => {
