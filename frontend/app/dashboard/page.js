@@ -226,13 +226,23 @@ export default function AppContainer() {
         if (currentUserRef.current?.id) {
           const { data: userData } = await supabase.from('profiles').select('is_locked, force_unlocked').eq('id', currentUserRef.current.id).single();
           if (userData) {
-            setCurrentUser(prev => prev ? { ...prev, is_locked: userData.is_locked, force_unlocked: userData.force_unlocked } : prev);
+            setCurrentUser(prev => {
+              const nextUser = prev ? { ...prev, is_locked: userData.is_locked, force_unlocked: userData.force_unlocked } : prev;
+              if (checkIsEffectivelyLocked(nextUser, activeOrgRef.current)) setLockModal(true);
+              else setLockModal(false);
+              return nextUser;
+            });
           }
         }
         if (activeOrgRef.current?.id) {
           const { data: orgData } = await supabase.from('organizations').select('working_hours').eq('id', activeOrgRef.current.id).single();
           if (orgData) {
-            setActiveOrg(prev => prev ? { ...prev, working_hours: orgData.working_hours } : prev);
+            setActiveOrg(prev => {
+              const nextOrg = prev ? { ...prev, working_hours: orgData.working_hours } : prev;
+              if (checkIsEffectivelyLocked(currentUserRef.current, nextOrg)) setLockModal(true);
+              else setLockModal(false);
+              return nextOrg;
+            });
           }
         }
       }, 5000);
