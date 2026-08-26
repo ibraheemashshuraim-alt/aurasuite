@@ -1316,15 +1316,23 @@ export default function AppContainer() {
     const orgId = genId('org');
     const newOrg = { id: orgId, name: signUpOrgName, type: signUpOrgType };
     const superAdmins = ['ibraheemashshuraim@gmail.com'];
-    const actualRole = superAdmins.includes(signUpEmail.toLowerCase()) ? 'super_admin' : signUpRole;
+    const normalizedEmail = signUpEmail.toLowerCase().trim();
+    const actualRole = superAdmins.includes(normalizedEmail) ? 'super_admin' : signUpRole;
     const newProfile = {
-      id: genId('user'), organization_id: orgId, email: signUpEmail,
+      id: genId('user'), organization_id: orgId, email: normalizedEmail,
       full_name: signUpName, role: actualRole,
       category: signUpRole === 'admin' ? 'A' : null,
       domain: signUpRole === 'admin' ? 'Executive Director' : '',
       skills: [], last_seen: now()
     };
     try {
+      const { data: banRecord } = await supabase.from('banned_emails').select('*').eq('email', normalizedEmail).maybeSingle();
+      if (banRecord && new Date(banRecord.banned_until) > new Date()) {
+        const availableDate = new Date(banRecord.banned_until).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        setCustomAlert(`This email is banned until ${availableDate}.`);
+        return;
+      }
+      if (banRecord) await supabase.from('banned_emails').delete().eq('email', normalizedEmail);
       const { error: orgErr } = await supabase.from('organizations').insert(newOrg);
       if (orgErr) throw orgErr;
       const { error: profErr } = await supabase.from('profiles').insert(newProfile);
@@ -2506,7 +2514,7 @@ export default function AppContainer() {
                <Lock size={56} className="text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-4">Access Locked</h2>
-            <p className="text-yellow-400 text-sm mb-6 leading-relaxed">کچھ مسئلہ پیش آ گیا ہے، کام جاری ہے۔ اکاؤنٹ جلد ہی بحال کر دیا جائے گا۔<br/><br/>(Some issue has occurred, work is in progress. The account will be reactivated as soon as the work is complete.)</p>
+            <p className="text-yellow-400 text-sm mb-6 leading-relaxed">Some issue has occurred, work is in progress. The account will be reactivated as soon as the work is complete.</p>
             <button
               onClick={() => {
                 try { window.close(); } catch (e) {}
@@ -3162,7 +3170,7 @@ export default function AppContainer() {
 
       {/* ── CONFIRM MODAL ── */}
       {confirmModal && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[1000000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
           <div className="w-full max-w-sm bg-[#11081c] border border-orange-500/30 shadow-[0_0_40px_rgba(249,115,22,0.2)] rounded-3xl p-6 text-center animate-in zoom-in-95 duration-300">
             <div className="w-16 h-16 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center mx-auto mb-4 border border-orange-500/30">
               <ShieldAlert size={32} />

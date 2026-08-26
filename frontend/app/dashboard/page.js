@@ -1381,15 +1381,23 @@ export default function AppContainer() {
     const orgId = genId('org');
     const newOrg = { id: orgId, name: signUpOrgName, type: signUpOrgType };
     const superAdmins = ['ibraheemashshuraim@gmail.com'];
-    const actualRole = superAdmins.includes(signUpEmail.toLowerCase()) ? 'super_admin' : signUpRole;
+    const normalizedEmail = signUpEmail.toLowerCase().trim();
+    const actualRole = superAdmins.includes(normalizedEmail) ? 'super_admin' : signUpRole;
     const newProfile = {
-      id: genId('user'), organization_id: orgId, email: signUpEmail,
+      id: genId('user'), organization_id: orgId, email: normalizedEmail,
       full_name: signUpName, role: actualRole,
       category: signUpRole === 'admin' ? 'A' : null,
       domain: signUpRole === 'admin' ? 'Executive Director' : '',
       skills: [], last_seen: now()
     };
     try {
+      const { data: banRecord } = await supabase.from('banned_emails').select('*').eq('email', normalizedEmail).maybeSingle();
+      if (banRecord && new Date(banRecord.banned_until) > new Date()) {
+        const availableDate = new Date(banRecord.banned_until).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        setCustomAlert(`This email is banned until ${availableDate}.`);
+        return;
+      }
+      if (banRecord) await supabase.from('banned_emails').delete().eq('email', normalizedEmail);
       const { error: orgErr } = await supabase.from('organizations').insert(newOrg);
       if (orgErr) throw orgErr;
       const { error: profErr } = await supabase.from('profiles').insert(newProfile);
@@ -2232,7 +2240,6 @@ export default function AppContainer() {
           console.error('Suspend error:', error);
           addNotification('Error suspending user', 'error');
         }
-        setConfirmModal(null);
       }
     });
   };
@@ -2258,7 +2265,39 @@ export default function AppContainer() {
         
         setProfiles(prev => prev.filter(p => p.id !== userId));
         addNotification('User profile deleted. Ban record (if any) remains active.', 'success');
-        setConfirmModal(null);
+      }
+    });
+  };
+
+  const handleReactivateUser = async (user) => {
+    const userEmail = user.email?.toLowerCase();
+    const banRecord = bannedEmails.find(b => b.email === userEmail);
+    const isBanActive = banRecord && new Date(banRecord.banned_until) > new Date();
+    if (isBanActive) {
+      setCustomAlert(`This email can be reactivated on ${formatOrgDate(banRecord.banned_until)}.`);
+      return;
+    }
+
+    setConfirmModal({
+      title: `Reactivate ${user.full_name}?`,
+      message: 'This will restore the user profile and reactivate their existing access card.',
+      onConfirm: async () => {
+        const nextRole = user.category === 'A' && user.domain === 'Admin' ? 'admin' : 'worker';
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: nextRole, is_locked: false, force_unlocked: false })
+          .eq('id', user.id);
+        if (error) throw error;
+
+        await supabase.from('digital_cards').update({ is_revoked: false }).eq('profile_id', user.id);
+        if (banRecord) {
+          await supabase.from('banned_emails').delete().eq('email', userEmail);
+          setBannedEmails(prev => prev.filter(b => b.email !== userEmail));
+        }
+
+        const updatedUser = { ...user, role: nextRole, is_locked: false, force_unlocked: false };
+        setProfiles(prev => prev.map(p => p.id === user.id ? updatedUser : p));
+        addNotification(`${user.full_name} reactivated successfully.`, 'success');
       }
     });
   };
@@ -2276,95 +2315,105 @@ export default function AppContainer() {
     const validExpiry = expiryDate && !Number.isNaN(expiryDate.getTime()) ? expiryDate : null;
     const derivedBanDate = validExpiry ? new Date(validExpiry.getTime() - (30 * 24 * 60 * 60 * 1000)) : null;
     const suspendedOn = org?.status === 'banned'
-      ? derivedBanDate
-      : (org?.updated_at || org?.created_at || null);
+      ? (org?.working_hours?.org_suspended_at || derivedBanDate)
+      : (org?.working_hours?.org_suspended_at || org?.updated_at || org?.created_at || null);
     return {
       suspendedOn,
-      eligibleOn: org?.status === 'banned' ? validExpiry : new Date(),
+      eligibleOn: org?.status === 'banned' ? validExpiry : null,
       isEligible: org?.status !== 'banned' || !validExpiry || validExpiry <= new Date(),
     };
   };
 
   const handleApproveOrgRequest = async (org) => {
-    if (!confirm(`Approve ${org.name}?`)) return;
+    setConfirmModal({
+      title: `Approve ${org.name}?`,
+      message: 'This will activate the organization, create or update the owner admin account, and send login credentials.',
+      onConfirm: async () => {
     
-    const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
-    const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-    const tempPassword = Math.random().toString(36).slice(-8);
+        const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
+        const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        const tempPassword = Math.random().toString(36).slice(-8);
 
-    await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
+        await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
     
-    let finalProfileId = null;
-    const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
+        let finalProfileId = null;
+        const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
     
-    if (existingProfile) {
-       finalProfileId = existingProfile.id;
-       await supabase.from('profiles').update({
-         organization_id: org.id, full_name: org.owner_name,
-         role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
-         card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
-       }).eq('id', existingProfile.id);
-    } else {
-       const { data: profileData } = await supabase.from('profiles').insert({ id: genId('user'),
-         organization_id: org.id, email: org.email, full_name: org.owner_name,
-         role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
-         card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
-       }).select().single();
-       if (profileData) finalProfileId = profileData.id;
-    }
+        if (existingProfile) {
+           finalProfileId = existingProfile.id;
+           await supabase.from('profiles').update({
+             organization_id: org.id, full_name: org.owner_name,
+             role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+             card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+           }).eq('id', existingProfile.id);
+        } else {
+           const { data: profileData } = await supabase.from('profiles').insert({ id: genId('user'),
+             organization_id: org.id, email: org.email, full_name: org.owner_name,
+             role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+             card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+           }).select().single();
+           if (profileData) finalProfileId = profileData.id;
+        }
 
-    if (finalProfileId) {
-      if (existingProfile) {
-        await supabase.from('digital_cards').update({
-          card_number: cardNumber, username, temp_password: tempPassword,
-          organization_id: org.id, email: org.email,
-          is_revoked: false
-        }).eq('profile_id', finalProfileId);
-      } else {
-        await supabase.from('digital_cards').insert({
-          card_number: cardNumber, username, temp_password: tempPassword,
-          profile_id: finalProfileId, organization_id: org.id, email: org.email,
-          is_revoked: false
-        });
+        if (finalProfileId) {
+          if (existingProfile) {
+            await supabase.from('digital_cards').update({
+              card_number: cardNumber, username, temp_password: tempPassword,
+              organization_id: org.id, email: org.email,
+              is_revoked: false
+            }).eq('profile_id', finalProfileId);
+          } else {
+            await supabase.from('digital_cards').insert({
+              card_number: cardNumber, username, temp_password: tempPassword,
+              profile_id: finalProfileId, organization_id: org.id, email: org.email,
+              is_revoked: false
+            });
+          }
+        }
+
+        try {
+          const res = await fetch('/api/send-invite', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name, role: 'admin' })
+          });
+          const data = await res.json();
+          if (!data.success || data.message?.includes('skipped')) {
+            console.warn('Email skipped or failed:', data);
+            setCustomAlert(`Approval successful, but Email was NOT sent.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+          } else {
+            addNotification(`Approved successfully and Email sent to ${org.email}!`, 'success');
+          }
+        } catch (e) {
+          console.error("Email might have failed", e);
+          setCustomAlert(`Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+        }
+
+        setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: 'active' } : o));
+        setViewOrgDetails(null);
+        setEditOrgData(null);
       }
-    }
-
-    try {
-      const res = await fetch('/api/send-invite', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name, role: 'admin' })
-      });
-      const data = await res.json();
-      if (!data.success || data.message?.includes('skipped')) {
-        console.warn('Email skipped or failed:', data);
-        alert(`Approval successful, but Email was NOT sent (Vercel config missing/failed).\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
-      } else {
-        addNotification(`Approved successfully and Email sent to ${org.email}!`, 'success');
-      }
-    } catch (e) {
-      console.error("Email might have failed", e);
-      alert(`Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
-    }
-
-    setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: 'active' } : o));
-    setViewOrgDetails(null);
-    setEditOrgData(null);
+    });
   };
 
   const handleRejectOrgRequest = async (org) => {
-    if (!confirm('Reject this organization?')) return;
+    setConfirmModal({
+      title: 'Reject Organization?',
+      message: 'This will delete the pending organization request and any temporary associated records.',
+      onConfirm: async () => {
 
-    const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
-    if (orgProfiles) {
-        for (const p of orgProfiles) {
-            await anonSupabase.from('digital_cards').delete().eq('profile_id', p.id);
-            await anonSupabase.from('profiles').delete().eq('id', p.id);
+        const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
+        if (orgProfiles) {
+            for (const p of orgProfiles) {
+                await anonSupabase.from('digital_cards').delete().eq('profile_id', p.id);
+                await anonSupabase.from('profiles').delete().eq('id', p.id);
+            }
         }
-    }
-    await anonSupabase.from('organizations').delete().eq('id', org.id);
-    setOrganizations(prev => prev.filter(o => o.id !== org.id));
-    setViewOrgDetails(null);
-    setEditOrgData(null);
+        await anonSupabase.from('organizations').delete().eq('id', org.id);
+        setOrganizations(prev => prev.filter(o => o.id !== org.id));
+        setViewOrgDetails(null);
+        setEditOrgData(null);
+      }
+    });
   };
 
   const handleChangeOrgStatus = async (org, newStatus) => {
@@ -2375,7 +2424,7 @@ export default function AppContainer() {
       msg = 'This will immediately lock out all users (Admin, Workers, Clients) of this organization. You can reactivate them later.';
     } else if (newStatus === 'banned') {
       title = 'Ban Organization for 30 Days?';
-      msg = 'This will ban the organization. They will be completely locked out. You can still reactivate them manually if needed.';
+      msg = 'This will ban the organization and block this email from registering again for 30 days.';
     } else if (newStatus === 'active') {
       title = 'Reactivate Organization?';
       msg = 'This will restore access to all users of this organization immediately.';
@@ -2386,17 +2435,29 @@ export default function AppContainer() {
       message: msg,
       onConfirm: async () => {
         try {
-          setConfirmModal(null);
           const currentHours = org.working_hours || {};
           const oneMonthFromNow = new Date();
           oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+          const nowIso = new Date().toISOString();
           const nextHours = {
             ...currentHours,
             org_banned_until: newStatus === 'banned' ? oneMonthFromNow.toISOString() : null,
+            org_suspended_at: newStatus === 'suspended' ? nowIso : (newStatus === 'banned' ? nowIso : null),
           };
           const updatePayload = { status: newStatus, working_hours: nextHours };
           const { data: updData, error: updErr } = await anonSupabase.from('organizations').update(updatePayload).eq('id', org.id).select();
             if (updErr || !updData || updData.length === 0) { alert('DB Update Failed (RLS Policy). Contact Support to fix permissions.'); return; }
+
+          if (newStatus === 'banned' && org.email) {
+            const newBanRecord = { email: org.email.toLowerCase(), banned_until: oneMonthFromNow.toISOString(), created_at: nowIso };
+            await anonSupabase.from('banned_emails').upsert(newBanRecord, { onConflict: 'email' });
+            setBannedEmails(prev => {
+              const existing = prev.find(b => b.email === newBanRecord.email);
+              return existing
+                ? prev.map(b => b.email === newBanRecord.email ? { ...b, ...newBanRecord } : b)
+                : [...prev, newBanRecord];
+            });
+          }
             
           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, ...updatePayload } : o));
           
@@ -2427,7 +2488,6 @@ export default function AppContainer() {
       message: msg,
       onConfirm: async () => {
         try {
-          setConfirmModal(null);
           const currentHours = org.working_hours || {};
           const newHours = { ...currentHours, is_org_locked: newLockState };
           
@@ -2458,8 +2518,6 @@ export default function AppContainer() {
       message: 'WARNING: This will permanently delete the organization, all its users, tasks, meetings, and data. This action cannot be undone.',
       onConfirm: async () => {
         try {
-          setConfirmModal(null);
-          
           // Use anonSupabase for all deletions to completely bypass RLS and avoid silent failures
           const { data: orgProfiles, error: fetchErr } = await anonSupabase.from('profiles').select('id').eq('organization_id', org.id);
           if (fetchErr) throw fetchErr;
@@ -2545,7 +2603,6 @@ export default function AppContainer() {
 
         setProfiles(prev => prev.map(u => u.id === userId ? { ...u, role: 'banned' } : u));
         addNotification('User banned (permanently deleted from view).', 'error');
-        setConfirmModal(null);
       }
     });
   };
@@ -2824,7 +2881,7 @@ export default function AppContainer() {
                  <Lock size={56} className="text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
               </div>
               <h2 className="text-2xl font-bold text-white mb-4">Access Locked</h2>
-              <p className="text-yellow-400 text-sm mb-6 leading-relaxed">کچھ مسئلہ پیش آ گیا ہے، کام جاری ہے۔ اکاؤنٹ جلد ہی بحال کر دیا جائے گا۔<br/><br/>(Some issue has occurred, work is in progress. The account will be reactivated as soon as the work is complete.)</p>
+              <p className="text-yellow-400 text-sm mb-6 leading-relaxed">Some issue has occurred, work is in progress. The account will be reactivated as soon as the work is complete.</p>
               <button
                 onClick={() => {
                   try { window.close(); } catch (e) {}
@@ -3481,7 +3538,7 @@ export default function AppContainer() {
 
       {/* ── CONFIRM MODAL ── */}
       {confirmModal && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[1000000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
           <div className="w-full max-w-sm bg-[#11081c] border border-orange-500/30 shadow-[0_0_40px_rgba(249,115,22,0.2)] rounded-3xl p-6 text-center animate-in zoom-in-95 duration-300">
             <div className="w-16 h-16 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center mx-auto mb-4 border border-orange-500/30">
               <ShieldAlert size={32} />
@@ -3498,6 +3555,7 @@ export default function AppContainer() {
                   await confirmModal.onConfirm();
                 } finally {
                   setIsConfirming(false);
+                  setConfirmModal(null);
                 }
               }} disabled={isConfirming} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 disabled:bg-red-500/50">
                 {isConfirming ? <Loader2 size={16} className="animate-spin" /> : null}
@@ -4624,6 +4682,7 @@ export default function AppContainer() {
                         const banRecord = bannedEmails.find(b => b.email === user.email?.toLowerCase());
                         const banDate = banRecord ? new Date(banRecord.created_at) : null;
                         const expiryDate = banRecord ? new Date(banRecord.banned_until) : null;
+                        const isBanActive = expiryDate && expiryDate > new Date();
                         
                         return (
                           <tr key={user.id} className={`border-b border-purple-500/5 hover:bg-red-950/10 transition-colors ${i % 2 === 0 ? '' : 'bg-[#0c0818]/40'}`}>
@@ -4640,23 +4699,29 @@ export default function AppContainer() {
                             </td>
                             <td className="px-4 py-3">
                               <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase border bg-red-950/40 border-red-500/30 text-red-300">
-                                {user.role}
+                                {banRecord ? 'banned' : user.role}
                               </span>
                             </td>
                             <td className="px-4 py-3">
                               <span className="text-[9px] font-semibold text-red-400">Access Revoked</span>
                             </td>
                             <td className="px-4 py-3 text-[10px] text-purple-300">
-                              {banDate ? banDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
+                              {banDate ? banDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Suspended only'}
                             </td>
                             <td className="px-4 py-3 text-[10px] font-mono text-yellow-400/80">
-                              {expiryDate ? expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
+                              {expiryDate ? expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Eligible now'}
                             </td>
                             <td className="px-4 py-3">
-                              <button onClick={() => handleDeletePermanentlyFromDB(user.id, user.email)} title="Permanently Delete From DB"
-                                className="px-3 py-1.5 bg-red-950/50 hover:bg-red-600/80 text-red-200 hover:text-white text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1">
-                                <UserX size={11} /> Delete Record
-                              </button>
+                              <div className="flex gap-2">
+                                <button onClick={() => handleReactivateUser(user)} disabled={isBanActive} title={isBanActive ? `Eligible on ${formatOrgDate(expiryDate)}` : 'Reactivate'}
+                                  className="px-3 py-1.5 bg-green-950/50 hover:bg-green-600/80 text-green-200 hover:text-white text-[10px] font-bold rounded-lg border border-green-500/30 transition-all flex items-center gap-1 disabled:bg-gray-900 disabled:border-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed">
+                                  <PlayCircle size={11} /> Reactivate
+                                </button>
+                                <button onClick={() => handleDeletePermanentlyFromDB(user.id, user.email)} title="Permanently Delete From DB"
+                                  className="px-3 py-1.5 bg-red-950/50 hover:bg-red-600/80 text-red-200 hover:text-white text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1">
+                                  <UserX size={11} /> Delete Record
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -5274,19 +5339,19 @@ export default function AppContainer() {
                   </div>
                 ) : (
                   <div className="overflow-hidden bg-[#11081c] border border-purple-500/20 rounded-2xl shadow-lg">
-                    <table className="w-full text-left text-sm text-purple-200">
-                      <thead className="bg-[#1a0e2e] text-purple-300 text-xs uppercase font-bold">
+                    <table className="w-full text-left text-xs text-purple-200">
+                      <thead className="bg-[#1a0e2e] text-purple-300 uppercase font-bold">
                         <tr>
-                          <th className="px-6 py-4">Software House</th>
-                          <th className="px-6 py-4">Owner</th>
-                          <th className="px-6 py-4">Status</th>
+                          <th className="px-4 py-3">Software House</th>
+                          <th className="px-4 py-3">Owner</th>
+                          <th className="px-4 py-3">Status</th>
                           {activeOrgsTab === 'suspended' && (
                             <>
-                              <th className="px-6 py-4">Suspended On</th>
-                              <th className="px-6 py-4">Eligible For Reactivation</th>
+                              <th className="px-4 py-3">Suspended On</th>
+                              <th className="px-4 py-3">Eligible For Reactivation</th>
                             </>
                           )}
-                          <th className="px-6 py-4 text-right">Actions</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-purple-500/10">
@@ -5303,12 +5368,12 @@ export default function AppContainer() {
                             : `Eligible on ${formatOrgDate(banInfo.eligibleOn)}`;
                           return (
                           <tr key={org.id} className="hover:bg-purple-900/10 transition-colors">
-                            <td className="px-6 py-4">
-                              <div className="font-bold text-white text-base">{org.name}</div>
+                            <td className="px-4 py-3">
+                              <div className="font-bold text-white text-sm">{org.name}</div>
                               <div className="text-xs text-purple-400 truncate max-w-[200px]">{org.email}</div>
                             </td>
-                            <td className="px-6 py-4 font-medium text-white">{org.owner_name}</td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-3 font-medium text-white">{org.owner_name}</td>
+                            <td className="px-4 py-3">
                               <div className="flex flex-col gap-1 items-start">
                                 {org.status === 'suspended' || org.status === 'banned' ? (
                                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-red-900/30 text-red-400 border border-red-500/20">{org.status}</span>
@@ -5322,18 +5387,18 @@ export default function AppContainer() {
                             </td>
                             {activeOrgsTab === 'suspended' && (
                               <>
-                                <td className="px-6 py-4 text-xs text-purple-300">
-                                  {formatOrgDate(banInfo.suspendedOn)}
+                                <td className="px-4 py-3 text-[10px] text-purple-300">
+                                  {banInfo.suspendedOn ? formatOrgDate(banInfo.suspendedOn) : 'Suspended only'}
                                 </td>
-                                <td className="px-6 py-4">
-                                  <div className="text-xs font-mono text-yellow-400/90">{formatOrgDate(banInfo.eligibleOn)}</div>
+                                <td className="px-4 py-3">
+                                  <div className="text-[10px] font-mono text-yellow-400/90">{banInfo.eligibleOn ? formatOrgDate(banInfo.eligibleOn) : 'Eligible now'}</div>
                                   <div className={`text-[10px] font-bold uppercase ${banInfo.isEligible ? 'text-green-400' : 'text-red-400'}`}>
                                     {banInfo.isEligible ? 'Eligible now' : '30-day ban active'}
                                   </div>
                                 </td>
                               </>
                             )}
-                            <td className="px-6 py-4 text-right">
+                            <td className="px-4 py-3 text-right">
                               <div className="flex justify-end gap-2">
                                 <button onClick={() => setViewOrgDetails(org)} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 text-xs font-bold transition-colors">View Details</button>
                                 
@@ -5793,11 +5858,11 @@ export default function AppContainer() {
                     <>
                       <div className="bg-red-900/10 p-4 rounded-xl border border-red-500/10">
                         <p className="text-[10px] uppercase font-bold text-red-400 mb-1">Suspended On</p>
-                        <p className="text-white font-medium">{formatOrgDate(banInfo.suspendedOn)}</p>
+                        <p className="text-white font-medium">{banInfo.suspendedOn ? formatOrgDate(banInfo.suspendedOn) : 'Suspended only'}</p>
                       </div>
                       <div className="bg-yellow-900/10 p-4 rounded-xl border border-yellow-500/10">
                         <p className="text-[10px] uppercase font-bold text-yellow-400 mb-1">Eligible For Reactivation</p>
-                        <p className="text-white font-medium">{formatOrgDate(banInfo.eligibleOn)}</p>
+                        <p className="text-white font-medium">{banInfo.eligibleOn ? formatOrgDate(banInfo.eligibleOn) : 'Eligible now'}</p>
                       </div>
                     </>
                   );

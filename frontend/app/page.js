@@ -43,11 +43,27 @@ export default function LandingPage() {
     const orgId = `org-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
     
     try {
+      const normalizedEmail = formData.email.toLowerCase().trim();
+      const { data: banRecord } = await supabase
+        .from('banned_emails')
+        .select('*')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (banRecord && new Date(banRecord.banned_until) > new Date()) {
+        const availableDate = new Date(banRecord.banned_until).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        throw new Error(`This email is banned until ${availableDate}. You cannot register this software house before that date.`);
+      }
+
+      if (banRecord) {
+        await supabase.from('banned_emails').delete().eq('email', normalizedEmail);
+      }
+
       const { error } = await supabase.from('organizations').insert({
         id: orgId,
         name: formData.orgName,
         owner_name: formData.ownerName,
-        email: formData.email,
+        email: normalizedEmail,
         phone: formData.phone,
         status: 'pending_approval', // This will be reviewed by Super Admin
         working_hours: { 
