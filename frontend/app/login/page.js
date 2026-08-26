@@ -24,7 +24,35 @@ const today = () => new Date().toISOString().split('T')[0];
 
 function checkIsEffectivelyLocked(user, org) {
   if (!user || user.role !== 'worker') return false;
-  return !!user.is_locked;
+  if (user.is_locked) return true;
+  if (user.force_unlocked) return false;
+
+  const workingHours = org?.working_hours || {};
+  if (workingHours.is_24_7 !== false) return false;
+
+  const workingDays = Array.isArray(org?.working_days) ? org.working_days.map(Number) : [];
+  const timeZone = workingHours.timezone || 'Asia/Karachi';
+  let zonedNow = new Date();
+  try {
+    zonedNow = new Date(new Date().toLocaleString('en-US', { timeZone }));
+  } catch (err) {
+    zonedNow = new Date();
+  }
+
+  if (workingDays.length > 0 && !workingDays.includes(zonedNow.getDay())) return true;
+
+  const toMinutes = (value, fallback) => {
+    const [hours, minutes] = String(value || fallback).split(':').map(Number);
+    return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+  };
+
+  const startMin = toMinutes(workingHours.start, '09:00');
+  const endMin = toMinutes(workingHours.end, '17:00');
+  const currentMin = zonedNow.getHours() * 60 + zonedNow.getMinutes();
+
+  if (startMin === endMin) return false;
+  if (startMin < endMin) return currentMin < startMin || currentMin > endMin;
+  return currentMin > endMin && currentMin < startMin;
 }
 
 // ─── Participant Video Tile ──────────────────────────────────────
@@ -838,9 +866,11 @@ export default function AppContainer() {
           console.log('🚨 POLLER KICKOUT: profile suspended', { data, error });
           setKickoutModal(true);
         } else if (data) {
-          if (currentUserRef.current?.is_locked !== data.is_locked || currentUserRef.current?.force_unlocked !== data.force_unlocked) {
-            setCurrentUser(prev => prev ? { ...prev, is_locked: data.is_locked, force_unlocked: data.force_unlocked } : prev);
-          }
+          setCurrentUser(prev => {
+            const nextUser = prev ? { ...prev, is_locked: data.is_locked, force_unlocked: data.force_unlocked } : prev;
+            setLockModal(checkIsEffectivelyLocked(nextUser, activeOrgRef.current));
+            return nextUser;
+          });
         }
 
         const orgId = activeOrgRef.current?.id;
@@ -852,7 +882,11 @@ export default function AppContainer() {
             .maybeSingle();
 
           if (orgData) {
-            setActiveOrg(prev => prev ? { ...prev, status: orgData.status, working_hours: orgData.working_hours } : prev);
+            setActiveOrg(prev => {
+              const nextOrg = prev ? { ...prev, status: orgData.status, working_hours: orgData.working_hours } : prev;
+              setLockModal(checkIsEffectivelyLocked(currentUserRef.current, nextOrg));
+              return nextOrg;
+            });
           }
         }
       } catch (err) {
@@ -2439,31 +2473,31 @@ export default function AppContainer() {
   const isOrgSuspended = activeOrg?.status === 'suspended' || activeOrg?.status === 'banned';
   const isOrgLocked = activeOrg?.working_hours?.is_org_locked === true || activeOrg?.is_org_locked === true;
 
-  if ((currentUser && currentUser.role !== 'super_admin' && isOrgSuspended) || authBlockedByOrg) {
-    if (true) {
-      return (
-        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95 backdrop-blur-lg p-4">
-          <div className="bg-slate-950 border-2 border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-[0_0_50px_rgba(239,68,68,0.3)]">
-            <div className="flex justify-center mb-6">
-               <ShieldAlert size={64} className="text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] animate-pulse" />
-            </div>
-            <h2 className="text-3xl font-black text-white mb-4 tracking-wider">Access Revoked</h2>
-            <p className="text-red-400 text-sm mb-8 leading-relaxed font-medium">Your organization's access to AuraSuite has been suspended or banned by the Super Admin. Please contact support for further details.</p>
-            <button
-              onClick={() => {
-                try { window.close(); } catch (e) {}
-                localStorage.removeItem("aura_session");
-                sessionStorage.removeItem("aura_session");
-                window.location.href = "/";
-              }}
-              className="w-full py-4 bg-red-950 hover:bg-red-900 text-white font-bold rounded-xl border border-red-500/30 transition-all uppercase tracking-widest"
-            >
-              Close Portal
-            </button>
+  if (currentUser && currentUser.role !== 'super_admin') {
+    if (isOrgSuspended || authBlockedByOrg) {
+    return (
+      <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95 backdrop-blur-lg p-4">
+        <div className="bg-slate-950 border-2 border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-[0_0_50px_rgba(239,68,68,0.3)]">
+          <div className="flex justify-center mb-6">
+             <ShieldAlert size={64} className="text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] animate-pulse" />
           </div>
+          <h2 className="text-3xl font-black text-white mb-4 tracking-wider">Access Revoked</h2>
+          <p className="text-red-400 text-sm mb-8 leading-relaxed font-medium">Your organization's access to AuraSuite has been suspended or banned by the Super Admin. Please contact support for further details.</p>
+          <button
+            onClick={() => {
+              try { window.close(); } catch (e) {}
+              localStorage.removeItem("aura_session");
+              sessionStorage.removeItem("aura_session");
+              window.location.href = "/";
+            }}
+            className="w-full py-4 bg-red-950 hover:bg-red-900 text-white font-bold rounded-xl border border-red-500/30 transition-all uppercase tracking-widest"
+          >
+            Close Portal
+          </button>
         </div>
-      );
-    }
+      </div>
+    );
+  }
     if (isOrgLocked) {
       return (
         <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">

@@ -30,7 +30,35 @@ const today = () => new Date().toISOString().split('T')[0];
 
 function checkIsEffectivelyLocked(user, org) {
   if (!user || user.role !== 'worker') return false;
-  return !!user.is_locked;
+  if (user.is_locked) return true;
+  if (user.force_unlocked) return false;
+
+  const workingHours = org?.working_hours || {};
+  if (workingHours.is_24_7 !== false) return false;
+
+  const workingDays = Array.isArray(org?.working_days) ? org.working_days.map(Number) : [];
+  const timeZone = workingHours.timezone || 'Asia/Karachi';
+  let zonedNow = new Date();
+  try {
+    zonedNow = new Date(new Date().toLocaleString('en-US', { timeZone }));
+  } catch (err) {
+    zonedNow = new Date();
+  }
+
+  if (workingDays.length > 0 && !workingDays.includes(zonedNow.getDay())) return true;
+
+  const toMinutes = (value, fallback) => {
+    const [hours, minutes] = String(value || fallback).split(':').map(Number);
+    return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+  };
+
+  const startMin = toMinutes(workingHours.start, '09:00');
+  const endMin = toMinutes(workingHours.end, '17:00');
+  const currentMin = zonedNow.getHours() * 60 + zonedNow.getMinutes();
+
+  if (startMin === endMin) return false;
+  if (startMin < endMin) return currentMin < startMin || currentMin > endMin;
+  return currentMin > endMin && currentMin < startMin;
 }
 
 // ─── Participant Video Tile ──────────────────────────────────────
