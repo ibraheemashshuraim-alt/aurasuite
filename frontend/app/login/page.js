@@ -868,6 +868,19 @@ export default function AppContainer() {
             setCurrentUser(prev => prev ? { ...prev, is_locked: data.is_locked, force_unlocked: data.force_unlocked } : prev);
           }
         }
+
+        const orgId = activeOrgRef.current?.id;
+        if (orgId) {
+          const { data: orgData } = await supabase
+            .from('organizations')
+            .select('status, working_hours')
+            .eq('id', orgId)
+            .maybeSingle();
+
+          if (orgData) {
+            setActiveOrg(prev => prev ? { ...prev, status: orgData.status, working_hours: orgData.working_hours } : prev);
+          }
+        }
       } catch (err) {
         // Silence errors
       }
@@ -2438,6 +2451,60 @@ export default function AppContainer() {
   }
 
   // 🚨🚨 LOCK MODAL OVERLAY 🚨🚨
+  const isOrgSuspended = activeOrg?.status === 'suspended' || activeOrg?.status === 'banned';
+  const isOrgLocked = activeOrg?.working_hours?.is_org_locked;
+
+  if (currentUser && currentUser.role !== 'super_admin') {
+    if (isOrgSuspended) {
+      return (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95 backdrop-blur-lg p-4">
+          <div className="bg-slate-950 border-2 border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-[0_0_50px_rgba(239,68,68,0.3)]">
+            <div className="flex justify-center mb-6">
+               <ShieldAlert size={64} className="text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)] animate-pulse" />
+            </div>
+            <h2 className="text-3xl font-black text-white mb-4 tracking-wider">Access Revoked</h2>
+            <p className="text-red-400 text-sm mb-8 leading-relaxed font-medium">Your organization's access to AuraSuite has been suspended or banned by the Super Admin. Please contact support for further details.</p>
+            <button
+              onClick={() => {
+                try { window.close(); } catch (e) {}
+                localStorage.removeItem("aura_session");
+                sessionStorage.removeItem("aura_session");
+                window.location.href = "/";
+              }}
+              className="w-full py-4 bg-red-950 hover:bg-red-900 text-white font-bold rounded-xl border border-red-500/30 transition-all uppercase tracking-widest"
+            >
+              Close Portal
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (isOrgLocked) {
+      return (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+          <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+            <div className="flex justify-center mb-6">
+               <Lock size={56} className="text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-4">Access Locked</h2>
+            <p className="text-yellow-400 text-sm mb-6 leading-relaxed">کوئی مسئلہ آیا ہے کام جاری ہے۔ کام مکمل ہوتے ہی اکاؤنٹ دوبارہ ایکٹیو کر دیا جائے گا۔<br/><br/>(Some issue has occurred, work is in progress. The account will be reactivated as soon as the work is complete.)</p>
+            <button
+              onClick={() => {
+                try { window.close(); } catch (e) {}
+                localStorage.removeItem("aura_session");
+                sessionStorage.removeItem("aura_session");
+                window.location.href = "/";
+              }}
+              className="px-8 py-3 bg-yellow-950/60 hover:bg-yellow-900/80 text-white font-semibold rounded-xl border border-yellow-500/30 transition-all"
+            >
+              Close Portal
+            </button>
+          </div>
+        </div>
+      );
+    }
+  }
+
   const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
   if (isEffectivelyLocked && currentUser?.role === "worker") {
     return (

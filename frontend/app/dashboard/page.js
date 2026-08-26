@@ -225,11 +225,13 @@ export default function AppContainer() {
   const [timeTick, setTimeTick] = useState(0);
 
   
-    // Robust Worker State Poller (Guarantees live lock/unlock and org hours sync)
+    // Robust access poller (keeps user and organization locks live even if realtime misses)
     useEffect(() => {
       const int = setInterval(async () => {
-        if (currentUserRef.current?.role !== 'worker') return;
-        if (currentUserRef.current?.id) {
+        const currentUser = currentUserRef.current;
+        if (!currentUser?.id) return;
+
+        if (currentUser.role === 'worker') {
           const { data: userData } = await supabase.from('profiles').select('is_locked, force_unlocked').eq('id', currentUserRef.current.id).single();
           if (userData) {
             setCurrentUser(prev => {
@@ -240,11 +242,12 @@ export default function AppContainer() {
             });
           }
         }
+
         if (activeOrgRef.current?.id) {
-          const { data: orgData } = await supabase.from('organizations').select('working_hours').eq('id', activeOrgRef.current.id).single();
+          const { data: orgData } = await supabase.from('organizations').select('status, working_hours').eq('id', activeOrgRef.current.id).single();
           if (orgData) {
             setActiveOrg(prev => {
-              const nextOrg = prev ? { ...prev, working_hours: orgData.working_hours } : prev;
+              const nextOrg = prev ? { ...prev, status: orgData.status, working_hours: orgData.working_hours } : prev;
               if (checkIsEffectivelyLocked(currentUserRef.current, nextOrg)) setLockModal(true);
               else setLockModal(false);
               return nextOrg;
@@ -2258,16 +2261,24 @@ export default function AppContainer() {
       onConfirm: async () => {
         try {
           setConfirmModal(null);
-          const { data: updData, error: updErr } = await anonSupabase.from('organizations').update({ status: newStatus }).eq('id', org.id).select();
+          const currentHours = org.working_hours || {};
+          const oneMonthFromNow = new Date();
+          oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+          const nextHours = {
+            ...currentHours,
+            org_banned_until: newStatus === 'banned' ? oneMonthFromNow.toISOString() : null,
+          };
+          const updatePayload = { status: newStatus, working_hours: nextHours };
+          const { data: updData, error: updErr } = await anonSupabase.from('organizations').update(updatePayload).eq('id', org.id).select();
             if (updErr || !updData || updData.length === 0) { alert('DB Update Failed (RLS Policy). Contact Support to fix permissions.'); return; }
             
-          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: newStatus } : o));
+          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, ...updatePayload } : o));
           
           if (kickoutChannelRef.current) {
             await kickoutChannelRef.current.send({
               type: 'broadcast',
               event: 'org-updated',
-              payload: { orgId: org.id, status: newStatus }
+              payload: { orgId: org.id, ...updatePayload }
             });
           }
           addNotification(`Organization status updated to ${newStatus}.`, 'success');
