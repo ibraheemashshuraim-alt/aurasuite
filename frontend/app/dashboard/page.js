@@ -413,6 +413,9 @@ export default function AppContainer() {
 
   // ── Nav ──
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeOrgsTab, setActiveOrgsTab] = useState('active');
+  const [viewOrgDetails, setViewOrgDetails] = useState(null);
+
   useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
   useEffect(() => { localStorage.setItem('aura_admin_tab', activeTab); }, [activeTab]);
 
@@ -2224,6 +2227,106 @@ export default function AppContainer() {
         setProfiles(prev => prev.filter(p => p.id !== userId));
         addNotification('User profile deleted. Ban record (if any) remains active.', 'success');
         setConfirmModal(null);
+      }
+    });
+  };
+
+  
+  const handleChangeOrgStatus = async (org, newStatus) => {
+    let title = '';
+    let msg = '';
+    if (newStatus === 'suspended') {
+      title = 'Suspend Organization?';
+      msg = 'This will immediately lock out all users (Admin, Workers, Clients) of this organization. You can reactivate them later.';
+    } else if (newStatus === 'banned') {
+      title = 'Ban Organization for 30 Days?';
+      msg = 'This will ban the organization. They will be completely locked out. You can still reactivate them manually if needed.';
+    } else if (newStatus === 'active') {
+      title = 'Reactivate Organization?';
+      msg = 'This will restore access to all users of this organization immediately.';
+    }
+
+    setConfirmModal({
+      title,
+      message: msg,
+      onConfirm: async () => {
+        try {
+          await supabase.from('organizations').update({ status: newStatus }).eq('id', org.id);
+          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: newStatus } : o));
+          
+          if (kickoutChannelRef.current) {
+            await kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: 'org-updated',
+              payload: { orgId: org.id, status: newStatus }
+            });
+          }
+          addNotification(`Organization status updated to ${newStatus}.`, 'success');
+        } catch (err) {
+          console.error(err);
+          addNotification('Failed to update organization status.', 'error');
+        }
+      }
+    });
+  };
+
+  const handleToggleOrgLock = async (org) => {
+    const isLocked = org.working_hours?.is_org_locked;
+    const newLockState = !isLocked;
+    const title = newLockState ? 'Lock Organization (Work in Progress)?' : 'Unlock Organization?';
+    const msg = newLockState ? 'This will lock out all users and show them a "Work in progress" screen.' : 'This will unlock the organization and restore normal access.';
+
+    setConfirmModal({
+      title,
+      message: msg,
+      onConfirm: async () => {
+        try {
+          const currentHours = org.working_hours || {};
+          const newHours = { ...currentHours, is_org_locked: newLockState };
+          
+          await supabase.from('organizations').update({ working_hours: newHours }).eq('id', org.id);
+          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, working_hours: newHours } : o));
+          
+          if (kickoutChannelRef.current) {
+            await kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: 'org-updated',
+              payload: { orgId: org.id, working_hours: newHours }
+            });
+          }
+          addNotification(newLockState ? 'Organization Locked.' : 'Organization Unlocked.', 'success');
+        } catch (err) {
+          console.error(err);
+          addNotification('Failed to toggle lock.', 'error');
+        }
+      }
+    });
+  };
+
+  const handleDeleteOrg = async (org) => {
+    setConfirmModal({
+      title: `Delete ${org.name} forever?`,
+      message: 'WARNING: This will permanently delete the organization, all its users, tasks, meetings, and data. This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
+          if (orgProfiles) {
+              for (const p of orgProfiles) {
+                  await supabase.from('digital_cards').delete().eq('profile_id', p.id);
+                  await supabase.from('presence').delete().eq('user_id', p.id);
+                  await supabase.from('tasks').delete().eq('assigned_to', p.id);
+                  await supabase.from('profiles').delete().eq('id', p.id);
+              }
+          }
+          await supabase.from('meetings').delete().eq('organization_id', org.id);
+          await supabase.from('tasks').delete().eq('organization_id', org.id);
+          await supabase.from('organizations').delete().eq('id', org.id);
+          setOrganizations(prev => prev.filter(o => o.id !== org.id));
+          addNotification('Organization deleted successfully.', 'success');
+        } catch (err) {
+          console.error(err);
+          addNotification('Failed to delete organization.', 'error');
+        }
       }
     });
   };
