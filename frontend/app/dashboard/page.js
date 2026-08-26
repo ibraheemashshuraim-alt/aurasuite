@@ -2252,7 +2252,8 @@ export default function AppContainer() {
       onConfirm: async () => {
         try {
           setConfirmModal(null);
-          await supabase.from('organizations').update({ status: newStatus }).eq('id', org.id);
+          const { error: updErr } = await supabase.from('organizations').update({ status: newStatus }).eq('id', org.id);
+            if (updErr) { alert('DB Update Failed: ' + updErr.message); throw updErr; }
           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: newStatus } : o));
           
           if (kickoutChannelRef.current) {
@@ -2286,7 +2287,8 @@ export default function AppContainer() {
           const currentHours = org.working_hours || {};
           const newHours = { ...currentHours, is_org_locked: newLockState };
           
-          await supabase.from('organizations').update({ working_hours: newHours }).eq('id', org.id);
+          const { error: lockErr } = await supabase.from('organizations').update({ working_hours: newHours }).eq('id', org.id);
+            if (lockErr) { alert('DB Update Failed: ' + lockErr.message); throw lockErr; }
           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, working_hours: newHours } : o));
           
           if (kickoutChannelRef.current) {
