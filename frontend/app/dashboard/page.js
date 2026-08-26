@@ -2264,6 +2264,109 @@ export default function AppContainer() {
   };
 
   
+  const formatOrgDate = (dateValue) => {
+    if (!dateValue) return 'Unknown';
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return 'Unknown';
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const getOrgBanInfo = (org) => {
+    const expiryDate = org?.working_hours?.org_banned_until ? new Date(org.working_hours.org_banned_until) : null;
+    const validExpiry = expiryDate && !Number.isNaN(expiryDate.getTime()) ? expiryDate : null;
+    const derivedBanDate = validExpiry ? new Date(validExpiry.getTime() - (30 * 24 * 60 * 60 * 1000)) : null;
+    const suspendedOn = org?.status === 'banned'
+      ? derivedBanDate
+      : (org?.updated_at || org?.created_at || null);
+    return {
+      suspendedOn,
+      eligibleOn: org?.status === 'banned' ? validExpiry : new Date(),
+      isEligible: org?.status !== 'banned' || !validExpiry || validExpiry <= new Date(),
+    };
+  };
+
+  const handleApproveOrgRequest = async (org) => {
+    if (!confirm(`Approve ${org.name}?`)) return;
+    
+    const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
+    const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    const tempPassword = Math.random().toString(36).slice(-8);
+
+    await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
+    
+    let finalProfileId = null;
+    const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
+    
+    if (existingProfile) {
+       finalProfileId = existingProfile.id;
+       await supabase.from('profiles').update({
+         organization_id: org.id, full_name: org.owner_name,
+         role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+         card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+       }).eq('id', existingProfile.id);
+    } else {
+       const { data: profileData } = await supabase.from('profiles').insert({ id: genId('user'),
+         organization_id: org.id, email: org.email, full_name: org.owner_name,
+         role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
+         card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
+       }).select().single();
+       if (profileData) finalProfileId = profileData.id;
+    }
+
+    if (finalProfileId) {
+      if (existingProfile) {
+        await supabase.from('digital_cards').update({
+          card_number: cardNumber, username, temp_password: tempPassword,
+          organization_id: org.id, email: org.email,
+          is_revoked: false
+        }).eq('profile_id', finalProfileId);
+      } else {
+        await supabase.from('digital_cards').insert({
+          card_number: cardNumber, username, temp_password: tempPassword,
+          profile_id: finalProfileId, organization_id: org.id, email: org.email,
+          is_revoked: false
+        });
+      }
+    }
+
+    try {
+      const res = await fetch('/api/send-invite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name, role: 'admin' })
+      });
+      const data = await res.json();
+      if (!data.success || data.message?.includes('skipped')) {
+        console.warn('Email skipped or failed:', data);
+        alert(`Approval successful, but Email was NOT sent (Vercel config missing/failed).\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+      } else {
+        addNotification(`Approved successfully and Email sent to ${org.email}!`, 'success');
+      }
+    } catch (e) {
+      console.error("Email might have failed", e);
+      alert(`Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+    }
+
+    setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: 'active' } : o));
+    setViewOrgDetails(null);
+    setEditOrgData(null);
+  };
+
+  const handleRejectOrgRequest = async (org) => {
+    if (!confirm('Reject this organization?')) return;
+
+    const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
+    if (orgProfiles) {
+        for (const p of orgProfiles) {
+            await anonSupabase.from('digital_cards').delete().eq('profile_id', p.id);
+            await anonSupabase.from('profiles').delete().eq('id', p.id);
+        }
+    }
+    await anonSupabase.from('organizations').delete().eq('id', org.id);
+    setOrganizations(prev => prev.filter(o => o.id !== org.id));
+    setViewOrgDetails(null);
+    setEditOrgData(null);
+  };
+
   const handleChangeOrgStatus = async (org, newStatus) => {
     let title = '';
     let msg = '';
@@ -5093,139 +5196,51 @@ export default function AppContainer() {
                   <p className="text-purple-300">All registrations have been processed.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="overflow-hidden bg-[#11081c] border border-purple-500/20 rounded-2xl shadow-lg">
+                  <table className="w-full text-left text-sm text-purple-200">
+                    <thead className="bg-[#1a0e2e] text-purple-300 text-xs uppercase font-bold">
+                      <tr>
+                        <th className="px-6 py-4">Software House</th>
+                        <th className="px-6 py-4">Owner</th>
+                        <th className="px-6 py-4">Business Type</th>
+                        <th className="px-6 py-4">Contact</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-purple-500/10">
                   {organizations.filter(o => o.status === 'pending_approval').map(org => (
-                    <div key={org.id} className="bg-[#11081c] border border-purple-500/20 rounded-2xl p-6 hover:border-red-500/40 transition-colors shadow-lg relative overflow-hidden">
-                      <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/10 rounded-full blur-2xl pointer-events-none" />
-                      <div className="flex justify-between items-start mb-6">
-                        <div>
-                          <h3 className="text-xl font-bold text-white mb-1">{org.name}</h3>
-                          <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider bg-purple-900/30 px-2 py-1 rounded">{org.working_hours?.business_type || 'Unknown Type'}</span>
+                    <tr key={org.id} className="hover:bg-purple-900/10 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-white text-base">{org.name}</div>
+                        <div className="text-xs text-purple-400 truncate max-w-[220px]">{org.email}</div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-white">{org.owner_name || 'N/A'}</td>
+                      <td className="px-6 py-4">
+                        <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider bg-purple-900/30 px-2 py-1 rounded border border-purple-500/20">
+                          {org.working_hours?.business_type || org.type || 'Unknown'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-xs text-white">{org.phone || 'N/A'}</div>
+                        <div className="text-[10px] text-purple-400">{org.working_hours?.city || 'City not set'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => setViewOrgDetails(org)} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 text-xs font-bold transition-colors">
+                            View Details
+                          </button>
+                          <button onClick={() => handleApproveOrgRequest(org)} className="px-3 py-1.5 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg hover:bg-green-500/20 text-xs font-bold flex items-center gap-1 transition-colors">
+                            <CheckCircle size={14}/> Approve
+                          </button>
+                          <button onClick={() => handleRejectOrgRequest(org)} className="p-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors" title="Reject">
+                            <XCircle size={15} />
+                          </button>
                         </div>
-                      </div>
-                      <div className="space-y-3 mb-8 text-sm">
-                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                          <span className="text-purple-400">Owner</span>
-                          <span className="text-white font-medium">{org.owner_name}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                          <span className="text-purple-400">Email</span>
-                          <span className="text-white font-medium truncate ml-4">{org.email}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                          <span className="text-purple-400">Phone</span>
-                          <span className="text-white font-medium">{org.phone || 'N/A'}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                          <span className="text-purple-400">Team Size</span>
-                          <span className="text-white font-medium">{org.working_hours?.team_size || '1-10'}</span>
-                        </div>
-                        {org.working_hours?.cnic && (
-                          <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                            <span className="text-red-400 font-semibold">CNIC</span>
-                            <span className="text-white font-medium tracking-wider">{org.working_hours.cnic}</span>
-                          </div>
-                        )}
-                        {org.working_hours?.city && (
-                          <div className="flex justify-between border-b border-purple-500/10 pb-2">
-                            <span className="text-purple-400">City</span>
-                            <span className="text-white font-medium">{org.working_hours.city}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex gap-3">
-                        <button onClick={async () => {
-                          if (!confirm(`Approve ${org.name}?`)) return;
-                          
-                          const cardNumber = `AS-2026-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
-                          const username = `admin_${org.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-                          const tempPassword = Math.random().toString(36).slice(-8);
-
-                          await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
-                          
-                          let finalProfileId = null;
-                          const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
-                          
-                          if (existingProfile) {
-                             finalProfileId = existingProfile.id;
-                             await supabase.from('profiles').update({
-                               organization_id: org.id, full_name: org.owner_name,
-                               role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
-                               card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
-                             }).eq('id', existingProfile.id);
-                          } else {
-                             const { data: profileData } = await supabase.from('profiles').insert({ id: genId('user'),
-                               organization_id: org.id, email: org.email, full_name: org.owner_name,
-                               role: 'admin', category: 'A', domain: 'Admin', username, password_hash: tempPassword,
-                               card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
-                             }).select().single();
-                             if (profileData) finalProfileId = profileData.id;
-                          }
-
-                          let updatedOrNewProfile = null;
-                          if (finalProfileId) {
-                            if (existingProfile) {
-                              await supabase.from('digital_cards').update({
-                                card_number: cardNumber, username, temp_password: tempPassword,
-                                organization_id: org.id, email: org.email,
-                                is_revoked: false
-                              }).eq('profile_id', finalProfileId);
-                              
-                              updatedOrNewProfile = {
-                                ...existingProfile,
-                                organization_id: org.id, full_name: org.owner_name,
-                                role: 'admin', category: 'A', domain: 'Admin', username,
-                                card_number: cardNumber, is_first_login: true, org_mode: org.working_hours?.business_type || 'software_house'
-                              };
-                            } else {
-                              await supabase.from('digital_cards').insert({
-                                card_number: cardNumber, username, temp_password: tempPassword,
-                                profile_id: finalProfileId, organization_id: org.id, email: org.email,
-                                is_revoked: false
-                              });
-                            }
-                          }
-
-                          try {
-                            const res = await fetch('/api/send-invite', {
-                              method: 'POST', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ to: org.email, name: org.owner_name, cardNumber, username, tempPassword, orgName: org.name, role: 'admin' })
-                            });
-                            const data = await res.json();
-                            if (!data.success || data.message?.includes('skipped')) {
-                              console.warn('Email skipped or failed:', data);
-                              alert(`⚠️ Approval successful, but Email was NOT sent (Vercel config missing/failed).\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
-                            } else {
-                              addNotification(`✅ Approved successfully and Email sent to ${org.email}!`, 'success');
-                            }
-                          } catch (e) {
-                            console.error("Email might have failed", e);
-                            alert(`⚠️ Approval successful, but Email failed to send.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
-                          }
-
-                          setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o } : o));
-                        }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold shadow-[0_0_20px_rgba(34,197,94,0.3)] hover:scale-[1.02] flex items-center justify-center gap-2 transition-all">
-                          <CheckCircle size={18}/> Approve
-                        </button>
-                        <button onClick={async () => {
-                          if (!confirm('Reject this organization?')) return;
-                          // Delete associated cards and profiles first
-                          setConfirmModal(null);
-          const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
-                          if (orgProfiles) {
-                              for (const p of orgProfiles) {
-                                  await anonSupabase.from('digital_cards').delete().eq('profile_id', p.id);
-                                  await anonSupabase.from('profiles').delete().eq('id', p.id);
-                              }
-                          }
-                          await anonSupabase.from('organizations').delete().eq('id', org.id);
-                          setOrganizations(prev => prev.filter(o => o.id !== org.id));
-                        }} className="px-4 py-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
-                          <XCircle size={20} />
-                        </button>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -5265,6 +5280,12 @@ export default function AppContainer() {
                           <th className="px-6 py-4">Software House</th>
                           <th className="px-6 py-4">Owner</th>
                           <th className="px-6 py-4">Status</th>
+                          {activeOrgsTab === 'suspended' && (
+                            <>
+                              <th className="px-6 py-4">Suspended On</th>
+                              <th className="px-6 py-4">Eligible For Reactivation</th>
+                            </>
+                          )}
                           <th className="px-6 py-4 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -5275,7 +5296,12 @@ export default function AppContainer() {
                           if (isSuperA && !isSuperB) return -1;
                           if (!isSuperA && isSuperB) return 1;
                           return 0;
-                        }).map(org => (
+                        }).map(org => {
+                          const banInfo = getOrgBanInfo(org);
+                          const reactivationTitle = banInfo.isEligible
+                            ? 'Reactivate'
+                            : `Eligible on ${formatOrgDate(banInfo.eligibleOn)}`;
+                          return (
                           <tr key={org.id} className="hover:bg-purple-900/10 transition-colors">
                             <td className="px-6 py-4">
                               <div className="font-bold text-white text-base">{org.name}</div>
@@ -5294,6 +5320,19 @@ export default function AppContainer() {
                                 )}
                               </div>
                             </td>
+                            {activeOrgsTab === 'suspended' && (
+                              <>
+                                <td className="px-6 py-4 text-xs text-purple-300">
+                                  {formatOrgDate(banInfo.suspendedOn)}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="text-xs font-mono text-yellow-400/90">{formatOrgDate(banInfo.eligibleOn)}</div>
+                                  <div className={`text-[10px] font-bold uppercase ${banInfo.isEligible ? 'text-green-400' : 'text-red-400'}`}>
+                                    {banInfo.isEligible ? 'Eligible now' : '30-day ban active'}
+                                  </div>
+                                </td>
+                              </>
+                            )}
                             <td className="px-6 py-4 text-right">
                               <div className="flex justify-end gap-2">
                                 <button onClick={() => setViewOrgDetails(org)} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 text-xs font-bold transition-colors">View Details</button>
@@ -5311,10 +5350,10 @@ export default function AppContainer() {
                                   </>
                                 ) : (
                                   <>
-                                    {org.status === 'banned' ? (
-                                      <button disabled title="Banned for 30 Days from date of ban" className="p-1.5 bg-gray-900 border border-gray-700 rounded-lg text-gray-500 cursor-not-allowed transition-all"><PlayCircle size={14} /></button>
+                                    {!banInfo.isEligible ? (
+                                      <button disabled title={reactivationTitle} className="p-1.5 bg-gray-900 border border-gray-700 rounded-lg text-gray-500 cursor-not-allowed transition-all"><PlayCircle size={14} /></button>
                                     ) : (
-                                      <button onClick={() => handleChangeOrgStatus(org, 'active')} title="Reactivate" className="p-1.5 bg-green-950/30 border border-green-500/20 rounded-lg text-green-400 hover:text-white hover:border-green-500/50 transition-all"><PlayCircle size={14} /></button>
+                                      <button onClick={() => handleChangeOrgStatus(org, 'active')} title={reactivationTitle} className="p-1.5 bg-green-950/30 border border-green-500/20 rounded-lg text-green-400 hover:text-white hover:border-green-500/50 transition-all"><PlayCircle size={14} /></button>
                                     )}
                                     <button onClick={() => handleDeleteOrg(org)} title="Delete Forever" className="p-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-400 hover:text-white hover:border-red-500/50 transition-all"><Trash2 size={14} /></button>
                                   </>
@@ -5322,7 +5361,8 @@ export default function AppContainer() {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -5741,9 +5781,40 @@ export default function AppContainer() {
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">Business Type</p>
                   {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm uppercase" value={editOrgData.business_type} onChange={e => setEditOrgData({...editOrgData, business_type: e.target.value})} /> : <p className="text-white font-medium uppercase">{viewOrgDetails.working_hours?.business_type || viewOrgDetails.type || 'N/A'}</p>}
                 </div>
+                {viewOrgDetails.status === 'pending_approval' && (
+                  <div className="bg-red-900/10 p-4 rounded-xl border border-red-500/10">
+                    <p className="text-[10px] uppercase font-bold text-red-400 mb-1">Approval Status</p>
+                    <p className="text-white font-medium">Pending review</p>
+                  </div>
+                )}
+                {(viewOrgDetails.status === 'suspended' || viewOrgDetails.status === 'banned') && (() => {
+                  const banInfo = getOrgBanInfo(viewOrgDetails);
+                  return (
+                    <>
+                      <div className="bg-red-900/10 p-4 rounded-xl border border-red-500/10">
+                        <p className="text-[10px] uppercase font-bold text-red-400 mb-1">Suspended On</p>
+                        <p className="text-white font-medium">{formatOrgDate(banInfo.suspendedOn)}</p>
+                      </div>
+                      <div className="bg-yellow-900/10 p-4 rounded-xl border border-yellow-500/10">
+                        <p className="text-[10px] uppercase font-bold text-yellow-400 mb-1">Eligible For Reactivation</p>
+                        <p className="text-white font-medium">{formatOrgDate(banInfo.eligibleOn)}</p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
-            <div className="p-4 border-t border-purple-500/20 bg-black/20 flex justify-end">
+            <div className="p-4 border-t border-purple-500/20 bg-black/20 flex justify-end gap-2">
+              {viewOrgDetails.status === 'pending_approval' && (
+                <>
+                  <button onClick={() => handleRejectOrgRequest(viewOrgDetails)} className="px-5 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-sm font-bold rounded-xl transition-colors flex items-center gap-2">
+                    <XCircle size={15} /> Reject
+                  </button>
+                  <button onClick={() => handleApproveOrgRequest(viewOrgDetails)} className="px-5 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 text-sm font-bold rounded-xl transition-colors flex items-center gap-2">
+                    <CheckCircle size={15} /> Approve
+                  </button>
+                </>
+              )}
               <button onClick={() => { setViewOrgDetails(null); setEditOrgData(null); }} className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-colors">Close</button>
             </div>
           </div>
