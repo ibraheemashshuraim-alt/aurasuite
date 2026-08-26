@@ -2737,8 +2737,10 @@ export default function AppContainer() {
       }
     }
 
-    const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
-  if (isEffectivelyLocked && currentUser?.role === "worker") {
+    const isOrgLockedBySuperAdmin = activeOrg?.working_hours?.is_org_locked;
+    const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg) || isOrgLockedBySuperAdmin;
+    const shouldShowLockScreen = (isEffectivelyLocked && currentUser?.role === "worker") || (isOrgLockedBySuperAdmin && currentUser?.role === "admin");
+    if (shouldShowLockScreen) {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
         <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
