@@ -978,9 +978,20 @@ export default function AppContainer() {
         setAuthCardNumber(cardParam);
         setAuthUsername(userParam);
         setLoginMode('worker');
-        supabase.from('digital_cards').select('is_revoked').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(({data}) => { 
-          if (data?.is_revoked) setKickoutModal(true); 
-          setIsCheckingSession(false);
+        supabase.from('digital_cards').select('is_revoked, organization_id').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(({data}) => { 
+          if (data?.is_revoked) {
+            setKickoutModal(true); 
+            setIsCheckingSession(false);
+          } else if (data?.organization_id) {
+            supabase.from('organizations').select('status').eq('id', data.organization_id).single().then(({data: orgData}) => {
+              if (orgData?.status === 'suspended' || orgData?.status === 'banned') {
+                setAuthBlockedByOrg(true);
+              }
+              setIsCheckingSession(false);
+            }).catch(() => setIsCheckingSession(false));
+          } else {
+            setIsCheckingSession(false);
+          }
         }).catch(() => setIsCheckingSession(false));
       } else {
         setIsCheckingSession(false);

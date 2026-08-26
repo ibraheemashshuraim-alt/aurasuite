@@ -889,7 +889,17 @@ export default function AppContainer() {
           .on('broadcast', { event: 'org-updated' }, (payload) => {
             const updatedOrg = payload?.payload;
             if (updatedOrg && activeOrgRef.current?.id === updatedOrg.orgId) {
-              setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
+              setActiveOrg(prev => {
+                const nextOrg = prev ? { ...prev, ...updatedOrg, working_hours: updatedOrg.working_hours || prev.working_hours } : prev;
+                if (checkIsEffectivelyLocked(currentUserRef.current, nextOrg)) setLockModal(true);
+                else setLockModal(false);
+                
+                if (nextOrg.status === 'suspended' || nextOrg.status === 'banned') {
+                  setKickoutModal(true);
+                }
+                
+                return nextOrg;
+              });
             }
           })
           .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
@@ -1050,7 +1060,16 @@ export default function AppContainer() {
         setAuthCardNumber(cardParam);
         setAuthUsername(userParam);
         setLoginMode('worker');
-        supabase.from('digital_cards').select('is_revoked').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(({data}) => { if (data?.is_revoked) setKickoutModal(true); });
+        supabase.from('digital_cards').select('is_revoked, organization_id').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(({data}) => { 
+            if (data?.is_revoked) setKickoutModal(true); 
+            else if (data?.organization_id) {
+              supabase.from('organizations').select('status').eq('id', data.organization_id).single().then(({data: orgData}) => {
+                if (orgData?.status === 'suspended' || orgData?.status === 'banned') {
+                  setAuthBlockedByOrg(true);
+                }
+              });
+            }
+          });
       }
 
       // Process the invite token
@@ -5249,8 +5268,8 @@ export default function AppContainer() {
                       </thead>
                       <tbody className="divide-y divide-purple-500/10">
                         {organizations.filter(o => activeOrgsTab === 'active' ? (o.status === 'active' || !o.status) : (o.status === 'suspended' || o.status === 'banned')).sort((a, b) => {
-                          const isSuperA = a.email === 'ibraheemashshuraim@gmail.com';
-                          const isSuperB = b.email === 'ibraheemashshuraim@gmail.com';
+                          const isSuperA = a.email?.toLowerCase().trim() === 'ibraheemashshuraim@gmail.com';
+                          const isSuperB = b.email?.toLowerCase().trim() === 'ibraheemashshuraim@gmail.com';
                           if (isSuperA && !isSuperB) return -1;
                           if (!isSuperA && isSuperB) return 1;
                           return 0;
@@ -5277,13 +5296,13 @@ export default function AppContainer() {
                               <div className="flex justify-end gap-2">
                                 <button onClick={() => setViewOrgDetails(org)} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 text-xs font-bold transition-colors">View Details</button>
                                 
-                                {activeOrgsTab === 'active' && (
+                                {org.email?.toLowerCase().trim() !== 'ibraheemashshuraim@gmail.com' && activeOrgsTab === 'active' && (
                                   <button onClick={() => handleToggleOrgLock(org)} className={`p-1.5 border rounded-lg transition-all ${org.working_hours?.is_org_locked ? 'bg-red-950/50 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-yellow-950/30 border-yellow-500/30 text-yellow-500 hover:text-white hover:border-yellow-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
                                     {org.working_hours?.is_org_locked ? <Lock size={14} /> : <Unlock size={14} />}
                                   </button>
                                 )}
 
-                                {activeOrgsTab === 'active' ? (
+                                {org.email?.toLowerCase().trim() !== 'ibraheemashshuraim@gmail.com' && (activeOrgsTab === 'active' ? (
                                   <>
                                     <button onClick={() => handleChangeOrgStatus(org, 'suspended')} title="Suspend" className="p-1.5 bg-orange-950/30 border border-orange-500/20 rounded-lg text-orange-400 hover:text-white hover:border-orange-500/50 transition-all"><UserMinus size={14} /></button>
                                     <button onClick={() => handleChangeOrgStatus(org, 'banned')} title="Ban (30 days)" className="p-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-400 hover:text-white hover:border-red-500/50 transition-all"><UserX size={14} /></button>
