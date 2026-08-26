@@ -24,38 +24,7 @@ const today = () => new Date().toISOString().split('T')[0];
 
 function checkIsEffectivelyLocked(user, org) {
   if (!user || user.role !== 'worker') return false;
-  
-  if (user.is_locked) return true;
-  if (user.force_unlocked) return false;
-
-  if (org) {
-    if (org.working_hours?.is_24_7) return false;
-
-    const currentDay = new Date().getDay();
-    const workingDays = org.working_days || [1,2,3,4,5];
-    if (!workingDays.includes(currentDay)) return true;
-
-    if (org.working_hours) {
-      const { start, end } = org.working_hours;
-      const now = new Date();
-      const currentMin = now.getHours() * 60 + now.getMinutes();
-      
-      const [sh, sm] = (start || "09:00").split(':').map(Number);
-      const startMin = sh * 60 + sm;
-      
-      const [eh, em] = (end || "17:00").split(':').map(Number);
-      const endMin = eh * 60 + em;
-
-      if (startMin <= endMin) {
-        // Normal day shift (e.g., 09:00 to 17:00)
-        if (currentMin < startMin || currentMin > endMin) return true;
-      } else {
-        // Night shift (e.g., 20:00 to 06:00)
-        if (currentMin < startMin && currentMin > endMin) return true;
-      }
-    }
-  }
-  return false;
+  return !!user.is_locked;
 }
 
 // ─── Participant Video Tile ──────────────────────────────────────
@@ -2499,7 +2468,7 @@ export default function AppContainer() {
                <Lock size={56} className="text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.5)]" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-4">Access Locked</h2>
-            <p className="text-yellow-400 text-sm mb-6 leading-relaxed">کوئی مسئلہ آیا ہے کام جاری ہے۔ کام مکمل ہوتے ہی اکاؤنٹ دوبارہ ایکٹیو کر دیا جائے گا۔<br/><br/>(Some issue has occurred, work is in progress. The account will be reactivated as soon as the work is complete.)</p>
+            <p className="text-yellow-400 text-sm mb-6 leading-relaxed">کچھ مسئلہ پیش آ گیا ہے، کام جاری ہے۔ اکاؤنٹ جلد ہی بحال کر دیا جائے گا۔<br/><br/>(Some issue has occurred, work is in progress. The account will be reactivated as soon as the work is complete.)</p>
             <button
               onClick={() => {
                 try { window.close(); } catch (e) {}
@@ -2517,10 +2486,8 @@ export default function AppContainer() {
     }
   }
 
-  const isOrgLockedBySuperAdmin = activeOrg?.working_hours?.is_org_locked;
-    const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg) || isOrgLockedBySuperAdmin;
-    const shouldShowLockScreen = (isEffectivelyLocked && currentUser?.role === "worker") || (isOrgLockedBySuperAdmin && currentUser?.role === "admin");
-    if (shouldShowLockScreen) {
+  const isEffectivelyLocked = lockModal || checkIsEffectivelyLocked(currentUser, activeOrg);
+    if (isEffectivelyLocked && currentUser?.role === "worker") {
     return (
       <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
         <div className="bg-slate-900 border border-yellow-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
