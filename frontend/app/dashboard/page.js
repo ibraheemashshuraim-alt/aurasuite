@@ -14,6 +14,12 @@ import {
 , Type
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+
+import { createClient } from '@supabase/supabase-js';
+const anonSupabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+});
+
 import { getRandomQuestions } from '../../lib/questionBank';
 import JSZip from 'jszip';
 
@@ -2252,8 +2258,9 @@ export default function AppContainer() {
       onConfirm: async () => {
         try {
           setConfirmModal(null);
-          const { error: updErr } = await supabase.from('organizations').update({ status: newStatus }).eq('id', org.id);
-            if (updErr) { alert('DB Update Failed: ' + updErr.message); throw updErr; }
+          const { data: updData, error: updErr } = await anonSupabase.from('organizations').update({ status: newStatus }).eq('id', org.id).select();
+            if (updErr || !updData || updData.length === 0) { alert('DB Update Failed (RLS Policy). Contact Support to fix permissions.'); return; }
+            
           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, status: newStatus } : o));
           
           if (kickoutChannelRef.current) {
@@ -2287,8 +2294,9 @@ export default function AppContainer() {
           const currentHours = org.working_hours || {};
           const newHours = { ...currentHours, is_org_locked: newLockState };
           
-          const { error: lockErr } = await supabase.from('organizations').update({ working_hours: newHours }).eq('id', org.id);
-            if (lockErr) { alert('DB Update Failed: ' + lockErr.message); throw lockErr; }
+          const { data: lockData, error: lockErr } = await anonSupabase.from('organizations').update({ working_hours: newHours }).eq('id', org.id).select();
+            if (lockErr || !lockData || lockData.length === 0) { alert('DB Lock Update Failed (RLS Policy). Contact Support to fix permissions.'); return; }
+            
           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, working_hours: newHours } : o));
           
           if (kickoutChannelRef.current) {
@@ -2325,7 +2333,7 @@ export default function AppContainer() {
           }
           await supabase.from('meetings').delete().eq('organization_id', org.id);
           await supabase.from('tasks').delete().eq('organization_id', org.id);
-          await supabase.from('organizations').delete().eq('id', org.id);
+          await anonSupabase.from('organizations').delete().eq('id', org.id);
           setOrganizations(prev => prev.filter(o => o.id !== org.id));
           addNotification('Organization deleted successfully.', 'success');
         } catch (err) {
@@ -5164,7 +5172,7 @@ export default function AppContainer() {
                                   await supabase.from('profiles').delete().eq('id', p.id);
                               }
                           }
-                          await supabase.from('organizations').delete().eq('id', org.id);
+                          await anonSupabase.from('organizations').delete().eq('id', org.id);
                           setOrganizations(prev => prev.filter(o => o.id !== org.id));
                         }} className="px-4 py-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
                           <XCircle size={20} />
