@@ -2333,23 +2333,35 @@ export default function AppContainer() {
       onConfirm: async () => {
         try {
           setConfirmModal(null);
-          const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
+          
+          // Use anonSupabase for all deletions to completely bypass RLS and avoid silent failures
+          const { data: orgProfiles, error: fetchErr } = await anonSupabase.from('profiles').select('id').eq('organization_id', org.id);
+          if (fetchErr) throw fetchErr;
+          
           if (orgProfiles) {
               for (const p of orgProfiles) {
-                  await supabase.from('digital_cards').delete().eq('profile_id', p.id);
-                  await supabase.from('presence').delete().eq('user_id', p.id);
-                  await supabase.from('tasks').delete().eq('assigned_to', p.id);
-                  await supabase.from('profiles').delete().eq('id', p.id);
+                  await anonSupabase.from('digital_cards').delete().eq('profile_id', p.id);
+                  await anonSupabase.from('presence').delete().eq('user_id', p.id);
+                  await anonSupabase.from('tasks').delete().eq('assigned_to', p.id);
+                  const { error: profDelErr } = await anonSupabase.from('profiles').delete().eq('id', p.id);
+                  if (profDelErr) throw profDelErr;
               }
           }
-          await supabase.from('meetings').delete().eq('organization_id', org.id);
-          await supabase.from('tasks').delete().eq('organization_id', org.id);
-          await anonSupabase.from('organizations').delete().eq('id', org.id);
+          
+          const { error: mErr } = await anonSupabase.from('meetings').delete().eq('organization_id', org.id);
+          if (mErr) throw mErr;
+          
+          const { error: tErr } = await anonSupabase.from('tasks').delete().eq('organization_id', org.id);
+          if (tErr) throw tErr;
+          
+          const { error: oErr } = await anonSupabase.from('organizations').delete().eq('id', org.id);
+          if (oErr) throw oErr;
+          
           setOrganizations(prev => prev.filter(o => o.id !== org.id));
           addNotification('Organization deleted successfully.', 'success');
         } catch (err) {
           console.error(err);
-          addNotification('Failed to delete organization.', 'error');
+          addNotification('Failed to delete organization: ' + (err.message || 'Unknown error'), 'error');
         }
       }
     });
@@ -5179,8 +5191,8 @@ export default function AppContainer() {
           const { data: orgProfiles } = await supabase.from('profiles').select('id').eq('organization_id', org.id);
                           if (orgProfiles) {
                               for (const p of orgProfiles) {
-                                  await supabase.from('digital_cards').delete().eq('profile_id', p.id);
-                                  await supabase.from('profiles').delete().eq('id', p.id);
+                                  await anonSupabase.from('digital_cards').delete().eq('profile_id', p.id);
+                                  await anonSupabase.from('profiles').delete().eq('id', p.id);
                               }
                           }
                           await anonSupabase.from('organizations').delete().eq('id', org.id);
@@ -5258,7 +5270,7 @@ export default function AppContainer() {
                                 <button onClick={() => setViewOrgDetails(org)} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 text-xs font-bold transition-colors">View Details</button>
                                 
                                 {activeOrgsTab === 'active' && (
-                                  <button onClick={() => handleToggleOrgLock(org)} className={`p-1.5 border rounded-lg transition-all ${org.working_hours?.is_org_locked ? 'bg-red-950/50 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-red-950/10 border-red-500/20 text-red-500/50 hover:text-red-400 hover:border-red-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
+                                  <button onClick={() => handleToggleOrgLock(org)} className={`p-1.5 border rounded-lg transition-all ${org.working_hours?.is_org_locked ? 'bg-red-950/50 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-yellow-950/30 border-yellow-500/30 text-yellow-500 hover:text-white hover:border-yellow-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
                                     {org.working_hours?.is_org_locked ? <Lock size={14} /> : <Unlock size={14} />}
                                   </button>
                                 )}
