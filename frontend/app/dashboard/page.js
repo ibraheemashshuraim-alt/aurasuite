@@ -5316,7 +5316,7 @@ export default function AppContainer() {
                                     )}
                                     <button onClick={() => handleDeleteOrg(org)} title="Delete Forever" className="p-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-400 hover:text-white hover:border-red-500/50 transition-all"><Trash2 size={14} /></button>
                                   </>
-                                )}
+                                ))}
                               </div>
                             </td>
                           </tr>

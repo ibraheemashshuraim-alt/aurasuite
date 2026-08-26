@@ -1,11 +1,16 @@
-﻿import re
+import re
 
-def fix_syntax(path):
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    content = content.replace('onConfirm: () => {', 'onConfirm: async () => {')
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(content)
+filepath = 'frontend/app/dashboard/page.js'
+with open(filepath, 'r', encoding='utf-8') as f:
+    code = f.read()
 
-fix_syntax('frontend/app/login/page.js')
-fix_syntax('frontend/app/dashboard/page.js')
+# We need to find the `)}` right after `Trash2 size={14}` and replace it with `))}`
+pattern = r"(<Trash2 size=\{14\} /></button>\s*</>\s*)\)\}"
+replacement = r"\1))}"
+
+code = re.sub(pattern, replacement, code)
+
+with open(filepath, 'w', encoding='utf-8') as f:
+    f.write(code)
+
+print("Fixed syntax")
