@@ -5228,7 +5228,7 @@ export default function AppContainer() {
                                   <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-500/20">Active</span>
                                 )}
                                 {org.working_hours?.is_org_locked && (
-                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-yellow-900/30 text-yellow-400 border border-yellow-500/20 flex items-center gap-1"><Lock size={10}/> Locked</span>
+                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-red-900/30 text-red-400 border border-red-500/20 flex items-center gap-1"><Lock size={10}/> Locked</span>
                                 )}
                               </div>
                             </td>
@@ -5236,9 +5236,11 @@ export default function AppContainer() {
                               <div className="flex justify-end gap-2">
                                 <button onClick={() => setViewOrgDetails(org)} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 text-xs font-bold transition-colors">View Details</button>
                                 
-                                <button onClick={() => handleToggleOrgLock(org)} className={`p-1.5 border rounded-lg transition-all ${org.working_hours?.is_org_locked ? 'bg-yellow-950/50 border-yellow-500/50 text-yellow-400' : 'bg-yellow-950/10 border-yellow-500/20 text-yellow-500/50 hover:text-yellow-400 hover:border-yellow-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
-                                  {org.working_hours?.is_org_locked ? <Lock size={14} /> : <Unlock size={14} />}
-                                </button>
+                                {activeOrgsTab === 'active' && (
+                                  <button onClick={() => handleToggleOrgLock(org)} className={`p-1.5 border rounded-lg transition-all ${org.working_hours?.is_org_locked ? 'bg-red-950/50 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-red-950/10 border-red-500/20 text-red-500/50 hover:text-red-400 hover:border-red-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
+                                    {org.working_hours?.is_org_locked ? <Lock size={14} /> : <Unlock size={14} />}
+                                  </button>
+                                )}
 
                                 {activeOrgsTab === 'active' ? (
                                   <>
