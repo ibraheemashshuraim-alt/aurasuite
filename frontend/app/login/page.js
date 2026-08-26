@@ -368,6 +368,7 @@ export default function AppContainer() {
   const [customAlert, setCustomAlert] = useState(null);
   const [lockModal, setLockModal] = useState(false);
   const [kickoutModal, setKickoutModal] = useState(false);
+  const [authBlockedByOrg, setAuthBlockedByOrg] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [pinnedUserId, setPinnedUserId] = useState(null);
@@ -2454,8 +2455,8 @@ export default function AppContainer() {
   const isOrgSuspended = activeOrg?.status === 'suspended' || activeOrg?.status === 'banned';
   const isOrgLocked = activeOrg?.working_hours?.is_org_locked;
 
-  if (currentUser && currentUser.role !== 'super_admin') {
-    if (isOrgSuspended) {
+  if ((currentUser && currentUser.role !== 'super_admin' && isOrgSuspended) || authBlockedByOrg) {
+    if (true) {
       return (
         <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/95 backdrop-blur-lg p-4">
           <div className="bg-slate-950 border-2 border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center shadow-[0_0_50px_rgba(239,68,68,0.3)]">

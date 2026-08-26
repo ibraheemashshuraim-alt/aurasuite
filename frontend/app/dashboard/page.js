@@ -424,6 +424,7 @@ export default function AppContainer() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [activeOrgsTab, setActiveOrgsTab] = useState('active');
   const [viewOrgDetails, setViewOrgDetails] = useState(null);
+  const [editOrgData, setEditOrgData] = useState(null);
 
   useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
   useEffect(() => { localStorage.setItem('aura_admin_tab', activeTab); }, [activeTab]);
@@ -452,6 +453,7 @@ export default function AppContainer() {
   const [customAlert, setCustomAlert] = useState(null);
   const [lockModal, setLockModal] = useState(false);
   const [kickoutModal, setKickoutModal] = useState(false);
+  const [authBlockedByOrg, setAuthBlockedByOrg] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [pinnedUserId, setPinnedUserId] = useState(null);
@@ -5246,7 +5248,13 @@ export default function AppContainer() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-purple-500/10">
-                        {organizations.filter(o => activeOrgsTab === 'active' ? (o.status === 'active' || !o.status) : (o.status === 'suspended' || o.status === 'banned')).map(org => (
+                        {organizations.filter(o => activeOrgsTab === 'active' ? (o.status === 'active' || !o.status) : (o.status === 'suspended' || o.status === 'banned')).sort((a, b) => {
+                          const isSuperA = a.email === 'ibraheemashshuraim@gmail.com';
+                          const isSuperB = b.email === 'ibraheemashshuraim@gmail.com';
+                          if (isSuperA && !isSuperB) return -1;
+                          if (!isSuperA && isSuperB) return 1;
+                          return 0;
+                        }).map(org => (
                           <tr key={org.id} className="hover:bg-purple-900/10 transition-colors">
                             <td className="px-6 py-4">
                               <div className="font-bold text-white text-base">{org.name}</div>
@@ -5650,52 +5658,77 @@ export default function AppContainer() {
           <div className="bg-[#11081c] border border-purple-500/30 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
             <div className="p-5 border-b border-purple-500/20 flex justify-between items-center bg-[#1a0e2e]">
               <h3 className="text-lg font-bold text-white flex items-center gap-2"><Server size={18} className="text-purple-400"/> Organization Details</h3>
-              <button onClick={() => setViewOrgDetails(null)} className="text-purple-400 hover:text-white p-1 rounded-lg hover:bg-purple-900/50 transition-colors"><X size={20}/></button>
+              <div className="flex items-center gap-2">
+                {!editOrgData ? (
+                  <button onClick={() => setEditOrgData({
+                    name: viewOrgDetails.name || '',
+                    owner_name: viewOrgDetails.owner_name || '',
+                    email: viewOrgDetails.email || '',
+                    phone: viewOrgDetails.phone || '',
+                    cnic: viewOrgDetails.working_hours?.cnic || '',
+                    city: viewOrgDetails.working_hours?.city || '',
+                    team_size: viewOrgDetails.working_hours?.team_size || '',
+                    business_type: viewOrgDetails.working_hours?.business_type || viewOrgDetails.type || ''
+                  })} className="px-3 py-1 bg-purple-600/20 text-purple-400 hover:bg-purple-600/40 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"><Edit3 size={12}/> Edit</button>
+                ) : (
+                  <button onClick={async () => {
+                    const newWH = { ...viewOrgDetails.working_hours, cnic: editOrgData.cnic, city: editOrgData.city, team_size: editOrgData.team_size, business_type: editOrgData.business_type };
+                    const updatePayload = { name: editOrgData.name, owner_name: editOrgData.owner_name, email: editOrgData.email, phone: editOrgData.phone, working_hours: newWH };
+                    const { error } = await anonSupabase.from('organizations').update(updatePayload).eq('id', viewOrgDetails.id);
+                    if (error) { alert('Failed to update details: ' + error.message); return; }
+                    const updatedOrg = { ...viewOrgDetails, ...updatePayload };
+                    setOrganizations(prev => prev.map(o => o.id === updatedOrg.id ? updatedOrg : o));
+                    setViewOrgDetails(updatedOrg);
+                    setEditOrgData(null);
+                    addNotification('Organization details updated successfully.', 'success');
+                  }} className="px-3 py-1 bg-green-500/20 text-green-400 hover:bg-green-500/40 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"><Check size={12}/> Save</button>
+                )}
+                <button onClick={() => { setViewOrgDetails(null); setEditOrgData(null); }} className="text-purple-400 hover:text-white p-1 rounded-lg hover:bg-purple-900/50 transition-colors"><X size={20}/></button>
+              </div>
             </div>
             <div className="p-6 overflow-y-auto space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-500/10">
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">Software House Name</p>
-                  <p className="text-white font-medium">{viewOrgDetails.name}</p>
+                  {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm" value={editOrgData.name} onChange={e => setEditOrgData({...editOrgData, name: e.target.value})} /> : <p className="text-white font-medium">{viewOrgDetails.name}</p>}
                 </div>
                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-500/10">
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">Owner Name</p>
-                  <p className="text-white font-medium">{viewOrgDetails.owner_name}</p>
+                  {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm" value={editOrgData.owner_name} onChange={e => setEditOrgData({...editOrgData, owner_name: e.target.value})} /> : <p className="text-white font-medium">{viewOrgDetails.owner_name || 'N/A'}</p>}
                 </div>
                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-500/10">
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">Email</p>
-                  <p className="text-white font-medium">{viewOrgDetails.email}</p>
+                  {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm" value={editOrgData.email} onChange={e => setEditOrgData({...editOrgData, email: e.target.value})} /> : <p className="text-white font-medium">{viewOrgDetails.email}</p>}
                 </div>
                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-500/10">
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">Phone</p>
-                  <p className="text-white font-medium">{viewOrgDetails.phone}</p>
+                  {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm" value={editOrgData.phone} onChange={e => setEditOrgData({...editOrgData, phone: e.target.value})} /> : <p className="text-white font-medium">{viewOrgDetails.phone || 'N/A'}</p>}
                 </div>
                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-500/10">
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">CNIC</p>
-                  <p className="text-white font-medium">{viewOrgDetails.working_hours?.cnic || 'N/A'}</p>
+                  {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm" value={editOrgData.cnic} onChange={e => setEditOrgData({...editOrgData, cnic: e.target.value})} /> : <p className="text-white font-medium">{viewOrgDetails.working_hours?.cnic || 'N/A'}</p>}
                 </div>
                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-500/10">
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">City</p>
-                  <p className="text-white font-medium">{viewOrgDetails.working_hours?.city || 'N/A'}</p>
+                  {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm" value={editOrgData.city} onChange={e => setEditOrgData({...editOrgData, city: e.target.value})} /> : <p className="text-white font-medium">{viewOrgDetails.working_hours?.city || 'N/A'}</p>}
                 </div>
                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-500/10">
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">Team Size</p>
-                  <p className="text-white font-medium">{viewOrgDetails.working_hours?.team_size || 'N/A'}</p>
+                  {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm" value={editOrgData.team_size} onChange={e => setEditOrgData({...editOrgData, team_size: e.target.value})} /> : <p className="text-white font-medium">{viewOrgDetails.working_hours?.team_size || 'N/A'}</p>}
                 </div>
                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-500/10">
                   <p className="text-[10px] uppercase font-bold text-purple-400 mb-1">Business Type</p>
-                  <p className="text-white font-medium uppercase">{viewOrgDetails.working_hours?.business_type || viewOrgDetails.type}</p>
+                  {editOrgData ? <input className="w-full bg-black/30 border border-purple-500/30 rounded p-1 text-white text-sm uppercase" value={editOrgData.business_type} onChange={e => setEditOrgData({...editOrgData, business_type: e.target.value})} /> : <p className="text-white font-medium uppercase">{viewOrgDetails.working_hours?.business_type || viewOrgDetails.type || 'N/A'}</p>}
                 </div>
               </div>
             </div>
             <div className="p-4 border-t border-purple-500/20 bg-black/20 flex justify-end">
-              <button onClick={() => setViewOrgDetails(null)} className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-colors">Close</button>
+              <button onClick={() => { setViewOrgDetails(null); setEditOrgData(null); }} className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-xl transition-colors">Close</button>
             </div>
           </div>
         </div>
       )}
-
-    </main>
+  </main>
     </div>
   
       {lightboxImage && (
