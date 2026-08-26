@@ -193,40 +193,6 @@ export default function AppContainer() {
   const [mounted, setMounted] = useState(false);
   const [timeTick, setTimeTick] = useState(0);
 
-  
-    // Robust access poller (keeps user and organization locks live even if realtime misses)
-    useEffect(() => {
-      const int = setInterval(async () => {
-        const currentUser = currentUserRef.current;
-        if (!currentUser?.id) return;
-
-        if (currentUser.role === 'worker') {
-          const { data: userData } = await supabase.from('profiles').select('is_locked, force_unlocked').eq('id', currentUserRef.current.id).single();
-          if (userData) {
-            setCurrentUser(prev => {
-              const nextUser = prev ? { ...prev, is_locked: userData.is_locked, force_unlocked: userData.force_unlocked } : prev;
-              if (checkIsEffectivelyLocked(nextUser, activeOrgRef.current)) setLockModal(true);
-              else setLockModal(false);
-              return nextUser;
-            });
-          }
-        }
-
-        if (activeOrgRef.current?.id) {
-          const { data: orgData } = await supabase.from('organizations').select('status, working_hours').eq('id', activeOrgRef.current.id).single();
-          if (orgData) {
-            setActiveOrg(prev => {
-              const nextOrg = prev ? { ...prev, status: orgData.status, working_hours: orgData.working_hours } : prev;
-              if (checkIsEffectivelyLocked(currentUserRef.current, nextOrg)) setLockModal(true);
-              else setLockModal(false);
-              return nextOrg;
-            });
-          }
-        }
-      }, 5000);
-      return () => clearInterval(int);
-    }, []);
-
     // Non-destructive chat poller
   useEffect(() => {
     const int = setInterval(async () => {
@@ -439,6 +405,51 @@ export default function AppContainer() {
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
+
+  // Robust access poller (keeps user and organization locks live even if realtime misses)
+  useEffect(() => {
+    const checkAccessState = async () => {
+      const currentUser = currentUserRef.current;
+      if (!currentUser?.id) return;
+
+      if (currentUser.role === 'worker') {
+        const { data: userData } = await supabase
+          .from('profiles')
+          .select('is_locked, force_unlocked')
+          .eq('id', currentUser.id)
+          .single();
+
+        if (userData) {
+          setCurrentUser(prev => {
+            const nextUser = prev ? { ...prev, is_locked: userData.is_locked, force_unlocked: userData.force_unlocked } : prev;
+            setLockModal(checkIsEffectivelyLocked(nextUser, activeOrgRef.current));
+            return nextUser;
+          });
+        }
+      }
+
+      const orgId = activeOrgRef.current?.id;
+      if (!orgId) return;
+
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('status, working_hours')
+        .eq('id', orgId)
+        .single();
+
+      if (orgData) {
+        setActiveOrg(prev => {
+          const nextOrg = prev ? { ...prev, status: orgData.status, working_hours: orgData.working_hours } : prev;
+          setLockModal(checkIsEffectivelyLocked(currentUserRef.current, nextOrg));
+          return nextOrg;
+        });
+      }
+    };
+
+    checkAccessState();
+    const int = setInterval(checkAccessState, 5000);
+    return () => clearInterval(int);
+  }, []);
   
   // Audio fix: track previous media-control state to avoid spurious audio toggling
   const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
@@ -860,13 +871,7 @@ export default function AppContainer() {
             if (updatedOrg && activeOrgRef.current?.id === updatedOrg.orgId) {
               setActiveOrg(prev => {
                 const nextOrg = prev ? { ...prev, ...updatedOrg, working_hours: updatedOrg.working_hours || prev.working_hours } : prev;
-                if (checkIsEffectivelyLocked(currentUserRef.current, nextOrg)) setLockModal(true);
-                else setLockModal(false);
-                
-                if (nextOrg.status === 'suspended' || nextOrg.status === 'banned') {
-                  setKickoutModal(true);
-                }
-                
+                setLockModal(checkIsEffectivelyLocked(currentUserRef.current, nextOrg));
                 return nextOrg;
               });
             }
@@ -2653,7 +2658,7 @@ export default function AppContainer() {
   
     // 🚨 ORG WIDE LOCK & SUSPEND ENFORCEMENT 🚨
     const isOrgSuspended = activeOrg?.status === 'suspended' || activeOrg?.status === 'banned';
-    const isOrgLocked = activeOrg?.working_hours?.is_org_locked;
+    const isOrgLocked = activeOrg?.working_hours?.is_org_locked === true || activeOrg?.is_org_locked === true;
 
     if (currentUser && currentUser.role !== 'super_admin') {
       if (isOrgSuspended) {

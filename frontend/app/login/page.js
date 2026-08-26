@@ -778,7 +778,11 @@ export default function AppContainer() {
       .on('broadcast', { event: 'org-updated' }, (payload) => {
         const updatedOrg = payload?.payload;
         if (updatedOrg && activeOrgRef.current?.id === updatedOrg.orgId) {
-          setActiveOrg(prev => ({ ...prev, ...updatedOrg }));
+          setActiveOrg(prev => {
+            const nextOrg = prev ? { ...prev, ...updatedOrg, working_hours: updatedOrg.working_hours || prev.working_hours } : prev;
+            setLockModal(checkIsEffectivelyLocked(currentUserRef.current, nextOrg));
+            return nextOrg;
+          });
         }
       })
       .on('broadcast', { event: 'worker-lock-all' }, (payload) => {
@@ -2433,7 +2437,7 @@ export default function AppContainer() {
 
   // 🚨🚨 LOCK MODAL OVERLAY 🚨🚨
   const isOrgSuspended = activeOrg?.status === 'suspended' || activeOrg?.status === 'banned';
-  const isOrgLocked = activeOrg?.working_hours?.is_org_locked;
+  const isOrgLocked = activeOrg?.working_hours?.is_org_locked === true || activeOrg?.is_org_locked === true;
 
   if ((currentUser && currentUser.role !== 'super_admin' && isOrgSuspended) || authBlockedByOrg) {
     if (true) {
