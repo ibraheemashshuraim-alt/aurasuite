@@ -340,12 +340,22 @@ export default function AppContainer() {
   const [activeChat, setActiveChat] = useState('group');        // 'group' | 'dm'
   const [messageReceipts, setMessageReceipts] = useState({});
   const [chatActivity, setChatActivity] = useState({});
+  const [chatCall, setChatCall] = useState(null);
+  const [incomingChatCall, setIncomingChatCall] = useState(null);
+  const [chatCallRemoteStreams, setChatCallRemoteStreams] = useState({});
+  const [chatCallMuted, setChatCallMuted] = useState(false);
+  const [chatCallVideoOff, setChatCallVideoOff] = useState(false);
   const chatBottomRef = useRef(null);
   const chatScrollRef = useRef(null);
   const chatShouldStickToBottomRef = useRef(true);
   const chatTargetRef = useRef('');
   const sentReceiptRef = useRef(new Set());
   const chatActivityTimersRef = useRef({});
+  const chatCallChannelRef = useRef(null);
+  const chatCallPcsRef = useRef({});
+  const chatCallLocalStreamRef = useRef(null);
+  const chatCallRef = useRef(null);
+  const incomingChatCallRef = useRef(null);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [isDictating, setIsDictating] = useState(false);
@@ -401,6 +411,8 @@ export default function AppContainer() {
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
   useEffect(() => { activeDmUserRef.current = activeDmUser; }, [activeDmUser]);
+  useEffect(() => { chatCallRef.current = chatCall; }, [chatCall]);
+  useEffect(() => { incomingChatCallRef.current = incomingChatCall; }, [incomingChatCall]);
 
   // ── Meeting ──
   const [isInMeeting, setIsInMeeting] = useState(false);
@@ -1007,6 +1019,21 @@ export default function AppContainer() {
             });
             delete chatActivityTimersRef.current[timerKey];
           }, activity.mode === 'recording' ? 3500 : 2500);
+        })
+      .on('broadcast', { event: 'chat-call-invite' }, (payload) => {
+          const call = payload?.payload;
+          const currentId = currentUserRef.current?.id;
+          if (!call?.id || !currentId || call.callerId === currentId) return;
+          if (call.organization_id && activeOrgRef.current?.id && call.organization_id !== activeOrgRef.current.id) return;
+          if (call.scope === 'dm' && call.targetId !== currentId) return;
+          setIncomingChatCall(call);
+          addNotification(`Incoming ${call.type} call from ${call.callerName}`, 'info');
+        })
+      .on('broadcast', { event: 'chat-call-ended' }, (payload) => {
+          const callId = payload?.payload?.id;
+          if (callId && (chatCallRef.current?.id === callId || incomingChatCallRef.current?.id === callId)) {
+            endChatCall(false);
+          }
         })
         .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
         const targetId = payload?.payload?.userId;
@@ -1759,65 +1786,139 @@ export default function AppContainer() {
     });
   };
 
+  const cleanupChatCall = () => {
+    Object.values(chatCallPcsRef.current).forEach(pc => { try { pc.close(); } catch(e){} });
+    chatCallPcsRef.current = {};
+    if (chatCallLocalStreamRef.current) {
+      chatCallLocalStreamRef.current.getTracks().forEach(track => track.stop());
+      chatCallLocalStreamRef.current = null;
+    }
+    if (chatCallChannelRef.current) {
+      try { supabase.removeChannel(chatCallChannelRef.current); } catch(e){}
+      chatCallChannelRef.current = null;
+    }
+    setChatCallRemoteStreams({});
+    setChatCallMuted(false);
+    setChatCallVideoOff(false);
+  };
+
+  const endChatCall = (notify = true) => {
+    const callId = chatCallRef.current?.id || incomingChatCallRef.current?.id;
+    if (notify && callId && kickoutChannelRef.current) {
+      kickoutChannelRef.current.send({ type: 'broadcast', event: 'chat-call-ended', payload: { id: callId } });
+    }
+    cleanupChatCall();
+    setChatCall(null);
+    setIncomingChatCall(null);
+  };
+
+  const createChatCallPeer = (peerId, callChannel) => {
+    const pc = new RTCPeerConnection({ iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ] });
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        callChannel.send({ type: 'broadcast', event: 'chat-call-signal', payload: { type: 'ICE', from: currentUserRef.current?.id, to: peerId, candidate: e.candidate.toJSON() } });
+      }
+    };
+    pc.ontrack = (e) => {
+      const remoteStream = e.streams[0];
+      setChatCallRemoteStreams(prev => ({ ...prev, [peerId]: remoteStream }));
+      if (!remoteStream.getVideoTracks().length) {
+        const audio = new Audio();
+        audio.autoplay = true;
+        audio.srcObject = remoteStream;
+        audio.play().catch(() => {});
+      }
+    };
+    return pc;
+  };
+
+  const joinChatCall = async (call) => {
+    cleanupChatCall();
+    setIncomingChatCall(null);
+    setChatCall({ ...call, status: 'connected' });
+    setChatCallMuted(false);
+    setChatCallVideoOff(call.type !== 'video');
+    const stream = await navigator.mediaDevices.getUserMedia({ video: call.type === 'video', audio: { echoCancellation: true, noiseSuppression: true } });
+    chatCallLocalStreamRef.current = stream;
+
+    const callChannel = supabase.channel(`chat-call-${call.id}`, { config: { broadcast: { self: false } } });
+    chatCallChannelRef.current = callChannel;
+    callChannel.on('broadcast', { event: 'chat-call-signal' }, async ({ payload }) => {
+      const { type, from, to, sdp, candidate } = payload || {};
+      const me = currentUserRef.current?.id;
+      if (!from || from === me || (to && to !== me)) return;
+
+      if (type === 'JOINED') {
+        const pc = createChatCallPeer(from, callChannel);
+        chatCallPcsRef.current[from] = pc;
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        callChannel.send({ type: 'broadcast', event: 'chat-call-signal', payload: { type: 'OFFER', from: me, to: from, sdp: { type: offer.type, sdp: offer.sdp } } });
+      } else if (type === 'OFFER') {
+        let pc = chatCallPcsRef.current[from];
+        if (!pc) {
+          pc = createChatCallPeer(from, callChannel);
+          chatCallPcsRef.current[from] = pc;
+          stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        }
+        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        callChannel.send({ type: 'broadcast', event: 'chat-call-signal', payload: { type: 'ANSWER', from: me, to: from, sdp: { type: answer.type, sdp: answer.sdp } } });
+      } else if (type === 'ANSWER') {
+        const pc = chatCallPcsRef.current[from];
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+      } else if (type === 'ICE') {
+        const pc = chatCallPcsRef.current[from];
+        if (pc && candidate) { try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e){} }
+      }
+    }).subscribe(() => {
+      callChannel.send({ type: 'broadcast', event: 'chat-call-signal', payload: { type: 'JOINED', from: currentUserRef.current?.id } });
+    });
+  };
+
   const handleStartChatCall = async (callType) => {
     if (!currentUser?.id || !activeOrg?.id) return;
     if (activeChat === 'dm' && !activeDmUser) return;
-    const isVideoCall = callType === 'video';
-    const meetingId = `${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}`;
-    const passcode = `${Math.floor(1000 + Math.random() * 9000)}`;
-    const meet = {
-      id: genId('meet'),
+    const call = {
+      id: genId('call'),
+      type: callType,
+      scope: activeChat,
       organization_id: activeOrg.id,
-      host_id: currentUser.id,
-      host_name: currentUser.full_name,
-      title: `${activeChat === 'group' ? 'Team General' : activeDmUser.full_name} ${isVideoCall ? 'Video' : 'Audio'} Call`,
-      passcode,
-      is_active: true,
-      meeting_id: meetingId,
+      callerId: currentUser.id,
+      callerName: currentUser.full_name,
+      targetId: activeChat === 'dm' ? activeDmUser.id : null,
+      targetName: activeChat === 'dm' ? activeDmUser.full_name : 'Team General',
+      title: activeChat === 'group' ? 'Team General' : activeDmUser.full_name
     };
-
     try {
-      const { error: meetingError } = await supabase.from('meetings').insert(meet);
-      if (meetingError) throw meetingError;
-      setActiveMeetings(prev => [...prev.filter(m => m.id !== meet.id), meet]);
-
-      const inviteText = `${isVideoCall ? '📹' : '📞'} ${isVideoCall ? 'Video' : 'Audio'} Call: "${meet.title}" | ID: ${meet.meeting_id} | Code: ${meet.passcode} | [MEET_ID:${meet.id}]`;
-      const msgId = genId('msg');
-      const msgTime = now();
-
-      if (activeChat === 'group') {
-        const invitees = orgUsers.filter(user => user.id !== currentUser.id).map(user => user.id);
-        await supabase.from('meeting_invites').upsert({ meeting_id: meet.id, invitees }, { onConflict: 'meeting_id' });
-        setMeetingInvites(prev => [...prev.filter(inv => inv.meetingId !== meet.id), { meetingId: meet.id, invitees }]);
-        const groupPayload = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id, text: inviteText, msg_time: msgTime, type: 'meeting_invite', meeting_id: meet.id };
-        const { error: msgError } = await supabase.from('group_messages').insert(groupPayload);
-        if (msgError) throw msgError;
-        const chatMessage = mapGroupMessage(groupPayload);
-        setGroupMessages(prev => mergeMessage(prev, chatMessage));
-        if (kickoutChannelRef.current) {
-          kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: chatMessage });
-        }
-      } else {
-        const invitees = [activeDmUser.id];
-        await supabase.from('meeting_invites').upsert({ meeting_id: meet.id, invitees }, { onConflict: 'meeting_id' });
-        setMeetingInvites(prev => [...prev.filter(inv => inv.meetingId !== meet.id), { meetingId: meet.id, invitees }]);
-        const key = getDmKey(activeDmUser.id);
-        const dmPayload = { id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: inviteText, msg_time: msgTime, type: 'meeting_invite', meeting_id: meet.id };
-        const { error: msgError } = await supabase.from('dm_messages').insert(dmPayload);
-        if (msgError) throw msgError;
-        const dmMessage = { id: msgId, thread_key: key, from: currentUser.id, fromName: currentUser.full_name, text: inviteText, time: msgTime, type: 'meeting_invite', meetingId: meet.id, reactions: {} };
-        setDmThreads(prev => mergeThreadMessage(prev, key, dmMessage));
-        broadcastDmMessage(key, dmMessage);
+      setChatCall({ ...call, status: 'calling' });
+      if (kickoutChannelRef.current) {
+        kickoutChannelRef.current.send({ type: 'broadcast', event: 'chat-call-invite', payload: call });
       }
-
-      setPreMeetingMeet(meet);
-      setPreMeetingChecklist({ micOn: true, camOn: isVideoCall });
-      await handleJoinMeeting(meet, { micOn: true, camOn: isVideoCall });
-      addNotification(`${isVideoCall ? 'Video' : 'Audio'} call started.`, 'success');
+      await joinChatCall(call);
     } catch (err) {
       console.error('Failed to start chat call:', err);
-      addNotification('Could not start the call. Please try again.', 'error');
+      endChatCall(true);
+      addNotification('Could not start the call. Please check camera/mic permissions.', 'error');
     }
+  };
+
+  const toggleChatCallMute = () => {
+    const nextMuted = !chatCallMuted;
+    chatCallLocalStreamRef.current?.getAudioTracks().forEach(track => { track.enabled = !nextMuted; });
+    setChatCallMuted(nextMuted);
+  };
+
+  const toggleChatCallVideo = () => {
+    if (chatCallRef.current?.type !== 'video') return;
+    const nextOff = !chatCallVideoOff;
+    chatCallLocalStreamRef.current?.getVideoTracks().forEach(track => { track.enabled = !nextOff; });
+    setChatCallVideoOff(nextOff);
   };
 
   const createPeerConnection = (peerId, rtcChannel) => {
@@ -3625,6 +3726,90 @@ export default function AppContainer() {
       )}
 
       {/* ── END MEETING MODAL ── */}
+      {incomingChatCall && (
+        <div className="fixed inset-0 z-[980] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+          <div className="w-full max-w-sm bg-[#0d111f] border border-emerald-500/25 rounded-3xl p-7 text-center shadow-[0_0_50px_rgba(16,185,129,0.18)]">
+            <div className="w-20 h-20 rounded-full mx-auto mb-4 bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-2xl font-black text-white">
+              {incomingChatCall.callerName?.[0]?.toUpperCase() || 'A'}
+            </div>
+            <p className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold mb-2">Incoming {incomingChatCall.type} call</p>
+            <h3 className="text-xl font-bold text-white">{incomingChatCall.callerName}</h3>
+            <p className="text-xs text-purple-300 mt-1">{incomingChatCall.scope === 'group' ? 'Team General' : 'Direct Message'}</p>
+            <div className="flex items-center justify-center gap-5 mt-7">
+              <button onClick={() => incomingChatCall.scope === 'dm' ? endChatCall(true) : setIncomingChatCall(null)} className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="Decline">
+                <PhoneOff size={22} />
+              </button>
+              <button onClick={() => joinChatCall(incomingChatCall).catch(() => addNotification('Could not join the call. Please check mic/camera permissions.', 'error'))} className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center shadow-lg shadow-emerald-900/30" title="Accept">
+                {incomingChatCall.type === 'video' ? <Video size={22} /> : <Phone size={22} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {chatCall && (
+        <div className="fixed inset-0 z-[970] bg-[#05070d]/95 backdrop-blur-md flex flex-col">
+          <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold">{chatCall.type} call</p>
+              <h3 className="text-lg font-bold text-white">{chatCall.title}</h3>
+            </div>
+            <span className="text-xs text-purple-300">{Object.keys(chatCallRemoteStreams).length ? 'Connected' : 'Calling...'}</span>
+          </div>
+          <div className="flex-1 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
+            <div className="relative rounded-3xl overflow-hidden bg-[#111827] border border-white/10 flex items-center justify-center">
+              {chatCall.type === 'video' && !chatCallVideoOff && chatCallLocalStreamRef.current ? (
+                <video autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" ref={el => { if (el) el.srcObject = chatCallLocalStreamRef.current; }} />
+              ) : (
+                <div className="text-center">
+                  <div className="w-20 h-20 rounded-full bg-purple-700/40 border border-purple-400/30 flex items-center justify-center text-2xl font-bold text-white mx-auto mb-3">{currentUser?.full_name?.[0]?.toUpperCase()}</div>
+                  <p className="text-sm font-bold text-white">You</p>
+                </div>
+              )}
+              <span className="absolute left-4 bottom-4 px-3 py-1 rounded-full bg-black/45 text-xs text-white">You</span>
+            </div>
+            {Object.entries(chatCallRemoteStreams).length === 0 ? (
+              <div className="rounded-3xl bg-[#0d111f] border border-white/10 flex items-center justify-center text-center p-8">
+                <div>
+                  <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-emerald-300 mx-auto mb-4">
+                    {chatCall.type === 'video' ? <Video size={24} /> : <Phone size={24} />}
+                  </div>
+                  <p className="text-sm font-bold text-white">Waiting for answer...</p>
+                </div>
+              </div>
+            ) : Object.entries(chatCallRemoteStreams).map(([peerId, stream]) => {
+              const peer = profiles.find(user => user.id === peerId);
+              return (
+                <div key={peerId} className="relative rounded-3xl overflow-hidden bg-[#111827] border border-white/10 flex items-center justify-center">
+                  {stream.getVideoTracks().length > 0 ? (
+                    <video autoPlay playsInline className="w-full h-full object-cover" ref={el => { if (el) el.srcObject = stream; }} />
+                  ) : (
+                    <div className="text-center">
+                      <div className="w-20 h-20 rounded-full bg-emerald-700/40 border border-emerald-400/30 flex items-center justify-center text-2xl font-bold text-white mx-auto mb-3">{peer?.full_name?.[0]?.toUpperCase() || 'U'}</div>
+                      <p className="text-sm font-bold text-white">{peer?.full_name || 'Connected user'}</p>
+                    </div>
+                  )}
+                  <span className="absolute left-4 bottom-4 px-3 py-1 rounded-full bg-black/45 text-xs text-white">{peer?.full_name || 'User'}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="p-5 flex items-center justify-center gap-4 border-t border-white/10">
+            <button onClick={toggleChatCallMute} className={`w-12 h-12 rounded-full flex items-center justify-center text-white ${chatCallMuted ? 'bg-red-600' : 'bg-white/10 hover:bg-white/15'}`} title={chatCallMuted ? 'Unmute' : 'Mute'}>
+              {chatCallMuted ? <MicOff size={20} /> : <Mic size={20} />}
+            </button>
+            {chatCall.type === 'video' && (
+              <button onClick={toggleChatCallVideo} className={`w-12 h-12 rounded-full flex items-center justify-center text-white ${chatCallVideoOff ? 'bg-red-600' : 'bg-white/10 hover:bg-white/15'}`} title={chatCallVideoOff ? 'Start video' : 'Stop video'}>
+                {chatCallVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
+              </button>
+            )}
+            <button onClick={() => endChatCall(chatCall.scope === 'dm')} className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="End call">
+              <PhoneOff size={24} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── CUSTOM ALERT MODAL ── */}
       {customAlert && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
