@@ -390,10 +390,14 @@ export default function AppContainer() {
   const [activeDmUser, setActiveDmUser] = useState(null);
   const [chatInput, setChatInput] = useState('');
   const [activeChat, setActiveChat] = useState('group');        // 'group' | 'dm'
+  const [messageReceipts, setMessageReceipts] = useState({});
+  const [chatActivity, setChatActivity] = useState({});
   const chatBottomRef = useRef(null);
   const chatScrollRef = useRef(null);
   const chatShouldStickToBottomRef = useRef(true);
   const chatTargetRef = useRef('');
+  const sentReceiptRef = useRef(new Set());
+  const chatActivityTimersRef = useRef({});
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [isDictating, setIsDictating] = useState(false);
@@ -447,6 +451,12 @@ export default function AppContainer() {
 
   useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
   useEffect(() => { localStorage.setItem('aura_admin_tab', activeTab); }, [activeTab]);
+  const activeTabRef = useRef(activeTab);
+  const activeChatRef = useRef(activeChat);
+  const activeDmUserRef = useRef(activeDmUser);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
+  useEffect(() => { activeDmUserRef.current = activeDmUser; }, [activeDmUser]);
 
   // ── Meeting ──
   const [isInMeeting, setIsInMeeting] = useState(false);
@@ -858,7 +868,10 @@ export default function AppContainer() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, payload => {
         if (payload.eventType === 'INSERT') {
           const m = payload.new;
-          setGroupMessages(prev => mergeMessage(prev, mapGroupMessage(m)));
+          const message = mapGroupMessage(m);
+          setGroupMessages(prev => mergeMessage(prev, message));
+          sendChatReceipt(message, 'delivered');
+          if (activeTabRef.current === 'chat' && activeChatRef.current === 'group') sendChatReceipt(message, 'read');
         } else if (payload.eventType === 'DELETE') {
           setGroupMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
         } else if (payload.eventType === 'UPDATE') {
@@ -921,6 +934,7 @@ export default function AppContainer() {
         if (!row?.thread_key?.includes(currentUser.id)) return;
         if (payload.eventType === 'INSERT') {
           const m = payload.new;
+          const message = { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size, thread_key: m.thread_key };
           setDmThreads(prev => {
             const thread = prev[m.thread_key] || [];
             const exists = thread.find(msg => msg.id === m.id);
@@ -928,8 +942,10 @@ export default function AppContainer() {
               return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time, fileName: m.file_name, fileSize: m.file_size } : msg) };
             }
             if (m.from_id !== currentUser.id && activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
-            return { ...prev, [m.thread_key]: [...thread, { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }] };
+            return { ...prev, [m.thread_key]: [...thread, message] };
           });
+          sendChatReceipt(message, 'delivered', m.thread_key);
+          if (activeTabRef.current === 'chat' && activeChatRef.current === 'dm' && activeDmUserRef.current?.id === message.from) sendChatReceipt(message, 'read', m.thread_key);
         } else if (payload.eventType === 'DELETE') {
           const m = payload.old;
           setDmThreads(prev => {
@@ -981,10 +997,13 @@ export default function AppContainer() {
       })
       .on('broadcast', { event: 'new-group-message' }, (payload) => {
           if (payload?.payload) {
+            const message = payload.payload;
             setGroupMessages(prev => {
-              if (payload.payload.organization_id && activeOrgRef.current?.id && payload.payload.organization_id !== activeOrgRef.current.id) return prev;
-              return mergeMessage(prev, payload.payload);
+              if (message.organization_id && activeOrgRef.current?.id && message.organization_id !== activeOrgRef.current.id) return prev;
+              return mergeMessage(prev, message);
             });
+            sendChatReceipt(message, 'delivered');
+            if (activeTabRef.current === 'chat' && activeChatRef.current === 'group') sendChatReceipt(message, 'read');
           }
         })
       .on('broadcast', { event: 'group-message-deleted' }, (payload) => {
@@ -1004,6 +1023,8 @@ export default function AppContainer() {
           const currentId = currentUserRef.current?.id;
           if (!message?.thread_key || !currentId || !message.thread_key.includes(currentId)) return;
           setDmThreads(prev => mergeThreadMessage(prev, message.thread_key, message));
+          sendChatReceipt(message, 'delivered', message.thread_key);
+          if (activeTabRef.current === 'chat' && activeChatRef.current === 'dm' && activeDmUserRef.current?.id === message.from) sendChatReceipt(message, 'read', message.thread_key);
           if (message.from !== currentId && activeTab !== 'chat') addNotification(`New DM from ${message.fromName}`, 'info');
         })
       .on('broadcast', { event: 'dm-message-deleted' }, (payload) => {
@@ -1017,6 +1038,39 @@ export default function AppContainer() {
           const currentId = currentUserRef.current?.id;
           if (!message?.id || !message?.thread_key || !currentId || !message.thread_key.includes(currentId)) return;
           setDmThreads(prev => ({ ...prev, [message.thread_key]: (prev[message.thread_key] || []).map(msg => msg.id === message.id ? { ...msg, ...message } : msg) }));
+        })
+      .on('broadcast', { event: 'chat-message-receipt' }, (payload) => {
+          const receipt = payload?.payload;
+          if (!receipt?.id || !receipt?.kind || !receipt?.userId || receipt.userId === currentUserRef.current?.id) return;
+          if (receipt.organization_id && activeOrgRef.current?.id && receipt.organization_id !== activeOrgRef.current.id) return;
+          if (receipt.thread_key && !receipt.thread_key.includes(currentUserRef.current?.id || '')) return;
+          updateMessageReceipt(receipt.id, receipt.kind, receipt.userId);
+        })
+      .on('broadcast', { event: 'chat-activity' }, (payload) => {
+          const activity = payload?.payload;
+          const currentId = currentUserRef.current?.id;
+          if (!activity?.userId || activity.userId === currentId) return;
+          if (activity.organization_id && activeOrgRef.current?.id && activity.organization_id !== activeOrgRef.current.id) return;
+          const currentChat = activeChatRef.current;
+          const currentDm = activeDmUserRef.current;
+          const currentThread = currentChat === 'dm' && currentDm && currentId ? [currentId, currentDm.id].sort().join('_') : null;
+          if (activity.chat === 'dm' && activity.thread_key !== currentThread) return;
+          if (activity.chat === 'group' && currentChat !== 'group') return;
+          const key = `${activity.chat}:${activity.thread_key || activity.organization_id}`;
+          setChatActivity(prev => {
+            const bucket = prev[key] || {};
+            return { ...prev, [key]: { ...bucket, [activity.userId]: { name: activity.name, mode: activity.mode } } };
+          });
+          const timerKey = `${key}:${activity.userId}`;
+          if (chatActivityTimersRef.current[timerKey]) clearTimeout(chatActivityTimersRef.current[timerKey]);
+          chatActivityTimersRef.current[timerKey] = setTimeout(() => {
+            setChatActivity(prev => {
+              const bucket = { ...(prev[key] || {}) };
+              delete bucket[activity.userId];
+              return { ...prev, [key]: bucket };
+            });
+            delete chatActivityTimersRef.current[timerKey];
+          }, activity.mode === 'recording' ? 3500 : 2500);
         })
         .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
           const targetId = payload?.payload?.userId;
@@ -1321,6 +1375,25 @@ export default function AppContainer() {
       chatBottomRef.current?.scrollIntoView({ behavior: targetChanged ? 'auto' : 'smooth' });
     }
   }, [groupMessages, dmThreads, activeDmUser, activeChat, activeOrg?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id || activeTab !== 'chat') return;
+    const visibleMessages = activeChat === 'group'
+      ? groupMessages.filter(m => m.organization_id === activeOrg?.id)
+      : activeDmUser ? (dmThreads[getDmKey(activeDmUser.id)] || []) : [];
+    visibleMessages.forEach(message => {
+      if (message.from !== currentUser.id) {
+        sendChatReceipt(message, 'read', activeChat === 'dm' && activeDmUser ? getDmKey(activeDmUser.id) : null);
+      }
+    });
+  }, [groupMessages, dmThreads, activeDmUser, activeChat, activeTab, activeOrg?.id, currentUser?.id]);
+
+  useEffect(() => {
+    if (!isRecordingAudio) return;
+    broadcastChatActivity('recording');
+    const int = setInterval(() => broadcastChatActivity('recording'), 2000);
+    return () => clearInterval(int);
+  }, [isRecordingAudio]);
 
   // Auto-hide generated card after 15 seconds
   useEffect(() => {
@@ -1651,13 +1724,14 @@ export default function AppContainer() {
     setIsCreatingMeeting(false);
   };
 
-  const handleJoinMeeting = async (meet) => {
+  const handleJoinMeeting = async (meet, checklistOverride = null) => {
+    const joinOptions = checklistOverride || preMeetingChecklist;
     const existingState = meetingStates[meet.id];
     const initialChat = existingState?.chat || [{ id: 1, sender: 'System', text: `Live session started: "${meet.title}"`, time: 'Live' }];
     const myParticipant = {
       id: currentUser.id, name: currentUser.full_name, role: currentUser.role,
-      isMuted: !preMeetingChecklist.micOn || (existingState?.areAllMuted && currentUser.id !== meet.host_id),
-      isVideoOff: !preMeetingChecklist.camOn, isScreenSharing: false
+      isMuted: !joinOptions.micOn || (existingState?.areAllMuted && currentUser.id !== meet.host_id),
+      isVideoOff: !joinOptions.camOn, isScreenSharing: false
     };
     const nextParticipants = [...(existingState?.participants || []).filter(p => p.id !== currentUser.id), myParticipant];
     const newState = { participants: nextParticipants, chat: initialChat, isChatLocked: existingState?.isChatLocked || false, areAllMuted: existingState?.areAllMuted || false };
@@ -1675,12 +1749,12 @@ export default function AppContainer() {
     setIsVideoOff(myParticipant.isVideoOff); setIsScreenSharing(false);
     setIsChatLocked(newState.isChatLocked); setAreAllMuted(newState.areAllMuted);
 
-    // Only request microphone on join — camera is requested only when user explicitly turns it on
+    // Request camera only for explicit video joins/calls; audio-only joins stay mic-only.
     try {
       // These exact constraints were stable in commit 2e6f49a — do NOT change noiseSuppression to false,
       // it makes the voice sound distant and slow every time it's been tried.
       const audioConstraints = { echoCancellation: true, noiseSuppression: true };
-      const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: joinOptions.camOn, audio: audioConstraints });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
       streamsRef.current[currentUser.id] = stream;
       setLocalStream(stream);
@@ -1731,6 +1805,67 @@ export default function AppContainer() {
     }).subscribe(() => {
       rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'NEW_PEER_JOINED', from: currentUser.id } });
     });
+  };
+
+  const handleStartChatCall = async (callType) => {
+    if (!currentUser?.id || !activeOrg?.id) return;
+    if (activeChat === 'dm' && !activeDmUser) return;
+    const isVideoCall = callType === 'video';
+    const meetingId = `${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}-${Math.floor(100 + Math.random() * 900)}`;
+    const passcode = `${Math.floor(1000 + Math.random() * 9000)}`;
+    const meet = {
+      id: genId('meet'),
+      organization_id: activeOrg.id,
+      host_id: currentUser.id,
+      host_name: currentUser.full_name,
+      title: `${activeChat === 'group' ? 'Team General' : activeDmUser.full_name} ${isVideoCall ? 'Video' : 'Audio'} Call`,
+      passcode,
+      is_active: true,
+      meeting_id: meetingId,
+    };
+
+    try {
+      const { error: meetingError } = await supabase.from('meetings').insert(meet);
+      if (meetingError) throw meetingError;
+      setActiveMeetings(prev => [...prev.filter(m => m.id !== meet.id), meet]);
+
+      const inviteText = `${isVideoCall ? '📹' : '📞'} ${isVideoCall ? 'Video' : 'Audio'} Call: "${meet.title}" | ID: ${meet.meeting_id} | Code: ${meet.passcode} | [MEET_ID:${meet.id}]`;
+      const msgId = genId('msg');
+      const msgTime = now();
+
+      if (activeChat === 'group') {
+        const invitees = orgUsers.filter(user => user.id !== currentUser.id).map(user => user.id);
+        await supabase.from('meeting_invites').upsert({ meeting_id: meet.id, invitees }, { onConflict: 'meeting_id' });
+        setMeetingInvites(prev => [...prev.filter(inv => inv.meetingId !== meet.id), { meetingId: meet.id, invitees }]);
+        const groupPayload = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id, text: inviteText, msg_time: msgTime, type: 'meeting_invite', meeting_id: meet.id };
+        const { error: msgError } = await supabase.from('group_messages').insert(groupPayload);
+        if (msgError) throw msgError;
+        const chatMessage = mapGroupMessage(groupPayload);
+        setGroupMessages(prev => mergeMessage(prev, chatMessage));
+        if (kickoutChannelRef.current) {
+          kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: chatMessage });
+        }
+      } else {
+        const invitees = [activeDmUser.id];
+        await supabase.from('meeting_invites').upsert({ meeting_id: meet.id, invitees }, { onConflict: 'meeting_id' });
+        setMeetingInvites(prev => [...prev.filter(inv => inv.meetingId !== meet.id), { meetingId: meet.id, invitees }]);
+        const key = getDmKey(activeDmUser.id);
+        const dmPayload = { id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: inviteText, msg_time: msgTime, type: 'meeting_invite', meeting_id: meet.id };
+        const { error: msgError } = await supabase.from('dm_messages').insert(dmPayload);
+        if (msgError) throw msgError;
+        const dmMessage = { id: msgId, thread_key: key, from: currentUser.id, fromName: currentUser.full_name, text: inviteText, time: msgTime, type: 'meeting_invite', meetingId: meet.id, reactions: {} };
+        setDmThreads(prev => mergeThreadMessage(prev, key, dmMessage));
+        broadcastDmMessage(key, dmMessage);
+      }
+
+      setPreMeetingMeet(meet);
+      setPreMeetingChecklist({ micOn: true, camOn: isVideoCall });
+      await handleJoinMeeting(meet, { micOn: true, camOn: isVideoCall });
+      addNotification(`${isVideoCall ? 'Video' : 'Audio'} call started.`, 'success');
+    } catch (err) {
+      console.error('Failed to start chat call:', err);
+      addNotification('Could not start the call. Please try again.', 'error');
+    }
   };
 
   const createPeerConnection = (peerId, rtcChannel) => {
@@ -1991,6 +2126,57 @@ export default function AppContainer() {
       type: 'broadcast',
       event: 'new-dm-message',
       payload: { ...message, thread_key: threadKey }
+    });
+  };
+
+  const updateMessageReceipt = (messageId, kind, userId) => {
+    if (!messageId || !userId) return;
+    setMessageReceipts(prev => {
+      const current = prev[messageId] || { delivered: [], read: [] };
+      const nextList = current[kind]?.includes(userId) ? current[kind] : [...(current[kind] || []), userId];
+      const nextReceipt = { ...current, [kind]: nextList };
+      if (kind === 'read') {
+        nextReceipt.delivered = nextReceipt.delivered?.includes(userId) ? nextReceipt.delivered : [...(nextReceipt.delivered || []), userId];
+      }
+      return { ...prev, [messageId]: nextReceipt };
+    });
+  };
+
+  const sendChatReceipt = (message, kind, threadKey = null) => {
+    const user = currentUserRef.current;
+    if (!message?.id || !user?.id || message.from === user.id || !kickoutChannelRef.current) return;
+    const receiptKey = `${kind}:${message.id}:${user.id}`;
+    if (sentReceiptRef.current.has(receiptKey)) return;
+    sentReceiptRef.current.add(receiptKey);
+    kickoutChannelRef.current.send({
+      type: 'broadcast',
+      event: 'chat-message-receipt',
+      payload: {
+        id: message.id,
+        kind,
+        userId: user.id,
+        organization_id: message.organization_id || activeOrgRef.current?.id,
+        thread_key: message.thread_key || threadKey
+      }
+    });
+  };
+
+  const broadcastChatActivity = (mode) => {
+    const user = currentUserRef.current;
+    if (!user?.id || !kickoutChannelRef.current) return;
+    const dmUser = activeDmUserRef.current;
+    const threadKey = activeChatRef.current === 'dm' && dmUser ? [user.id, dmUser.id].sort().join('_') : null;
+    kickoutChannelRef.current.send({
+      type: 'broadcast',
+      event: 'chat-activity',
+      payload: {
+        userId: user.id,
+        name: user.full_name,
+        mode,
+        organization_id: activeOrgRef.current?.id,
+        chat: activeChatRef.current,
+        thread_key: threadKey
+      }
     });
   };
   
@@ -5251,6 +5437,14 @@ export default function AppContainer() {
                           <span className="text-sm font-bold text-white">Team General</span>
                           <span className="text-[10px] text-purple-400 ml-2">{orgUsers.length} members</span>
                         </div>
+                        <div className="ml-auto flex items-center gap-2">
+                          <button type="button" onClick={() => handleStartChatCall('audio')} className="p-2 rounded-xl bg-emerald-900/30 border border-emerald-500/25 text-emerald-300 hover:bg-emerald-900/50 transition-colors" title="Start group audio call">
+                            <Phone size={14} />
+                          </button>
+                          <button type="button" onClick={() => handleStartChatCall('video')} className="p-2 rounded-xl bg-blue-900/30 border border-blue-500/25 text-blue-300 hover:bg-blue-900/50 transition-colors" title="Start group video call">
+                            <Video size={14} />
+                          </button>
+                        </div>
                       </>
                     ) : activeDmUser ? (
                       <>
@@ -5265,6 +5459,14 @@ export default function AppContainer() {
                         <div>
                           <span className="text-sm font-bold text-white">{activeDmUser.full_name}</span>
                           <span className="text-[10px] text-purple-400 ml-2">{activeDmUser.domain || activeDmUser.role}</span>
+                        </div>
+                        <div className="ml-auto flex items-center gap-2">
+                          <button type="button" onClick={() => handleStartChatCall('audio')} className="p-2 rounded-xl bg-emerald-900/30 border border-emerald-500/25 text-emerald-300 hover:bg-emerald-900/50 transition-colors" title="Start audio call">
+                            <Phone size={14} />
+                          </button>
+                          <button type="button" onClick={() => handleStartChatCall('video')} className="p-2 rounded-xl bg-blue-900/30 border border-blue-500/25 text-blue-300 hover:bg-blue-900/50 transition-colors" title="Start video call">
+                            <Video size={14} />
+                          </button>
                         </div>
                         {activeMeetings.some(m => m.host_id === currentUser.id) && (
                           <button onClick={() => {
@@ -5292,13 +5494,36 @@ export default function AppContainer() {
                               addNotification(`Meeting invite sent to ${activeDmUser.full_name} via DM.`, 'success');
                             }
                           }}
-                          className="ml-auto px-3 py-1.5 bg-purple-900/50 border border-purple-500/30 text-purple-200 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                          className="px-3 py-1.5 bg-purple-900/50 border border-purple-500/30 text-purple-200 rounded-xl text-xs font-semibold flex items-center gap-1.5">
                             <Send size={11} /> Send Meeting Link
                           </button>
                         )}
                       </>
                     ) : null}
                   </div>
+
+                  {(() => {
+                    const activityKey = activeChat === 'group'
+                      ? `group:${activeOrg?.id}`
+                      : activeDmUser ? `dm:${getDmKey(activeDmUser.id)}` : null;
+                    const activePeople = activityKey ? Object.values(chatActivity[activityKey] || {}) : [];
+                    const typingPeople = activePeople.filter(item => item.mode === 'typing');
+                    const recordingPeople = activePeople.filter(item => item.mode === 'recording');
+                    const label = recordingPeople.length > 1
+                      ? `${recordingPeople.length} people recording audio...`
+                      : recordingPeople.length === 1
+                        ? `${recordingPeople[0].name} is recording audio...`
+                        : typingPeople.length > 1
+                          ? `${typingPeople.length} people typing...`
+                          : typingPeople.length === 1
+                            ? `${typingPeople[0].name} is typing...`
+                            : '';
+                    return label ? (
+                      <div className="px-5 py-1.5 border-b border-purple-500/10 text-[10px] text-emerald-300 bg-[#0d0816]">
+                        {label}
+                      </div>
+                    ) : null;
+                  })()}
 
                   {/* Messages */}
                   <div
@@ -5328,6 +5553,12 @@ export default function AppContainer() {
                             || (currentUser.role === 'admin' && msg.organization_id === currentUser.organization_id)
                           )
                         );
+                        const receipt = messageReceipts[msg.id] || { delivered: [], read: [] };
+                        const receiptAudience = activeChat === 'group'
+                          ? orgUsers.filter(user => user.id !== msg.from).map(user => user.id)
+                          : activeDmUser ? [activeDmUser.id] : [];
+                        const allRead = receiptAudience.length > 0 && receiptAudience.every(userId => receipt.read?.includes(userId));
+                        const allDelivered = receiptAudience.length > 0 && receiptAudience.every(userId => receipt.read?.includes(userId) || receipt.delivered?.includes(userId));
                         return (
                           <div key={msg.id} className={`flex gap-3 ${isMine ? 'flex-row-reverse' : ''}`}>
                             <div className="w-7 h-7 rounded-full bg-purple-700/40 flex items-center justify-center text-xs font-bold text-white border border-purple-500/20 shrink-0">
@@ -5351,7 +5582,14 @@ export default function AppContainer() {
                                     )}
                                   </div>
                                 </div>
-                                <span className="text-[9px] text-purple-400">{msg.fromName} · {msg.time}</span>
+                                <span className="text-[9px] text-purple-400 flex items-center gap-1">
+                                  {msg.fromName} · {msg.time}
+                                  {isMine && (
+                                    <span className={`font-bold tracking-tight ${allRead ? 'text-sky-400' : 'text-purple-500'}`}>
+                                      {allDelivered ? '✓✓' : '✓'}
+                                    </span>
+                                  )}
+                                </span>
                               </div>
                               <div className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
                                 msg.type === 'meeting_invite' || msg.text.includes('[MEET_ID:')
@@ -5490,7 +5728,10 @@ export default function AppContainer() {
                             </div>
                           )}
                           <input type="text" placeholder={`Message ${activeChat === 'group' ? '#team-general' : activeDmUser?.full_name || '...'}`}
-                            value={chatInput} onChange={e => setChatInput(e.target.value)}
+                            value={chatInput} onChange={e => {
+                              setChatInput(e.target.value);
+                              if (e.target.value.trim()) broadcastChatActivity('typing');
+                            }}
                             className="w-full bg-[#11081c] border border-purple-500/20 rounded-2xl px-5 py-3 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors" />
                         </div>
                         <div className="flex gap-2 mb-1">
