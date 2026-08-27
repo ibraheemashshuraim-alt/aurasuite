@@ -66,6 +66,43 @@ function rankUsersByAuthority(users, currentUserId) {
   });
 }
 
+function mapGroupMessage(row) {
+  return {
+    id: row.id,
+    organization_id: row.organization_id,
+    from: row.from_id,
+    fromName: row.from_name,
+    text: row.text,
+    time: row.msg_time,
+    type: row.type,
+    meetingId: row.meeting_id,
+    deletedFor: row.deleted_for || [],
+    attachmentUrl: row.attachment_url,
+    audioUrl: row.audio_url,
+    reactions: row.reactions || {},
+    fileName: row.file_name,
+    fileSize: row.file_size,
+    isPending: false,
+  };
+}
+
+function mergeMessage(list, message) {
+  if (!message?.id) return list;
+  const exists = list.some(item => item.id === message.id);
+  if (exists) return list.map(item => item.id === message.id ? { ...item, ...message, isPending: false } : item);
+  return [...list, message];
+}
+
+function mergeThreadMessage(threads, threadKey, message) {
+  if (!threadKey || !message?.id) return threads;
+  const thread = threads[threadKey] || [];
+  const exists = thread.some(item => item.id === message.id);
+  const nextThread = exists
+    ? thread.map(item => item.id === message.id ? { ...item, ...message, isPending: false } : item)
+    : [...thread, message];
+  return { ...threads, [threadKey]: nextThread };
+}
+
 // ─── Participant Video Tile ──────────────────────────────────────
 function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, streamTrigger }) {
   const videoRef = React.useRef(null);
@@ -389,6 +426,28 @@ export default function AppContainer() {
   const activeOrgRef = useRef(activeOrg);
   useEffect(() => { activeOrgRef.current = activeOrg; }, [activeOrg]);
   const kickoutChannelRef = useRef(null);
+
+  useEffect(() => {
+    const int = setInterval(async () => {
+      if (!activeOrgRef.current?.id) return;
+      const { data: msgs } = await supabase
+        .from('group_messages')
+        .select('*')
+        .eq('organization_id', activeOrgRef.current.id)
+        .order('id', { ascending: true });
+
+      if (msgs) {
+        setGroupMessages(prev => {
+          let next = prev;
+          msgs.forEach(m => {
+            next = mergeMessage(next, mapGroupMessage(m));
+          });
+          return next;
+        });
+      }
+    }, 2000);
+    return () => clearInterval(int);
+  }, []);
   
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -548,7 +607,7 @@ export default function AppContainer() {
         if (tsk.data) setTasks(tsk.data);
         if (meets.data) setActiveMeetings(meets.data);
         if (scheds.data) setSchedules(scheds.data);
-        if (msgs.data) setGroupMessages(msgs.data.map(m => ({ id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size })));
+        if (msgs.data) setGroupMessages(msgs.data.map(mapGroupMessage));
         if (invites.data) setMeetingInvites(invites.data.map(i => ({ meetingId: i.meeting_id, invitees: i.invitees })));
         if (mStates.data) {
           const statesMap = {};
@@ -717,13 +776,7 @@ export default function AppContainer() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, payload => {
         if (payload.eventType === 'INSERT') {
           const m = payload.new;
-          setGroupMessages(prev => {
-            const exists = prev.find(msg => msg.id === m.id);
-            if (exists) {
-              return prev.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time } : msg);
-            }
-            return [...prev, { id: m.id, organization_id: m.organization_id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size }];
-          });
+          setGroupMessages(prev => mergeMessage(prev, mapGroupMessage(m)));
         } else if (payload.eventType === 'DELETE') {
           setGroupMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
         } else if (payload.eventType === 'UPDATE') {
@@ -853,10 +906,17 @@ export default function AppContainer() {
       .on('broadcast', { event: 'new-group-message' }, (payload) => {
           if (payload?.payload) {
             setGroupMessages(prev => {
-              if (prev.find(m => m.id === payload.payload.id)) return prev;
-              return [...prev, payload.payload];
+              if (payload.payload.organization_id && activeOrgRef.current?.id && payload.payload.organization_id !== activeOrgRef.current.id) return prev;
+              return mergeMessage(prev, payload.payload);
             });
           }
+        })
+      .on('broadcast', { event: 'new-dm-message' }, (payload) => {
+          const message = payload?.payload;
+          const currentId = currentUserRef.current?.id;
+          if (!message?.thread_key || !currentId || !message.thread_key.includes(currentId)) return;
+          setDmThreads(prev => mergeThreadMessage(prev, message.thread_key, message));
+          if (message.from !== currentId && activeTab !== 'chat') addNotification(`New DM from ${message.fromName}`, 'info');
         })
         .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
         const targetId = payload?.payload?.userId;
@@ -1829,6 +1889,15 @@ export default function AppContainer() {
       urlRegex.test(part) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">{part}</a> : part
     );
   };
+
+  const broadcastDmMessage = (threadKey, message) => {
+    if (!kickoutChannelRef.current) return;
+    kickoutChannelRef.current.send({
+      type: 'broadcast',
+      event: 'new-dm-message',
+      payload: { ...message, thread_key: threadKey }
+    });
+  };
   
   const handleDirectAudioSend = async (blob) => {
     const msgId = genId('msg');
@@ -1852,20 +1921,24 @@ export default function AppContainer() {
         type: 'broadcast',
         event: 'new-group-message',
         payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
+          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: '', time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
         }
       });
     }
     setIsSendingChat(false); return; }
     
     if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
-    else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
+    else if (activeChat === 'dm' && activeDmUser) {
+      const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
+      await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null });
+      broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: '', time: msgTime, type: 'chat', audioUrl, attachmentUrl: null, reactions: {} });
+    }
     if (activeChat === 'group' && kickoutChannelRef.current) {
       kickoutChannelRef.current.send({
         type: 'broadcast',
         event: 'new-group-message',
         payload: {
-          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput || (currentAttachmentFiles.length > 0 ? "Attachment" : ""), time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
+          id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: '', time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {}
         }
       });
     }
@@ -1933,7 +2006,18 @@ export default function AppContainer() {
           // Insert message to DB (only use existing columns)
           const msgText = i === 0 && currentChatInput ? currentChatInput : '';
           const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, audio_url: null, attachment_url: realUrl };
-          if (activeChat === 'group') await supabase.from('group_messages').insert({ ...msgData, organization_id: activeOrg.id, type: 'chat' });
+          if (activeChat === 'group') {
+            const groupPayload = { ...msgData, organization_id: activeOrg.id, type: 'chat' };
+            const { error: insertErr } = await supabase.from('group_messages').insert(groupPayload);
+            if (insertErr) throw insertErr;
+            if (kickoutChannelRef.current) {
+              kickoutChannelRef.current.send({
+                type: 'broadcast',
+                event: 'new-group-message',
+                payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: msgTime, type: 'chat', attachmentUrl: realUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size }
+              });
+            }
+          }
           else if (activeChat === 'dm' && activeDmUser) {
             const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
             const { data: inserted, error: insertErr } = await supabase.from('dm_messages').insert({ ...msgData, thread_key: key }).select('*').single();
@@ -1948,6 +2032,7 @@ export default function AppContainer() {
                 isPending: false
               } : m)
             }));
+            broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: inserted?.msg_time || msgTime, type: 'chat', attachmentUrl: inserted?.attachment_url || realUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size, isPending: false });
           }
         }
       } else {
@@ -1966,8 +2051,22 @@ export default function AppContainer() {
           if (!audioErr) audioUrl = supabase.storage.from('chat_attachments').getPublicUrl(audioFileName).data.publicUrl;
         }
 
-        if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
-        else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null }); }
+        if (activeChat === 'group') {
+          const { error: insertErr } = await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+          if (insertErr) throw insertErr;
+          if (kickoutChannelRef.current) {
+            kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: 'new-group-message',
+              payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl, reactions: {} }
+            });
+          }
+        }
+        else if (activeChat === 'dm' && activeDmUser) {
+          const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
+          await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null });
+          broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl, reactions: {} });
+        }
       }
     } catch(err) {
       console.error('Send message error:', err);
@@ -4770,7 +4869,9 @@ export default function AppContainer() {
                                 text: msgText, msg_time: msgTime
                               }).then(() => {});
                               // Update local state immediately
-                              setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: msgTime }] }));
+                              const dmMessage = { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: msgTime };
+                              setDmThreads(prev => mergeThreadMessage(prev, key, dmMessage));
+                              broadcastDmMessage(key, dmMessage);
                               // Also save invite record
                               setMeetingInvites(prev => {
                                 const ex = prev.find(inv => inv.meetingId === myMeet.id);
