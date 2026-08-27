@@ -400,6 +400,34 @@ export default function AppContainer() {
     setKickoutModal(true);
     setIsCheckingSession(false);
   };
+
+  const showBlockedCardAccess = async (card, fallbackOrgId = null) => {
+    if (!card) return false;
+    const profileId = card.profile_id;
+    const orgId = card.organization_id || fallbackOrgId;
+    const { data: profile } = profileId
+      ? await supabase.from('profiles').select('*').eq('id', profileId).maybeSingle()
+      : { data: null };
+    const { data: org } = orgId
+      ? await supabase.from('organizations').select('*').eq('id', orgId).maybeSingle()
+      : { data: null };
+
+    const userBlocked = card.is_revoked || ['suspended', 'banned', 'deleted'].includes(profile?.role) || profile?.status === 'suspended';
+    const orgSuspended = org?.status === 'suspended' || org?.status === 'banned';
+    const orgLocked = org?.working_hours?.is_org_locked === true || org?.is_org_locked === true;
+    const workerLocked = checkIsEffectivelyLocked(profile, org);
+    if (!userBlocked && !orgSuspended && !orgLocked && !workerLocked) return false;
+
+    setLoginMode('worker');
+    setCurrentUser(profile || { id: profileId || 'blocked-card', role: 'worker', organization_id: orgId });
+    setActiveOrg(org || { id: orgId || 'org-locked', name: 'AuraSuite Org', type: 'software_house' });
+    setIsLoggedIn(true);
+    setKickoutModal(userBlocked);
+    setAuthBlockedByOrg(orgSuspended);
+    setLockModal(workerLocked);
+    setIsCheckingSession(false);
+    return true;
+  };
   
   // Audio fix: track previous media-control state to avoid spurious audio toggling
   const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
@@ -599,11 +627,12 @@ export default function AppContainer() {
             };
 
             if (isWorker) {
-              supabase.from('digital_cards').select('id, is_revoked').eq('profile_id', userId).single().then(({data: card}) => {
+              supabase.from('digital_cards').select('id, profile_id, is_revoked, organization_id').eq('profile_id', userId).single().then(async ({data: card}) => {
                 if (!card || card.is_revoked === true) {
                   showSuspendedCardAccess({ ...card, profile_id: userId, organization_id: savedUser.organization_id }, savedUser.organization_id);
                   return;
                 }
+                if (await showBlockedCardAccess({ ...card, profile_id: userId, organization_id: card.organization_id || savedUser.organization_id }, savedUser.organization_id)) return;
                 loadOrg({ card_id: card.id });
               });
             } else {
@@ -1016,32 +1045,8 @@ export default function AppContainer() {
         let cardQuery = supabase.from('digital_cards').select('id, profile_id, is_revoked, organization_id').eq('card_number', cardParam);
         if (userParam) cardQuery = cardQuery.eq('username', userParam);
         cardQuery.maybeSingle().then(async ({data}) => { 
-          if (data?.is_revoked) {
-            showSuspendedCardAccess(data, data.organization_id);
-          } else if (data?.profile_id) {
-            const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.profile_id).maybeSingle();
-            if (profile && (['suspended', 'banned', 'deleted'].includes(profile.role) || profile.status === 'suspended')) {
-              await showSuspendedCardAccess(data, data.organization_id);
-            } else if (data?.organization_id) {
-              supabase.from('organizations').select('status').eq('id', data.organization_id).single().then(({data: orgData}) => {
-                if (orgData?.status === 'suspended' || orgData?.status === 'banned') {
-                  setAuthBlockedByOrg(true);
-                }
-                setIsCheckingSession(false);
-              }).catch(() => setIsCheckingSession(false));
-            } else {
-              setIsCheckingSession(false);
-            }
-          } else if (data?.organization_id) {
-            supabase.from('organizations').select('status').eq('id', data.organization_id).single().then(({data: orgData}) => {
-              if (orgData?.status === 'suspended' || orgData?.status === 'banned') {
-                setAuthBlockedByOrg(true);
-              }
-              setIsCheckingSession(false);
-            }).catch(() => setIsCheckingSession(false));
-          } else {
-            setIsCheckingSession(false);
-          }
+          if (await showBlockedCardAccess(data, data?.organization_id)) return;
+          setIsCheckingSession(false);
         }).catch(() => setIsCheckingSession(false));
       } else {
         setIsCheckingSession(false);
@@ -1059,16 +1064,10 @@ export default function AppContainer() {
             if (decoded.orgType) setAuthOrgType(decoded.orgType);
             if (decoded.orgName) setAuthOrgName(decoded.orgName);
               
-              // NEW FIX: Immediately check if revoked and block the screen!
               supabase.from('digital_cards').select('id, profile_id, is_revoked, organization_id').eq('card_number', decoded.card).eq('username', decoded.username).maybeSingle().then(async ({data}) => { 
-                if (data?.is_revoked) showSuspendedCardAccess(data, data.organization_id); 
-                else if (data?.profile_id) {
-                  const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.profile_id).maybeSingle();
-                  if (profile && (['suspended', 'banned', 'deleted'].includes(profile.role) || profile.status === 'suspended')) {
-                    await showSuspendedCardAccess(data, data.organization_id);
-                  }
-                }
-              });
+                if (await showBlockedCardAccess(data, data?.organization_id)) return;
+                setIsCheckingSession(false);
+              }).catch(() => setIsCheckingSession(false));
             }
           } catch(e) { /* ignore invalid token */ }
         }
@@ -1187,10 +1186,7 @@ export default function AppContainer() {
         return;
       }
       const card = cards[0];
-      if (card.is_revoked) {
-        await showSuspendedCardAccess(card, card.organization_id);
-        return;
-      }
+      if (await showBlockedCardAccess(card, card.organization_id)) return;
       if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
         alert('Invalid Password');
         return;
