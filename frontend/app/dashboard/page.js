@@ -382,6 +382,9 @@ export default function AppContainer() {
   const [chatInput, setChatInput] = useState('');
   const [activeChat, setActiveChat] = useState('group');        // 'group' | 'dm'
   const chatBottomRef = useRef(null);
+  const chatScrollRef = useRef(null);
+  const chatShouldStickToBottomRef = useRef(true);
+  const chatTargetRef = useRef('');
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [isDictating, setIsDictating] = useState(false);
@@ -1272,8 +1275,19 @@ export default function AppContainer() {
   }, [tasks]);
 
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [groupMessages, dmThreads, activeDmUser]);
+    const nextTarget = activeChat === 'group'
+      ? `group:${activeOrg?.id || 'none'}`
+      : `dm:${activeDmUser?.id || 'none'}`;
+    const targetChanged = chatTargetRef.current !== nextTarget;
+    if (targetChanged) {
+      chatTargetRef.current = nextTarget;
+      chatShouldStickToBottomRef.current = true;
+    }
+
+    if (chatShouldStickToBottomRef.current) {
+      chatBottomRef.current?.scrollIntoView({ behavior: targetChanged ? 'auto' : 'smooth' });
+    }
+  }, [groupMessages, dmThreads, activeDmUser, activeChat, activeOrg?.id]);
 
   // Auto-hide generated card after 15 seconds
   useEffect(() => {
@@ -2202,7 +2216,13 @@ export default function AppContainer() {
       const markDeletedForMe = (list) => list.map(m => m.id === msg.id ? { ...m, deletedFor: [...(m.deletedFor || []), currentUser.id] } : m);
       
       if (action === 'everyone') {
-        if (msg.from === currentUser.id || (currentUser.role === 'super_admin' && table === 'group_messages')) {
+        const canManageOrgGroup = table === 'group_messages'
+          && (
+            currentUser.role === 'super_admin'
+            || (currentUser.role === 'admin' && msg.organization_id === currentUser.organization_id)
+          );
+
+        if (msg.from === currentUser.id || canManageOrgGroup) {
           if (activeChat === 'group') setGroupMessages(prev => removeFromList(prev));
           else if (activeChat === 'dm' && activeDmUser) {
             const key = [currentUser.id, activeDmUser.id].sort().join('_');
@@ -5221,7 +5241,14 @@ export default function AppContainer() {
                   </div>
 
                   {/* Messages */}
-                  <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                  <div
+                    ref={chatScrollRef}
+                    onScroll={(e) => {
+                      const el = e.currentTarget;
+                      chatShouldStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+                    }}
+                    className="flex-1 overflow-y-auto p-5 space-y-4"
+                  >
                     {(() => {
                       const msgs = activeChat === 'group'
                         ? groupMessages.filter(m => m.organization_id === activeOrg?.id)
@@ -5234,7 +5261,13 @@ export default function AppContainer() {
                       );
                       return msgs.filter(m => !(m.deletedFor && m.deletedFor.includes(currentUser.id))).map(msg => {
                         const isMine = msg.from === currentUser.id;
-                        const canDeleteEveryone = isMine || (currentUser.role === 'super_admin' && activeChat === 'group');
+                        const canDeleteEveryone = isMine || (
+                          activeChat === 'group'
+                          && (
+                            currentUser.role === 'super_admin'
+                            || (currentUser.role === 'admin' && msg.organization_id === currentUser.organization_id)
+                          )
+                        );
                         return (
                           <div key={msg.id} className={`flex gap-3 ${isMine ? 'flex-row-reverse' : ''}`}>
                             <div className="w-7 h-7 rounded-full bg-purple-700/40 flex items-center justify-center text-xs font-bold text-white border border-purple-500/20 shrink-0">
