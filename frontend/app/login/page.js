@@ -1007,6 +1007,7 @@ export default function AppContainer() {
       setIsLoggedIn(false);
       setCurrentUser(null);
       setActiveOrg(null);
+      setIsCheckingSession(true);
 
       if (cardParam && userParam) {
         setAuthCardNumber(cardParam);
@@ -1016,7 +1017,7 @@ export default function AppContainer() {
           if (data?.is_revoked) {
             showSuspendedCardAccess(data, data.organization_id);
           } else if (data?.profile_id) {
-            const { data: profile } = await supabase.from('profiles').select('role, status').eq('id', data.profile_id).maybeSingle();
+            const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.profile_id).maybeSingle();
             if (profile && (['suspended', 'banned', 'deleted'].includes(profile.role) || profile.status === 'suspended')) {
               await showSuspendedCardAccess(data, data.organization_id);
             } else if (data?.organization_id) {
@@ -1060,7 +1061,7 @@ export default function AppContainer() {
               supabase.from('digital_cards').select('id, profile_id, is_revoked, organization_id').eq('card_number', decoded.card).eq('username', decoded.username).maybeSingle().then(async ({data}) => { 
                 if (data?.is_revoked) showSuspendedCardAccess(data, data.organization_id); 
                 else if (data?.profile_id) {
-                  const { data: profile } = await supabase.from('profiles').select('role, status').eq('id', data.profile_id).maybeSingle();
+                  const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.profile_id).maybeSingle();
                   if (profile && (['suspended', 'banned', 'deleted'].includes(profile.role) || profile.status === 'suspended')) {
                     await showSuspendedCardAccess(data, data.organization_id);
                   }
