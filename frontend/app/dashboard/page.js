@@ -874,6 +874,15 @@ export default function AppContainer() {
           setKickoutModal(true);
         }
       })
+      .on('broadcast', { event: 'user-reactivated' }, (payload) => {
+        const targetId = payload?.payload?.userId;
+        const currentId = currentUserRef.current?.id;
+        if (targetId && currentId && targetId === currentId) {
+          setKickoutModal(false);
+          setLockModal(false);
+          setCurrentUser(prev => prev ? { ...prev, role: payload.payload.role || 'worker', is_locked: false, force_unlocked: false } : prev);
+        }
+      })
       .on('broadcast', { event: 'new-group-message' }, (payload) => {
           if (payload?.payload) {
             setGroupMessages(prev => {
@@ -958,10 +967,11 @@ export default function AppContainer() {
         if (data && ['suspended', 'banned', 'deleted'].includes(data.role)) {
           setKickoutModal(true);
         } else if (data) {
+          setKickoutModal(false);
           setCurrentUser(prev => {
             if (!prev) return prev;
-            if (prev.is_locked !== data.is_locked || prev.force_unlocked !== data.force_unlocked) {
-              return { ...prev, is_locked: data.is_locked, force_unlocked: data.force_unlocked };
+            if (prev.role !== data.role || prev.is_locked !== data.is_locked || prev.force_unlocked !== data.force_unlocked) {
+              return { ...prev, role: data.role, is_locked: data.is_locked, force_unlocked: data.force_unlocked };
             }
             return prev;
           });
@@ -2297,6 +2307,13 @@ export default function AppContainer() {
 
         const updatedUser = { ...user, role: nextRole, is_locked: false, force_unlocked: false };
         setProfiles(prev => prev.map(p => p.id === user.id ? updatedUser : p));
+        if (kickoutChannelRef.current) {
+          await kickoutChannelRef.current.send({
+            type: 'broadcast',
+            event: 'user-reactivated',
+            payload: { userId: user.id, role: nextRole }
+          });
+        }
         addNotification(`${user.full_name} reactivated successfully.`, 'success');
       }
     });
@@ -2316,7 +2333,7 @@ export default function AppContainer() {
     const derivedBanDate = validExpiry ? new Date(validExpiry.getTime() - (30 * 24 * 60 * 60 * 1000)) : null;
     const suspendedOn = org?.status === 'banned'
       ? (org?.working_hours?.org_suspended_at || derivedBanDate)
-      : (org?.working_hours?.org_suspended_at || org?.updated_at || org?.created_at || null);
+      : null;
     return {
       suspendedOn,
       eligibleOn: org?.status === 'banned' ? validExpiry : null,
@@ -2458,6 +2475,12 @@ export default function AppContainer() {
                 : [...prev, newBanRecord];
             });
           }
+
+          if (newStatus === 'active' && org.email) {
+            const normalizedOrgEmail = org.email.toLowerCase();
+            await anonSupabase.from('banned_emails').delete().eq('email', normalizedOrgEmail);
+            setBannedEmails(prev => prev.filter(b => b.email !== normalizedOrgEmail));
+          }
             
           setOrganizations(prev => prev.map(o => o.id === org.id ? { ...o, ...updatePayload } : o));
           
@@ -2508,6 +2531,46 @@ export default function AppContainer() {
           console.error(err);
           addNotification('Failed to toggle lock.', 'error');
         }
+      }
+    });
+  };
+
+  const handleToggleAllOrgLocks = async (lockState) => {
+    const targetOrgs = organizations.filter(org =>
+      (org.status === 'active' || !org.status) &&
+      org.email?.toLowerCase().trim() !== 'ibraheemashshuraim@gmail.com'
+    );
+    if (targetOrgs.length === 0) return;
+
+    setConfirmModal({
+      title: lockState ? 'Lock All Organizations?' : 'Unlock All Organizations?',
+      message: lockState
+        ? 'This will temporarily lock every active software house and show the work-in-progress screen.'
+        : 'This will unlock every active software house and restore access.',
+      onConfirm: async () => {
+        const updates = await Promise.all(targetOrgs.map(async (org) => {
+          const newHours = { ...(org.working_hours || {}), is_org_locked: lockState };
+          const { error } = await anonSupabase
+            .from('organizations')
+            .update({ working_hours: newHours })
+            .eq('id', org.id);
+          if (error) throw error;
+
+          if (kickoutChannelRef.current) {
+            await kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: 'org-updated',
+              payload: { orgId: org.id, working_hours: newHours }
+            });
+          }
+          return { id: org.id, working_hours: newHours };
+        }));
+
+        setOrganizations(prev => prev.map(org => {
+          const update = updates.find(item => item.id === org.id);
+          return update ? { ...org, working_hours: update.working_hours } : org;
+        }));
+        addNotification(lockState ? 'All organizations locked.' : 'All organizations unlocked.', lockState ? 'warning' : 'success');
       }
     });
   };
@@ -4706,10 +4769,10 @@ export default function AppContainer() {
                               <span className="text-[9px] font-semibold text-red-400">Access Revoked</span>
                             </td>
                             <td className="px-4 py-3 text-[10px] text-purple-300">
-                              {banDate ? banDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Suspended only'}
+                              {banDate ? banDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
                             </td>
                             <td className="px-4 py-3 text-[10px] font-mono text-yellow-400/80">
-                              {expiryDate ? expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Eligible now'}
+                              {expiryDate ? expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2">
@@ -5319,6 +5382,14 @@ export default function AppContainer() {
                     <div className="p-2 bg-green-500/10 rounded-lg border border-green-500/20"><Server className="text-green-400" size={20} /></div>
                     Software Houses
                   </h2>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleToggleAllOrgLocks(true)} className="px-3 py-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-300 text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1.5">
+                      <Lock size={12} /> Lock All
+                    </button>
+                    <button onClick={() => handleToggleAllOrgLocks(false)} className="px-3 py-1.5 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 text-[10px] font-bold rounded-lg border border-emerald-500/30 transition-all flex items-center gap-1.5">
+                      <Unlock size={12} /> Unlock All
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex gap-4 mb-4 border-b border-purple-500/20 pb-2">
@@ -5388,13 +5459,15 @@ export default function AppContainer() {
                             {activeOrgsTab === 'suspended' && (
                               <>
                                 <td className="px-4 py-3 text-[10px] text-purple-300">
-                                  {banInfo.suspendedOn ? formatOrgDate(banInfo.suspendedOn) : 'Suspended only'}
+                                  {banInfo.suspendedOn ? formatOrgDate(banInfo.suspendedOn) : 'Unknown'}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <div className="text-[10px] font-mono text-yellow-400/90">{banInfo.eligibleOn ? formatOrgDate(banInfo.eligibleOn) : 'Eligible now'}</div>
-                                  <div className={`text-[10px] font-bold uppercase ${banInfo.isEligible ? 'text-green-400' : 'text-red-400'}`}>
-                                    {banInfo.isEligible ? 'Eligible now' : '30-day ban active'}
-                                  </div>
+                                  <div className="text-[10px] font-mono text-yellow-400/90">{banInfo.eligibleOn ? formatOrgDate(banInfo.eligibleOn) : 'Unknown'}</div>
+                                  {banInfo.eligibleOn && (
+                                    <div className={`text-[10px] font-bold uppercase ${banInfo.isEligible ? 'text-green-400' : 'text-red-400'}`}>
+                                      {banInfo.isEligible ? 'Eligible now' : '30-day ban active'}
+                                    </div>
+                                  )}
                                 </td>
                               </>
                             )}
@@ -5403,24 +5476,25 @@ export default function AppContainer() {
                                 <button onClick={() => setViewOrgDetails(org)} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 text-xs font-bold transition-colors">View Details</button>
                                 
                                 {org.email?.toLowerCase().trim() !== 'ibraheemashshuraim@gmail.com' && activeOrgsTab === 'active' && (
-                                  <button onClick={() => handleToggleOrgLock(org)} className={`p-1.5 border rounded-lg transition-all ${org.working_hours?.is_org_locked ? 'bg-red-950/50 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-yellow-950/30 border-yellow-500/30 text-yellow-500 hover:text-white hover:border-yellow-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
-                                    {org.working_hours?.is_org_locked ? <Lock size={14} /> : <Unlock size={14} />}
+                                  <button onClick={() => handleToggleOrgLock(org)} className={`px-3 py-1.5 border rounded-lg transition-all text-[10px] font-bold flex items-center gap-1 ${org.working_hours?.is_org_locked ? 'bg-red-950/50 border-red-500/50 text-red-300 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-yellow-950/30 border-yellow-500/30 text-yellow-300 hover:text-white hover:border-yellow-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
+                                    {org.working_hours?.is_org_locked ? <Lock size={11} /> : <Unlock size={11} />}
+                                    {org.working_hours?.is_org_locked ? 'Unlock' : 'Lock'}
                                   </button>
                                 )}
 
                                 {org.email?.toLowerCase().trim() !== 'ibraheemashshuraim@gmail.com' && (activeOrgsTab === 'active' ? (
                                   <>
-                                    <button onClick={() => handleChangeOrgStatus(org, 'suspended')} title="Suspend" className="p-1.5 bg-orange-950/30 border border-orange-500/20 rounded-lg text-orange-400 hover:text-white hover:border-orange-500/50 transition-all"><UserMinus size={14} /></button>
-                                    <button onClick={() => handleChangeOrgStatus(org, 'banned')} title="Ban (30 days)" className="p-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-400 hover:text-white hover:border-red-500/50 transition-all"><UserX size={14} /></button>
+                                    <button onClick={() => handleChangeOrgStatus(org, 'suspended')} title="Suspend" className="px-3 py-1.5 bg-orange-950/30 border border-orange-500/20 rounded-lg text-orange-300 hover:text-white hover:border-orange-500/50 transition-all text-[10px] font-bold flex items-center gap-1"><UserMinus size={11} /> Suspend</button>
+                                    <button onClick={() => handleChangeOrgStatus(org, 'banned')} title="Ban (30 days)" className="px-3 py-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-300 hover:text-white hover:border-red-500/50 transition-all text-[10px] font-bold flex items-center gap-1"><UserX size={11} /> Ban</button>
                                   </>
                                 ) : (
                                   <>
                                     {!banInfo.isEligible ? (
-                                      <button disabled title={reactivationTitle} className="p-1.5 bg-gray-900 border border-gray-700 rounded-lg text-gray-500 cursor-not-allowed transition-all"><PlayCircle size={14} /></button>
+                                      <button disabled title={reactivationTitle} className="px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-lg text-gray-500 cursor-not-allowed transition-all text-[10px] font-bold flex items-center gap-1"><PlayCircle size={11} /> Reactivate</button>
                                     ) : (
-                                      <button onClick={() => handleChangeOrgStatus(org, 'active')} title={reactivationTitle} className="p-1.5 bg-green-950/30 border border-green-500/20 rounded-lg text-green-400 hover:text-white hover:border-green-500/50 transition-all"><PlayCircle size={14} /></button>
+                                      <button onClick={() => handleChangeOrgStatus(org, 'active')} title={reactivationTitle} className="px-3 py-1.5 bg-green-950/50 hover:bg-green-600/80 text-green-200 hover:text-white text-[10px] font-bold rounded-lg border border-green-500/30 transition-all flex items-center gap-1"><PlayCircle size={11} /> Reactivate</button>
                                     )}
-                                    <button onClick={() => handleDeleteOrg(org)} title="Delete Forever" className="p-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-400 hover:text-white hover:border-red-500/50 transition-all"><Trash2 size={14} /></button>
+                                    <button onClick={() => handleDeleteOrg(org)} title="Delete Forever" className="px-3 py-1.5 bg-red-950/50 hover:bg-red-600/80 text-red-200 hover:text-white text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1"><Trash2 size={11} /> Delete Record</button>
                                   </>
                                 ))}
                               </div>
@@ -5858,11 +5932,11 @@ export default function AppContainer() {
                     <>
                       <div className="bg-red-900/10 p-4 rounded-xl border border-red-500/10">
                         <p className="text-[10px] uppercase font-bold text-red-400 mb-1">Suspended On</p>
-                        <p className="text-white font-medium">{banInfo.suspendedOn ? formatOrgDate(banInfo.suspendedOn) : 'Suspended only'}</p>
+                        <p className="text-white font-medium">{banInfo.suspendedOn ? formatOrgDate(banInfo.suspendedOn) : 'Unknown'}</p>
                       </div>
                       <div className="bg-yellow-900/10 p-4 rounded-xl border border-yellow-500/10">
                         <p className="text-[10px] uppercase font-bold text-yellow-400 mb-1">Eligible For Reactivation</p>
-                        <p className="text-white font-medium">{banInfo.eligibleOn ? formatOrgDate(banInfo.eligibleOn) : 'Eligible now'}</p>
+                        <p className="text-white font-medium">{banInfo.eligibleOn ? formatOrgDate(banInfo.eligibleOn) : 'Unknown'}</p>
                       </div>
                     </>
                   );

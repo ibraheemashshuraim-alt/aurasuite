@@ -784,6 +784,15 @@ export default function AppContainer() {
           console.log('ℹ️ Broadcast ignored. Target ID:', targetId, 'Current ID:', currentId);
         }
       })
+      .on('broadcast', { event: 'user-reactivated' }, (payload) => {
+        const targetId = payload?.payload?.userId;
+        const currentId = currentUserRef.current?.id;
+        if (targetId && currentId && targetId === currentId) {
+          setKickoutModal(false);
+          setLockModal(false);
+          setCurrentUser(prev => prev ? { ...prev, role: payload.payload.role || 'worker', is_locked: false, force_unlocked: false } : prev);
+        }
+      })
       .on('broadcast', { event: 'new-group-message' }, (payload) => {
           if (payload?.payload) {
             setGroupMessages(prev => {
@@ -866,8 +875,9 @@ export default function AppContainer() {
           console.log('🚨 POLLER KICKOUT: profile suspended', { data, error });
           setKickoutModal(true);
         } else if (data) {
+          setKickoutModal(false);
           setCurrentUser(prev => {
-            const nextUser = prev ? { ...prev, is_locked: data.is_locked, force_unlocked: data.force_unlocked } : prev;
+            const nextUser = prev ? { ...prev, role: data.role, is_locked: data.is_locked, force_unlocked: data.force_unlocked } : prev;
             setLockModal(checkIsEffectivelyLocked(nextUser, activeOrgRef.current));
             return nextUser;
           });
