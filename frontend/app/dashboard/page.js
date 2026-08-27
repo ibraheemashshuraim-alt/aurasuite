@@ -273,14 +273,23 @@ export default function AppContainer() {
   useEffect(() => {
     const int = setInterval(async () => {
       if (activeOrgRef.current?.id) {
-        const { data: msgs } = await supabase.from('group_messages').select('*').eq('organization_id', activeOrgRef.current.id).order('id', { ascending: true });
+        const orgId = activeOrgRef.current.id;
+        const { data: msgs } = await supabase.from('group_messages').select('*').eq('organization_id', orgId).order('id', { ascending: true });
         if (msgs) {
           setGroupMessages(prev => {
-            let next = prev;
-            msgs.forEach(m => {
-              next = mergeMessage(next, mapGroupMessage(m));
+            const serverMessages = msgs.map(mapGroupMessage);
+            const serverIds = new Set(serverMessages.map(msg => msg.id));
+            const otherOrgMessages = prev.filter(msg => msg.organization_id !== orgId);
+            const pendingMessages = prev.filter(msg => (
+              msg.organization_id === orgId
+              && !serverIds.has(msg.id)
+              && (msg.isPending || msg.attachmentUrl?.startsWith?.('blob:') || msg.audioUrl?.startsWith?.('blob:'))
+            ));
+            let nextOrgMessages = serverMessages;
+            pendingMessages.forEach(message => {
+              nextOrgMessages = mergeMessage(nextOrgMessages, message);
             });
-            return next;
+            return [...otherOrgMessages, ...nextOrgMessages];
           });
         }
       }
@@ -978,12 +987,36 @@ export default function AppContainer() {
             });
           }
         })
+      .on('broadcast', { event: 'group-message-deleted' }, (payload) => {
+          const message = payload?.payload;
+          if (!message?.id) return;
+          if (message.organization_id && activeOrgRef.current?.id && message.organization_id !== activeOrgRef.current.id) return;
+          setGroupMessages(prev => prev.filter(msg => msg.id !== message.id));
+        })
+      .on('broadcast', { event: 'group-message-updated' }, (payload) => {
+          const message = payload?.payload;
+          if (!message?.id) return;
+          if (message.organization_id && activeOrgRef.current?.id && message.organization_id !== activeOrgRef.current.id) return;
+          setGroupMessages(prev => prev.map(msg => msg.id === message.id ? { ...msg, ...message } : msg));
+        })
       .on('broadcast', { event: 'new-dm-message' }, (payload) => {
           const message = payload?.payload;
           const currentId = currentUserRef.current?.id;
           if (!message?.thread_key || !currentId || !message.thread_key.includes(currentId)) return;
           setDmThreads(prev => mergeThreadMessage(prev, message.thread_key, message));
           if (message.from !== currentId && activeTab !== 'chat') addNotification(`New DM from ${message.fromName}`, 'info');
+        })
+      .on('broadcast', { event: 'dm-message-deleted' }, (payload) => {
+          const message = payload?.payload;
+          const currentId = currentUserRef.current?.id;
+          if (!message?.id || !message?.thread_key || !currentId || !message.thread_key.includes(currentId)) return;
+          setDmThreads(prev => ({ ...prev, [message.thread_key]: (prev[message.thread_key] || []).filter(msg => msg.id !== message.id) }));
+        })
+      .on('broadcast', { event: 'dm-message-updated' }, (payload) => {
+          const message = payload?.payload;
+          const currentId = currentUserRef.current?.id;
+          if (!message?.id || !message?.thread_key || !currentId || !message.thread_key.includes(currentId)) return;
+          setDmThreads(prev => ({ ...prev, [message.thread_key]: (prev[message.thread_key] || []).map(msg => msg.id === message.id ? { ...msg, ...message } : msg) }));
         })
         .on('broadcast', { event: 'worker-lock-status' }, (payload) => {
           const targetId = payload?.payload?.userId;
@@ -2228,7 +2261,16 @@ export default function AppContainer() {
             const key = [currentUser.id, activeDmUser.id].sort().join('_');
             setDmThreads(prev => ({ ...prev, [key]: removeFromList(prev[key] || []) }));
           }
-          await supabase.from(table).delete().eq('id', msg.id);
+          const { error } = await supabase.from(table).delete().eq('id', msg.id);
+          if (error) throw error;
+          if (kickoutChannelRef.current) {
+            const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser.id, activeDmUser.id].sort().join('_') : null;
+            kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: table === 'group_messages' ? 'group-message-deleted' : 'dm-message-deleted',
+              payload: { id: msg.id, organization_id: msg.organization_id || activeOrg?.id, thread_key: msg.thread_key || threadKey }
+            });
+          }
         } else {
           alert("You do not have permission to delete this message for everyone.");
         }
@@ -2241,7 +2283,16 @@ export default function AppContainer() {
             setDmThreads(prev => ({ ...prev, [key]: markDeletedForMe(prev[key] || []) }));
           }
           const newDeletedFor = [...currentDeletedFor, currentUser.id];
-          await supabase.from(table).update({ deleted_for: newDeletedFor }).eq('id', msg.id);
+          const { error } = await supabase.from(table).update({ deleted_for: newDeletedFor }).eq('id', msg.id);
+          if (error) throw error;
+          if (kickoutChannelRef.current) {
+            const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser.id, activeDmUser.id].sort().join('_') : null;
+            kickoutChannelRef.current.send({
+              type: 'broadcast',
+              event: table === 'group_messages' ? 'group-message-updated' : 'dm-message-updated',
+              payload: { id: msg.id, organization_id: msg.organization_id || activeOrg?.id, thread_key: msg.thread_key || threadKey, deletedFor: newDeletedFor }
+            });
+          }
         }
       }
     } catch (err) {
@@ -2275,7 +2326,16 @@ export default function AppContainer() {
         setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msg.id ? { ...m, reactions: currentReactions } : m) }));
       }
       
-      await supabase.from(table).update({ reactions: currentReactions }).eq('id', msg.id);
+      const { error } = await supabase.from(table).update({ reactions: currentReactions }).eq('id', msg.id);
+      if (error) throw error;
+      if (kickoutChannelRef.current) {
+        const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser.id, activeDmUser.id].sort().join('_') : msg.thread_key;
+        kickoutChannelRef.current.send({
+          type: 'broadcast',
+          event: table === 'group_messages' ? 'group-message-updated' : 'dm-message-updated',
+          payload: { id: msg.id, organization_id: msg.organization_id || activeOrg?.id, thread_key: threadKey, reactions: currentReactions }
+        });
+      }
     } catch (err) {
       console.error('Reaction failed:', err);
     }
