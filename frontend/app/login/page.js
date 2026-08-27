@@ -382,6 +382,24 @@ export default function AppContainer() {
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
+
+  const showSuspendedCardAccess = async (card, fallbackOrgId = null) => {
+    const profileId = card?.profile_id;
+    const orgId = card?.organization_id || fallbackOrgId;
+    const { data: profile } = profileId
+      ? await supabase.from('profiles').select('*').eq('id', profileId).maybeSingle()
+      : { data: null };
+    const { data: org } = orgId
+      ? await supabase.from('organizations').select('*').eq('id', orgId).maybeSingle()
+      : { data: null };
+
+    setLoginMode('worker');
+    setCurrentUser(profile || { id: profileId || 'revoked-card', role: 'suspended', organization_id: orgId });
+    setActiveOrg(org || { id: orgId || 'org-locked', name: 'AuraSuite Org', type: 'software_house' });
+    setIsLoggedIn(true);
+    setKickoutModal(true);
+    setIsCheckingSession(false);
+  };
   
   // Audio fix: track previous media-control state to avoid spurious audio toggling
   const prevMediaStateRef = useRef({ hostMuted: false, isMuted: false, hostVideoOff: false, isVideoOff: false });
@@ -583,8 +601,7 @@ export default function AppContainer() {
             if (isWorker) {
               supabase.from('digital_cards').select('id, is_revoked').eq('profile_id', userId).single().then(({data: card}) => {
                 if (!card || card.is_revoked === true) {
-                  setKickoutModal(true);
-                  setIsCheckingSession(false);
+                  showSuspendedCardAccess({ ...card, profile_id: userId, organization_id: savedUser.organization_id }, savedUser.organization_id);
                   return;
                 }
                 loadOrg({ card_id: card.id });
@@ -995,10 +1012,23 @@ export default function AppContainer() {
         setAuthCardNumber(cardParam);
         setAuthUsername(userParam);
         setLoginMode('worker');
-        supabase.from('digital_cards').select('is_revoked, organization_id').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(({data}) => { 
+        supabase.from('digital_cards').select('id, profile_id, is_revoked, organization_id').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(async ({data}) => { 
           if (data?.is_revoked) {
-            setKickoutModal(true); 
-            setIsCheckingSession(false);
+            showSuspendedCardAccess(data, data.organization_id);
+          } else if (data?.profile_id) {
+            const { data: profile } = await supabase.from('profiles').select('role, status').eq('id', data.profile_id).maybeSingle();
+            if (profile && (['suspended', 'banned', 'deleted'].includes(profile.role) || profile.status === 'suspended')) {
+              await showSuspendedCardAccess(data, data.organization_id);
+            } else if (data?.organization_id) {
+              supabase.from('organizations').select('status').eq('id', data.organization_id).single().then(({data: orgData}) => {
+                if (orgData?.status === 'suspended' || orgData?.status === 'banned') {
+                  setAuthBlockedByOrg(true);
+                }
+                setIsCheckingSession(false);
+              }).catch(() => setIsCheckingSession(false));
+            } else {
+              setIsCheckingSession(false);
+            }
           } else if (data?.organization_id) {
             supabase.from('organizations').select('status').eq('id', data.organization_id).single().then(({data: orgData}) => {
               if (orgData?.status === 'suspended' || orgData?.status === 'banned') {
@@ -1027,8 +1057,14 @@ export default function AppContainer() {
             if (decoded.orgName) setAuthOrgName(decoded.orgName);
               
               // NEW FIX: Immediately check if revoked and block the screen!
-              supabase.from('digital_cards').select('is_revoked').eq('card_number', decoded.card).eq('username', decoded.username).maybeSingle().then(({data}) => { 
-                if (data?.is_revoked) setKickoutModal(true); 
+              supabase.from('digital_cards').select('id, profile_id, is_revoked, organization_id').eq('card_number', decoded.card).eq('username', decoded.username).maybeSingle().then(async ({data}) => { 
+                if (data?.is_revoked) showSuspendedCardAccess(data, data.organization_id); 
+                else if (data?.profile_id) {
+                  const { data: profile } = await supabase.from('profiles').select('role, status').eq('id', data.profile_id).maybeSingle();
+                  if (profile && (['suspended', 'banned', 'deleted'].includes(profile.role) || profile.status === 'suspended')) {
+                    await showSuspendedCardAccess(data, data.organization_id);
+                  }
+                }
               });
             }
           } catch(e) { /* ignore invalid token */ }
@@ -1149,7 +1185,7 @@ export default function AppContainer() {
       }
       const card = cards[0];
       if (card.is_revoked) {
-        setKickoutModal(true);
+        await showSuspendedCardAccess(card, card.organization_id);
         return;
       }
       if (card.temp_password !== authPassword && card.permanent_password !== authPassword) {
@@ -1166,6 +1202,10 @@ export default function AppContainer() {
       const user = profiles.find(u => u.id === card.profile_id);
       if (user) {
         if (user.role === 'banned' || user.role === 'suspended' || user.status === 'suspended') {
+          const org = organizations.find(o => o.id === user.organization_id) || organizations[0];
+          setCurrentUser(user);
+          setActiveOrg(org);
+          setIsLoggedIn(true);
           setKickoutModal(true);
           return;
         }
