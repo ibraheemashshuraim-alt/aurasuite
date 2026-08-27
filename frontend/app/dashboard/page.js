@@ -5377,11 +5377,24 @@ export default function AppContainer() {
           {/* ═══════ ACTIVE ORGS (Super Admin) ═══════ */}
           {activeTab === 'active_orgs' && currentUser?.role === 'super_admin' && (
               <div className="space-y-6">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div className="flex items-center gap-4">
                   <h2 className="text-2xl font-bold text-white flex items-center gap-3">
                     <div className="p-2 bg-green-500/10 rounded-lg border border-green-500/20"><Server className="text-green-400" size={20} /></div>
                     Software Houses
                   </h2>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 mb-4 border-b border-purple-500/20 pb-2">
+                  <div className="flex gap-4">
+                    <button onClick={() => setActiveOrgsTab('active')} className={`pb-2 px-2 text-sm font-bold transition-all relative ${activeOrgsTab === 'active' ? 'text-green-400' : 'text-purple-400 hover:text-purple-300'}`}>
+                      Active
+                      {activeOrgsTab === 'active' && <div className="absolute bottom-[-9px] left-0 right-0 h-0.5 bg-green-400 rounded-full" />}
+                    </button>
+                    <button onClick={() => setActiveOrgsTab('suspended')} className={`pb-2 px-2 text-sm font-bold transition-all relative ${activeOrgsTab === 'suspended' ? 'text-red-400' : 'text-purple-400 hover:text-purple-300'}`}>
+                      Suspended & Banned
+                      {activeOrgsTab === 'suspended' && <div className="absolute bottom-[-9px] left-0 right-0 h-0.5 bg-red-400 rounded-full" />}
+                    </button>
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => handleToggleAllOrgLocks(true)} className="px-3 py-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-300 text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1.5">
                       <Lock size={12} /> Lock All
@@ -5390,17 +5403,6 @@ export default function AppContainer() {
                       <Unlock size={12} /> Unlock All
                     </button>
                   </div>
-                </div>
-
-                <div className="flex gap-4 mb-4 border-b border-purple-500/20 pb-2">
-                  <button onClick={() => setActiveOrgsTab('active')} className={`pb-2 px-2 text-sm font-bold transition-all relative ${activeOrgsTab === 'active' ? 'text-green-400' : 'text-purple-400 hover:text-purple-300'}`}>
-                    Active
-                    {activeOrgsTab === 'active' && <div className="absolute bottom-[-9px] left-0 right-0 h-0.5 bg-green-400 rounded-full" />}
-                  </button>
-                  <button onClick={() => setActiveOrgsTab('suspended')} className={`pb-2 px-2 text-sm font-bold transition-all relative ${activeOrgsTab === 'suspended' ? 'text-red-400' : 'text-purple-400 hover:text-purple-300'}`}>
-                    Suspended & Banned
-                    {activeOrgsTab === 'suspended' && <div className="absolute bottom-[-9px] left-0 right-0 h-0.5 bg-red-400 rounded-full" />}
-                  </button>
                 </div>
 
                 {organizations.filter(o => activeOrgsTab === 'active' ? (o.status === 'active' || !o.status) : (o.status === 'suspended' || o.status === 'banned')).length === 0 ? (
@@ -5476,16 +5478,15 @@ export default function AppContainer() {
                                 <button onClick={() => setViewOrgDetails(org)} className="px-3 py-1.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 text-xs font-bold transition-colors">View Details</button>
                                 
                                 {org.email?.toLowerCase().trim() !== 'ibraheemashshuraim@gmail.com' && activeOrgsTab === 'active' && (
-                                  <button onClick={() => handleToggleOrgLock(org)} className={`px-3 py-1.5 border rounded-lg transition-all text-[10px] font-bold flex items-center gap-1 ${org.working_hours?.is_org_locked ? 'bg-red-950/50 border-red-500/50 text-red-300 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-yellow-950/30 border-yellow-500/30 text-yellow-300 hover:text-white hover:border-yellow-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
-                                    {org.working_hours?.is_org_locked ? <Lock size={11} /> : <Unlock size={11} />}
-                                    {org.working_hours?.is_org_locked ? 'Unlock' : 'Lock'}
+                                  <button onClick={() => handleToggleOrgLock(org)} className={`p-1.5 border rounded-lg transition-all ${org.working_hours?.is_org_locked ? 'bg-red-950/50 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-yellow-950/30 border-yellow-500/30 text-yellow-500 hover:text-white hover:border-yellow-500/50'}`} title={org.working_hours?.is_org_locked ? 'Unlock Org' : 'Lock Org (Work in progress)'}>
+                                    {org.working_hours?.is_org_locked ? <Lock size={14} /> : <Unlock size={14} />}
                                   </button>
                                 )}
 
                                 {org.email?.toLowerCase().trim() !== 'ibraheemashshuraim@gmail.com' && (activeOrgsTab === 'active' ? (
                                   <>
-                                    <button onClick={() => handleChangeOrgStatus(org, 'suspended')} title="Suspend" className="px-3 py-1.5 bg-orange-950/30 border border-orange-500/20 rounded-lg text-orange-300 hover:text-white hover:border-orange-500/50 transition-all text-[10px] font-bold flex items-center gap-1"><UserMinus size={11} /> Suspend</button>
-                                    <button onClick={() => handleChangeOrgStatus(org, 'banned')} title="Ban (30 days)" className="px-3 py-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-300 hover:text-white hover:border-red-500/50 transition-all text-[10px] font-bold flex items-center gap-1"><UserX size={11} /> Ban</button>
+                                    <button onClick={() => handleChangeOrgStatus(org, 'suspended')} title="Suspend" className="p-1.5 bg-orange-950/30 border border-orange-500/20 rounded-lg text-orange-400 hover:text-white hover:border-orange-500/50 transition-all"><UserMinus size={14} /></button>
+                                    <button onClick={() => handleChangeOrgStatus(org, 'banned')} title="Ban (30 days)" className="p-1.5 bg-red-950/30 border border-red-500/20 rounded-lg text-red-400 hover:text-white hover:border-red-500/50 transition-all"><UserX size={14} /></button>
                                   </>
                                 ) : (
                                   <>
