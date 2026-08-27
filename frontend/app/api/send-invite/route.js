@@ -104,7 +104,7 @@ export async function POST(request) {
         </div>
         
         <div style="background-color: ${theme.panelBg}; padding: 18px 20px; border-radius: 14px; margin-bottom: 22px; border: 1px solid ${theme.boxBorder};">
-          <p style="margin: 0 0 8px; color: #ffffff; font-size: 15px;">Hello <strong>${name}</strong>,</p>
+          <p style="margin: 0 0 8px; color: #ffffff; font-size: 15px;">Assalamu Alaikum <strong>${name}</strong>,</p>
           <p style="color: ${theme.textMuted}; margin: 0; line-height: 1.6;">Your digital access card for the role of <strong>${theme.roleText}</strong> has been generated. You can use these credentials to log in to the portal.</p>
         </div>
 

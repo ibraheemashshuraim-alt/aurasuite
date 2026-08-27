@@ -55,6 +55,17 @@ function checkIsEffectivelyLocked(user, org) {
   return currentMin > endMin && currentMin < startMin;
 }
 
+function rankUsersByAuthority(users, currentUserId) {
+  return [...users].sort((a, b) => {
+    if (a.id === currentUserId) return -1;
+    if (b.id === currentUserId) return 1;
+    const priority = { super_admin: 0, admin: 1, sub_admin: 2, manager: 3, worker: 4, client: 5 };
+    const roleDiff = (priority[a.role] ?? 9) - (priority[b.role] ?? 9);
+    if (roleDiff !== 0) return roleDiff;
+    return String(a.full_name || '').localeCompare(String(b.full_name || ''));
+  });
+}
+
 // ─── Participant Video Tile ──────────────────────────────────────
 function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, streamTrigger }) {
   const videoRef = React.useRef(null);
@@ -1809,7 +1820,7 @@ export default function AppContainer() {
   };
 
   // ─────────────────── Chat ───────────────────
-  const orgMembers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id);
+  const orgMembers = rankUsersByAuthority((profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id), currentUser?.id);
 
   const renderTextWithLinks = (text) => {
     if (!text) return text;
@@ -2304,6 +2315,53 @@ export default function AppContainer() {
     });
   };
 
+  const formatOrgDate = (dateValue) => {
+    if (!dateValue) return 'Unknown';
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return 'Unknown';
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const handleReactivateUser = async (user) => {
+    const userEmail = user.email?.toLowerCase();
+    const banRecord = bannedEmails.find(b => b.email === userEmail);
+    const isBanActive = banRecord && new Date(banRecord.banned_until) > new Date();
+    if (isBanActive) {
+      setCustomAlert(`This email can be reactivated on ${formatOrgDate(banRecord.banned_until)}.`);
+      return;
+    }
+
+    setConfirmModal({
+      title: `Reactivate ${user.full_name}?`,
+      message: 'This will restore the user profile and reactivate their existing access card.',
+      onConfirm: async () => {
+        const nextRole = user.category === 'A' && user.domain === 'Admin' ? 'admin' : 'worker';
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: nextRole, is_locked: false, force_unlocked: false })
+          .eq('id', user.id);
+        if (error) throw error;
+
+        await supabase.from('digital_cards').update({ is_revoked: false }).eq('profile_id', user.id);
+        if (banRecord) {
+          await supabase.from('banned_emails').delete().eq('email', userEmail);
+          setBannedEmails(prev => prev.filter(b => b.email !== userEmail));
+        }
+
+        const updatedUser = { ...user, role: nextRole, is_locked: false, force_unlocked: false };
+        setProfiles(prev => prev.map(p => p.id === user.id ? updatedUser : p));
+        if (kickoutChannelRef.current) {
+          await kickoutChannelRef.current.send({
+            type: 'broadcast',
+            event: 'user-reactivated',
+            payload: { userId: user.id, role: nextRole }
+          });
+        }
+        addNotification(`${user.full_name} reactivated successfully.`, 'success');
+      }
+    });
+  };
+
   // ─────────────────── Off-Day / Locking System ───────────────────
   const toggleLockWorker = async (user) => {
     const isEffectivelyLocked = checkIsEffectivelyLocked(user, activeOrg);
@@ -2496,8 +2554,9 @@ export default function AppContainer() {
   };
 
   // ─────────────────── Derived ───────────────────
-  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
-  const suspendedOrgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && ['banned', 'suspended'].includes(p.role));
+  const sortUsersByAuthority = (users) => rankUsersByAuthority(users, currentUser?.id);
+  const orgUsers = sortUsersByAuthority((profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended'));
+  const suspendedOrgUsers = sortUsersByAuthority((profiles || []).filter(p => p.organization_id === activeOrg?.id && ['banned', 'suspended'].includes(p.role)));
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
@@ -3814,7 +3873,7 @@ export default function AppContainer() {
               { id: 'admin', icon: <Shield size={15} />, label: 'Admin Control', adminOnly: true },
               { id: 'users', icon: <Users size={15} />, label: 'Users', adminOnly: true },
               { id: 'meetings', icon: <Video size={15} />, label: 'Meetings' },
-              { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat', hideForClient: true },
+              { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat' },
               { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules', hideForClient: true },
               { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials', hideForClient: true },
             ].filter(item => {
@@ -4362,6 +4421,7 @@ export default function AppContainer() {
                         const banRecord = bannedEmails.find(b => b.email === user.email?.toLowerCase());
                         const banDate = banRecord ? new Date(banRecord.created_at) : null;
                         const expiryDate = banRecord ? new Date(banRecord.banned_until) : null;
+                        const isBanActive = expiryDate && expiryDate > new Date();
                         
                         return (
                           <tr key={user.id} className={`border-b border-purple-500/5 hover:bg-red-950/10 transition-colors ${i % 2 === 0 ? '' : 'bg-[#0c0818]/40'}`}>
@@ -4391,10 +4451,16 @@ export default function AppContainer() {
                               {expiryDate ? expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'Unknown'}
                             </td>
                             <td className="px-4 py-3">
-                              <button onClick={() => handleDeletePermanentlyFromDB(user.id, user.email)} title="Permanently Delete From DB"
-                                className="px-3 py-1.5 bg-red-950/50 hover:bg-red-600/80 text-red-200 hover:text-white text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1">
-                                <UserX size={11} /> Delete Record
-                              </button>
+                              <div className="flex gap-2">
+                                <button onClick={() => handleReactivateUser(user)} disabled={isBanActive} title={isBanActive ? `Eligible on ${formatOrgDate(expiryDate)}` : 'Reactivate'}
+                                  className="px-3 py-1.5 bg-green-950/50 hover:bg-green-600/80 text-green-200 hover:text-white text-[10px] font-bold rounded-lg border border-green-500/30 transition-all flex items-center gap-1 disabled:bg-gray-900 disabled:border-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed">
+                                  <PlayCircle size={11} /> Reactivate
+                                </button>
+                                <button onClick={() => handleDeletePermanentlyFromDB(user.id, user.email)} title="Permanently Delete From DB"
+                                  className="px-3 py-1.5 bg-red-950/50 hover:bg-red-600/80 text-red-200 hover:text-white text-[10px] font-bold rounded-lg border border-red-500/30 transition-all flex items-center gap-1">
+                                  <UserX size={11} /> Delete Record
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

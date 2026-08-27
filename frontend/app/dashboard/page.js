@@ -61,6 +61,17 @@ function checkIsEffectivelyLocked(user, org) {
   return currentMin > endMin && currentMin < startMin;
 }
 
+function rankUsersByAuthority(users, currentUserId) {
+  return [...users].sort((a, b) => {
+    if (a.id === currentUserId) return -1;
+    if (b.id === currentUserId) return 1;
+    const priority = { super_admin: 0, admin: 1, sub_admin: 2, manager: 3, worker: 4, client: 5 };
+    const roleDiff = (priority[a.role] ?? 9) - (priority[b.role] ?? 9);
+    if (roleDiff !== 0) return roleDiff;
+    return String(a.full_name || '').localeCompare(String(b.full_name || ''));
+  });
+}
+
 // ─── Participant Video Tile ──────────────────────────────────────
 function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, streamTrigger }) {
   const videoRef = React.useRef(null);
@@ -1883,7 +1894,7 @@ export default function AppContainer() {
   };
 
   // ─────────────────── Chat ───────────────────
-  const orgMembers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id);
+  const orgMembers = rankUsersByAuthority((profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id), currentUser?.id);
 
   const renderTextWithLinks = (text) => {
     if (!text) return text;
@@ -2916,8 +2927,9 @@ export default function AppContainer() {
   };
 
   // ─────────────────── Derived ───────────────────
-  const orgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended');
-  const suspendedOrgUsers = (profiles || []).filter(p => p.organization_id === activeOrg?.id && ['banned', 'suspended'].includes(p.role));
+  const sortUsersByAuthority = (users) => rankUsersByAuthority(users, currentUser?.id);
+  const orgUsers = sortUsersByAuthority((profiles || []).filter(p => p.organization_id === activeOrg?.id && p.role !== 'deleted' && p.role !== 'banned' && p.role !== 'suspended'));
+  const suspendedOrgUsers = sortUsersByAuthority((profiles || []).filter(p => p.organization_id === activeOrg?.id && ['banned', 'suspended'].includes(p.role)));
   const orgMeetings = (activeMeetings || []).filter(m => m.organization_id === activeOrg?.id && m.is_active);
   const myInvitedMeetings = orgMeetings.filter(m => m.host_id !== currentUser?.id && isInvitedToMeeting(m));
 
@@ -4245,7 +4257,7 @@ export default function AppContainer() {
               { id: 'admin', icon: <Shield size={15} />, label: 'Admin Control', adminOnly: true },
               { id: 'users', icon: <Users size={15} />, label: 'Users', adminOnly: true },
               { id: 'meetings', icon: <Video size={15} />, label: 'Meetings' },
-              { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat', hideForClient: true },
+              { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat' },
               { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules', hideForClient: true },
               { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials', hideForClient: true },
             ].filter(item => {
