@@ -30,6 +30,14 @@ export default function LandingPage() {
   const bgImages = ['/bg-office.jpg', '/bg-building-1.jpg', '/bg-building-2.jpg'];
 
   React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('t') || params.get('card') || params.get('cardNumber')) {
+      router.replace(`/login${window.location.search}`);
+    }
+  }, [router]);
+
+  React.useEffect(() => {
     const interval = setInterval(() => {
       setBgIndex(prev => (prev + 1) % bgImages.length);
     }, 5000);

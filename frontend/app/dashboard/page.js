@@ -1072,8 +1072,8 @@ export default function AppContainer() {
       const loginTokenParam = params.get('t');
       const inviteToken = params.get('inviteToken');
 
-      const cardParam = params.get('card');
-      const userParam = params.get('user');
+      const cardParam = params.get('card') || params.get('cardNumber');
+      const userParam = params.get('user') || params.get('username');
 
       // If no invite/token/card params, nothing to do
       if (!loginTokenParam && !inviteToken && !cardParam) return;
@@ -1086,11 +1086,13 @@ export default function AppContainer() {
       setActiveOrg(null);
       setIsCheckingSession(true);
 
-      if (cardParam && userParam) {
+      if (cardParam) {
         setAuthCardNumber(cardParam);
-        setAuthUsername(userParam);
+        if (userParam) setAuthUsername(userParam);
         setLoginMode('worker');
-        supabase.from('digital_cards').select('id, profile_id, is_revoked, organization_id').eq('card_number', cardParam).eq('username', userParam).maybeSingle().then(async ({data}) => { 
+        let cardQuery = supabase.from('digital_cards').select('id, profile_id, is_revoked, organization_id').eq('card_number', cardParam);
+        if (userParam) cardQuery = cardQuery.eq('username', userParam);
+        cardQuery.maybeSingle().then(async ({data}) => { 
             if (data?.is_revoked) showSuspendedCardAccess(data, data.organization_id); 
             else if (data?.profile_id) {
               const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.profile_id).maybeSingle();
