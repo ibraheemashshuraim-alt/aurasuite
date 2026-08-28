@@ -394,7 +394,7 @@ export default function AppContainer() {
   const [chatActivity, setChatActivity] = useState({});
   const [chatUnreadCounts, setChatUnreadCounts] = useState({ group: 0, dm: {} });
   const [isChatClosed, setIsChatClosed] = useState(false);
-  const [chatTheme, setChatTheme] = useState('midnight');
+  const [chatTheme, setChatTheme] = useState('classic');
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const [chatCall, setChatCall] = useState(null);
@@ -1990,15 +1990,23 @@ export default function AppContainer() {
       chatCallStartedAtRef.current = chatCallStartedAtRef.current || Date.now();
       if (chatCallNoAnswerTimerRef.current) clearTimeout(chatCallNoAnswerTimerRef.current);
       setChatCall(prev => prev ? { ...prev, status: 'connected' } : prev);
-      setChatCallRemoteStreams(prev => ({ ...prev, [peerId]: remoteStream }));
+      setChatCallRemoteStreams(prev => prev[peerId]?.id === remoteStream.id ? prev : { ...prev, [peerId]: remoteStream });
       if (!remoteStream.getVideoTracks().length) {
         const audio = new Audio();
         audio.autoplay = true;
+        audio.volume = 1;
         audio.srcObject = remoteStream;
         audio.play().catch(() => {});
       }
     };
     return pc;
+  };
+
+  const attachMediaStream = (el, stream) => {
+    if (el && stream && el.srcObject !== stream) {
+      el.srcObject = stream;
+      el.play?.().catch(() => {});
+    }
   };
 
   const joinChatCall = async (call) => {
@@ -2014,7 +2022,10 @@ export default function AppContainer() {
     }
     setChatCallMuted(false);
     setChatCallVideoOff(call.type !== 'video');
-    const stream = await navigator.mediaDevices.getUserMedia({ video: call.type === 'video', audio: { echoCancellation: true, noiseSuppression: true } });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: call.type === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } } : false,
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
     chatCallLocalStreamRef.current = stream;
 
     const callChannel = supabase.channel(`chat-call-${call.id}`, { config: { broadcast: { self: false } } });
@@ -2024,6 +2035,7 @@ export default function AppContainer() {
       if (!from || from === me || (to && to !== me)) return;
 
       if (type === 'JOINED') {
+        if (chatCallPcsRef.current[from]) return;
         const pc = createChatCallPeer(from, callChannel);
         chatCallPcsRef.current[from] = pc;
         stream.getTracks().forEach(track => pc.addTrack(track, stream));
@@ -2415,6 +2427,59 @@ export default function AppContainer() {
   };
 
   const getChatUnreadTotal = () => chatUnreadCounts.group + Object.values(chatUnreadCounts.dm || {}).reduce((sum, count) => sum + count, 0);
+
+  const chatThemeOptions = [
+    { id: 'classic', label: 'Classic Dark' },
+    { id: 'light', label: 'Light Doodle' },
+    { id: 'teal', label: 'Teal Doodle' },
+    { id: 'pastel', label: 'Pastel Blue' },
+    { id: 'dusk', label: 'Purple Dusk' },
+    { id: 'graphite', label: 'Graphite Lines' }
+  ];
+
+  const getChatThemeStyle = () => {
+    const doodleSvg = (stroke = '#2f3a3d', opacity = '0.55') => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'><g fill='none' stroke='${stroke}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' opacity='${opacity}'><path d='M18 28h28v20H18z'/><path d='M24 48l-8 10M40 48l8 10'/><circle cx='92' cy='34' r='12'/><path d='M82 34h20M92 24v20'/><path d='M132 24c14 0 22 8 22 18 0 13-12 20-23 29-11-9-23-16-23-29 0-10 9-18 24-18z'/><path d='M22 108c14-19 31-19 45 0M30 108c10-10 19-10 29 0'/><path d='M116 98h34v24h-34zM125 122l-8 12M142 122l8 12'/><path d='M74 142l18-16 18 16-18 16z'/><circle cx='42' cy='152' r='10'/><path d='M37 152h10M42 147v10'/><path d='M134 154c7-8 16-8 23 0'/><path d='M12 78h8M28 78h8M44 78h8'/><path d='M94 78c10-10 21-10 31 0'/></g></svg>`)}")`;
+    if (chatTheme === 'light') {
+      return {
+        backgroundColor: '#f5f0e6',
+        backgroundImage: `${doodleSvg('#c8beb0', '0.55')}, radial-gradient(circle at 18% 18%, rgba(255,255,255,0.75), transparent 28%)`,
+        backgroundSize: '180px 180px, auto'
+      };
+    }
+    if (chatTheme === 'teal') {
+      return {
+        backgroundColor: '#082020',
+        backgroundImage: `${doodleSvg('#2dd4bf', '0.38')}, radial-gradient(circle at 82% 18%, rgba(20,184,166,0.2), transparent 30%)`,
+        backgroundSize: '170px 170px, auto'
+      };
+    }
+    if (chatTheme === 'pastel') {
+      return {
+        backgroundColor: '#cfe5ec',
+        backgroundImage: `${doodleSvg('#78aab6', '0.42')}, linear-gradient(135deg, rgba(255,255,255,0.34), transparent 45%)`,
+        backgroundSize: '190px 190px, auto'
+      };
+    }
+    if (chatTheme === 'dusk') {
+      return {
+        backgroundColor: '#12091c',
+        backgroundImage: `${doodleSvg('#a855f7', '0.34')}, radial-gradient(circle at 20% 20%, rgba(168,85,247,0.22), transparent 32%), radial-gradient(circle at 82% 72%, rgba(236,72,153,0.16), transparent 34%)`,
+        backgroundSize: '175px 175px, auto, auto'
+      };
+    }
+    if (chatTheme === 'graphite') {
+      return {
+        backgroundColor: '#0c0c10',
+        backgroundImage: `${doodleSvg('#64748b', '0.28')}, linear-gradient(135deg, rgba(255,255,255,0.06) 12%, transparent 12%, transparent 50%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.06) 62%, transparent 62%)`,
+        backgroundSize: '180px 180px, 28px 28px'
+      };
+    }
+    return {
+      backgroundColor: '#111b21',
+      backgroundImage: `${doodleSvg('#33464d', '0.5')}, radial-gradient(circle at 20% 25%, rgba(16,185,129,0.12), transparent 30%)`,
+      backgroundSize: '180px 180px, auto'
+    };
+  };
 
   const markMessageUnread = (message, threadKey = null) => {
     const user = currentUserRef.current;
@@ -4286,7 +4351,7 @@ export default function AppContainer() {
           <div className="flex-1 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
             <div className="relative rounded-3xl overflow-hidden bg-[#111827] border border-white/10 flex items-center justify-center">
               {chatCall.type === 'video' && !chatCallVideoOff && chatCallLocalStreamRef.current ? (
-                <video autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" ref={el => { if (el) el.srcObject = chatCallLocalStreamRef.current; }} />
+                <video autoPlay muted playsInline className="w-full h-full object-cover scale-x-[-1]" ref={el => attachMediaStream(el, chatCallLocalStreamRef.current)} />
               ) : (
                 <div className="text-center">
                   <div className="w-20 h-20 rounded-full bg-purple-700/40 border border-purple-400/30 flex items-center justify-center text-2xl font-bold text-white mx-auto mb-3">{currentUser?.full_name?.[0]?.toUpperCase()}</div>
@@ -4309,7 +4374,7 @@ export default function AppContainer() {
               return (
                 <div key={peerId} className="relative rounded-3xl overflow-hidden bg-[#111827] border border-white/10 flex items-center justify-center">
                   {stream.getVideoTracks().length > 0 ? (
-                    <video autoPlay playsInline className="w-full h-full object-cover" ref={el => { if (el) el.srcObject = stream; }} />
+                    <video autoPlay playsInline className="w-full h-full object-cover" ref={el => attachMediaStream(el, stream)} />
                   ) : (
                     <div className="text-center">
                       <div className="w-20 h-20 rounded-full bg-emerald-700/40 border border-emerald-400/30 flex items-center justify-center text-2xl font-bold text-white mx-auto mb-3">{peer?.full_name?.[0]?.toUpperCase() || 'U'}</div>
@@ -5868,9 +5933,9 @@ export default function AppContainer() {
                             {showChatMenu && (
                               <div className="absolute right-0 top-full mt-2 w-44 bg-[#160c24] border border-purple-500/30 rounded-xl p-2 z-50 shadow-2xl">
                                 <button onClick={() => { setIsChatClosed(true); setShowChatMenu(false); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-100 hover:bg-purple-900/40">Close Chat</button>
-                                {['midnight', 'aurora', 'graphite', 'emerald'].map(theme => (
-                                  <button key={theme} onClick={() => { setChatTheme(theme); setShowChatMenu(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${chatTheme === theme ? 'text-emerald-300 bg-emerald-950/30' : 'text-purple-200 hover:bg-purple-900/40'}`}>
-                                    <Palette size={12} /> {theme[0].toUpperCase() + theme.slice(1)}
+                                {chatThemeOptions.map(theme => (
+                                  <button key={theme.id} onClick={() => { setChatTheme(theme.id); setShowChatMenu(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${chatTheme === theme.id ? 'text-emerald-300 bg-emerald-950/30' : 'text-purple-200 hover:bg-purple-900/40'}`}>
+                                    <Palette size={12} /> {theme.label}
                                   </button>
                                 ))}
                               </div>
@@ -5906,9 +5971,9 @@ export default function AppContainer() {
                             {showChatMenu && (
                               <div className="absolute right-0 top-full mt-2 w-44 bg-[#160c24] border border-purple-500/30 rounded-xl p-2 z-50 shadow-2xl">
                                 <button onClick={() => { setIsChatClosed(true); setShowChatMenu(false); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-100 hover:bg-purple-900/40">Close Chat</button>
-                                {['midnight', 'aurora', 'graphite', 'emerald'].map(theme => (
-                                  <button key={theme} onClick={() => { setChatTheme(theme); setShowChatMenu(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${chatTheme === theme ? 'text-emerald-300 bg-emerald-950/30' : 'text-purple-200 hover:bg-purple-900/40'}`}>
-                                    <Palette size={12} /> {theme[0].toUpperCase() + theme.slice(1)}
+                                {chatThemeOptions.map(theme => (
+                                  <button key={theme.id} onClick={() => { setChatTheme(theme.id); setShowChatMenu(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${chatTheme === theme.id ? 'text-emerald-300 bg-emerald-950/30' : 'text-purple-200 hover:bg-purple-900/40'}`}>
+                                    <Palette size={12} /> {theme.label}
                                   </button>
                                 ))}
                               </div>
@@ -5980,22 +6045,7 @@ export default function AppContainer() {
                       chatShouldStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
                     }}
                     className="flex-1 overflow-y-auto p-5 space-y-4"
-                    style={chatTheme === 'aurora' ? {
-                      backgroundColor: '#07100f',
-                      backgroundImage: 'radial-gradient(circle at 12% 18%, rgba(16,185,129,0.24), transparent 26%), radial-gradient(circle at 88% 18%, rgba(59,130,246,0.22), transparent 28%), radial-gradient(circle at 50% 95%, rgba(168,85,247,0.16), transparent 34%), radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)',
-                      backgroundSize: 'auto, auto, auto, 22px 22px'
-                    } : chatTheme === 'graphite' ? {
-                      backgroundColor: '#0c0c10',
-                      backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.07) 12%, transparent 12%, transparent 50%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.07) 62%, transparent 62%), radial-gradient(circle at 80% 15%, rgba(148,163,184,0.16), transparent 26%)',
-                      backgroundSize: '28px 28px, auto'
-                    } : chatTheme === 'emerald' ? {
-                      backgroundColor: '#061411',
-                      backgroundImage: 'radial-gradient(circle at 25% 22%, rgba(52,211,153,0.24), transparent 28%), radial-gradient(circle at 78% 70%, rgba(20,184,166,0.2), transparent 30%), linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.04) 75%)',
-                      backgroundSize: 'auto, auto, 24px 24px'
-                    } : {
-                      backgroundColor: '#07040d',
-                      backgroundImage: 'radial-gradient(circle at 20% 25%, rgba(147,51,234,0.16), transparent 26%), radial-gradient(circle at 85% 70%, rgba(79,70,229,0.14), transparent 30%)'
-                    }}
+                    style={getChatThemeStyle()}
                   >
                     {(() => {
                       if (isChatClosed) return (
