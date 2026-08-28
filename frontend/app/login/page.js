@@ -10,7 +10,7 @@ import {
   Info, Send, Search, X, Edit3, Trash2, UserCheck, Bell,
   BarChart2, TrendingUp, Star, Phone, PhoneOff, Hash,
   AtSign, ChevronDown, Activity, Eye, EyeOff, Zap, Globe, ArrowRight,
-  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer, Camera, FileText, Image as ImageIcon, PlayCircle, XCircle, Server
+  BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer, Camera, FileText, Image as ImageIcon, PlayCircle, XCircle, Server, MoreVertical, Palette, Minimize2, Maximize2
 , Type
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -340,22 +340,34 @@ export default function AppContainer() {
   const [activeChat, setActiveChat] = useState('group');        // 'group' | 'dm'
   const [messageReceipts, setMessageReceipts] = useState({});
   const [chatActivity, setChatActivity] = useState({});
+  const [chatUnreadCounts, setChatUnreadCounts] = useState({ group: 0, dm: {} });
+  const [isChatClosed, setIsChatClosed] = useState(false);
+  const [chatTheme, setChatTheme] = useState('midnight');
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [openMessageMenuId, setOpenMessageMenuId] = useState(null);
   const [chatCall, setChatCall] = useState(null);
   const [incomingChatCall, setIncomingChatCall] = useState(null);
   const [chatCallRemoteStreams, setChatCallRemoteStreams] = useState({});
   const [chatCallMuted, setChatCallMuted] = useState(false);
   const [chatCallVideoOff, setChatCallVideoOff] = useState(false);
+  const [isChatCallMinimized, setIsChatCallMinimized] = useState(false);
+  const [isMeetingMinimized, setIsMeetingMinimized] = useState(false);
   const chatBottomRef = useRef(null);
   const chatScrollRef = useRef(null);
   const chatShouldStickToBottomRef = useRef(true);
   const chatTargetRef = useRef('');
+  const unreadSeenRef = useRef(new Set());
   const sentReceiptRef = useRef(new Set());
   const chatActivityTimersRef = useRef({});
+  const chatCallNoAnswerTimerRef = useRef(null);
   const chatCallChannelRef = useRef(null);
   const chatCallPcsRef = useRef({});
   const chatCallLocalStreamRef = useRef(null);
   const chatCallRef = useRef(null);
   const incomingChatCallRef = useRef(null);
+  const chatCallRemoteStreamsRef = useRef({});
+  const chatCallAnsweredRef = useRef(false);
+  const chatCallStartedAtRef = useRef(null);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
   const [isDictating, setIsDictating] = useState(false);
@@ -408,11 +420,14 @@ export default function AppContainer() {
   const activeTabRef = useRef(activeTab);
   const activeChatRef = useRef(activeChat);
   const activeDmUserRef = useRef(activeDmUser);
+  const isChatClosedRef = useRef(isChatClosed);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
   useEffect(() => { activeDmUserRef.current = activeDmUser; }, [activeDmUser]);
+  useEffect(() => { isChatClosedRef.current = isChatClosed; }, [isChatClosed]);
   useEffect(() => { chatCallRef.current = chatCall; }, [chatCall]);
   useEffect(() => { incomingChatCallRef.current = incomingChatCall; }, [incomingChatCall]);
+  useEffect(() => { chatCallRemoteStreamsRef.current = chatCallRemoteStreams; }, [chatCallRemoteStreams]);
 
   // ── Meeting ──
   const [isInMeeting, setIsInMeeting] = useState(false);
@@ -812,8 +827,9 @@ export default function AppContainer() {
           const m = payload.new;
           const message = mapGroupMessage(m);
           setGroupMessages(prev => mergeMessage(prev, message));
+          markMessageUnread(message);
           sendChatReceipt(message, 'delivered');
-          if (activeTabRef.current === 'chat' && activeChatRef.current === 'group') sendChatReceipt(message, 'read');
+          if (activeTabRef.current === 'chat' && activeChatRef.current === 'group' && !isChatClosedRef.current) sendChatReceipt(message, 'read');
         } else if (payload.eventType === 'DELETE') {
           setGroupMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
         } else if (payload.eventType === 'UPDATE') {
@@ -886,8 +902,9 @@ export default function AppContainer() {
             if (m.from_id !== currentUser.id && activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
             return { ...prev, [m.thread_key]: [...thread, message] };
           });
+          markMessageUnread(message, m.thread_key);
           sendChatReceipt(message, 'delivered', m.thread_key);
-          if (activeTabRef.current === 'chat' && activeChatRef.current === 'dm' && activeDmUserRef.current?.id === message.from) sendChatReceipt(message, 'read', m.thread_key);
+          if (activeTabRef.current === 'chat' && activeChatRef.current === 'dm' && activeDmUserRef.current?.id === message.from && !isChatClosedRef.current) sendChatReceipt(message, 'read', m.thread_key);
         } else if (payload.eventType === 'DELETE') {
           const m = payload.old;
           setDmThreads(prev => {
@@ -950,8 +967,9 @@ export default function AppContainer() {
               if (message.organization_id && activeOrgRef.current?.id && message.organization_id !== activeOrgRef.current.id) return prev;
               return mergeMessage(prev, message);
             });
+            markMessageUnread(message);
             sendChatReceipt(message, 'delivered');
-            if (activeTabRef.current === 'chat' && activeChatRef.current === 'group') sendChatReceipt(message, 'read');
+            if (activeTabRef.current === 'chat' && activeChatRef.current === 'group' && !isChatClosedRef.current) sendChatReceipt(message, 'read');
           }
         })
       .on('broadcast', { event: 'group-message-deleted' }, (payload) => {
@@ -971,8 +989,9 @@ export default function AppContainer() {
           const currentId = currentUserRef.current?.id;
           if (!message?.thread_key || !currentId || !message.thread_key.includes(currentId)) return;
           setDmThreads(prev => mergeThreadMessage(prev, message.thread_key, message));
+          markMessageUnread(message, message.thread_key);
           sendChatReceipt(message, 'delivered', message.thread_key);
-          if (activeTabRef.current === 'chat' && activeChatRef.current === 'dm' && activeDmUserRef.current?.id === message.from) sendChatReceipt(message, 'read', message.thread_key);
+          if (activeTabRef.current === 'chat' && activeChatRef.current === 'dm' && activeDmUserRef.current?.id === message.from && !isChatClosedRef.current) sendChatReceipt(message, 'read', message.thread_key);
           if (message.from !== currentId && activeTab !== 'chat') addNotification(`New DM from ${message.fromName}`, 'info');
         })
       .on('broadcast', { event: 'dm-message-deleted' }, (payload) => {
@@ -1027,7 +1046,25 @@ export default function AppContainer() {
           if (call.organization_id && activeOrgRef.current?.id && call.organization_id !== activeOrgRef.current.id) return;
           if (call.scope === 'dm' && call.targetId !== currentId) return;
           setIncomingChatCall(call);
+          if (kickoutChannelRef.current) {
+            kickoutChannelRef.current.send({ type: 'broadcast', event: 'chat-call-ringing', payload: { id: call.id, userId: currentId } });
+          }
           addNotification(`Incoming ${call.type} call from ${call.callerName}`, 'info');
+        })
+      .on('broadcast', { event: 'chat-call-ringing' }, (payload) => {
+          const callId = payload?.payload?.id;
+          if (callId && chatCallRef.current?.id === callId) {
+            setChatCall(prev => prev && prev.id === callId ? { ...prev, status: 'ringing' } : prev);
+          }
+        })
+      .on('broadcast', { event: 'chat-call-accepted' }, (payload) => {
+          const callId = payload?.payload?.id;
+          if (callId && chatCallRef.current?.id === callId) {
+            chatCallAnsweredRef.current = true;
+            chatCallStartedAtRef.current = chatCallStartedAtRef.current || Date.now();
+            if (chatCallNoAnswerTimerRef.current) clearTimeout(chatCallNoAnswerTimerRef.current);
+            setChatCall(prev => prev && prev.id === callId ? { ...prev, status: 'connected' } : prev);
+          }
         })
       .on('broadcast', { event: 'chat-call-ended' }, (payload) => {
           const callId = payload?.payload?.id;
@@ -1356,7 +1393,7 @@ export default function AppContainer() {
   }, [groupMessages, dmThreads, activeDmUser, activeChat, activeOrg?.id]);
 
   useEffect(() => {
-    if (!currentUser?.id || activeTab !== 'chat') return;
+    if (!currentUser?.id || activeTab !== 'chat' || isChatClosed) return;
     const visibleMessages = activeChat === 'group'
       ? groupMessages.filter(m => m.organization_id === activeOrg?.id)
       : activeDmUser ? (dmThreads[getDmKey(activeDmUser.id)] || []) : [];
@@ -1365,7 +1402,7 @@ export default function AppContainer() {
         sendChatReceipt(message, 'read', activeChat === 'dm' && activeDmUser ? getDmKey(activeDmUser.id) : null);
       }
     });
-  }, [groupMessages, dmThreads, activeDmUser, activeChat, activeTab, activeOrg?.id, currentUser?.id]);
+  }, [groupMessages, dmThreads, activeDmUser, activeChat, activeTab, activeOrg?.id, currentUser?.id, isChatClosed]);
 
   useEffect(() => {
     if (!isRecordingAudio) return;
@@ -1724,6 +1761,7 @@ export default function AppContainer() {
     setMeetingChat(initialChat);
     setMeetingParticipants(nextParticipants);
     setIsInMeeting(true);
+    setIsMeetingMinimized(false);
     setIsMuted(myParticipant.isMuted);
     setIsVideoOff(myParticipant.isVideoOff); setIsScreenSharing(false);
     setIsChatLocked(newState.isChatLocked); setAreAllMuted(newState.areAllMuted);
@@ -1787,6 +1825,10 @@ export default function AppContainer() {
   };
 
   const cleanupChatCall = () => {
+    if (chatCallNoAnswerTimerRef.current) {
+      clearTimeout(chatCallNoAnswerTimerRef.current);
+      chatCallNoAnswerTimerRef.current = null;
+    }
     Object.values(chatCallPcsRef.current).forEach(pc => { try { pc.close(); } catch(e){} });
     chatCallPcsRef.current = {};
     if (chatCallLocalStreamRef.current) {
@@ -1802,14 +1844,86 @@ export default function AppContainer() {
     setChatCallVideoOff(false);
   };
 
+  const formatCallDuration = (durationMs = 0) => {
+    const seconds = Math.max(1, Math.round(durationMs / 1000));
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins >= 60) return `${Math.floor(mins / 60)} hr ${mins % 60} min`;
+    if (mins > 0) return `${mins} min ${secs}s`;
+    return `${secs}s`;
+  };
+
+  const logChatCallMessage = async (call, status = 'missed', durationMs = 0) => {
+    if (!call || !currentUserRef.current?.id || !activeOrgRef.current?.id) return;
+    const msgId = genId('msg');
+    const msgTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const icon = call.type === 'video' ? 'Video' : 'Voice';
+    const text = status === 'completed'
+      ? `${icon} call ended · ${formatCallDuration(durationMs)}`
+      : `Missed ${icon.toLowerCase()} call`;
+    const baseMessage = {
+      id: msgId,
+      organization_id: call.organization_id || activeOrgRef.current.id,
+      from: call.callerId,
+      fromName: call.callerName,
+      text,
+      time: msgTime,
+      type: 'call_log',
+      attachmentUrl: null,
+      audioUrl: null,
+      reactions: {}
+    };
+
+    if (call.scope === 'group') {
+      setGroupMessages(prev => mergeMessage(prev, baseMessage));
+      await supabase.from('group_messages').insert({
+        id: msgId,
+        organization_id: baseMessage.organization_id,
+        from_id: call.callerId,
+        from_name: call.callerName,
+        text,
+        msg_time: msgTime,
+        type: 'call_log',
+        attachment_url: null,
+        audio_url: null
+      });
+      kickoutChannelRef.current?.send({ type: 'broadcast', event: 'new-group-message', payload: baseMessage });
+    } else if (call.targetId) {
+      const threadKey = [call.callerId, call.targetId].sort().join('_');
+      const dmMessage = { ...baseMessage, thread_key: threadKey };
+      setDmThreads(prev => mergeThreadMessage(prev, threadKey, dmMessage));
+      await supabase.from('dm_messages').insert({
+        id: msgId,
+        thread_key: threadKey,
+        from_id: call.callerId,
+        from_name: call.callerName,
+        text,
+        msg_time: msgTime,
+        type: 'call_log',
+        attachment_url: null,
+        audio_url: null
+      });
+      broadcastDmMessage(threadKey, dmMessage);
+    }
+  };
+
   const endChatCall = (notify = true) => {
-    const callId = chatCallRef.current?.id || incomingChatCallRef.current?.id;
+    const currentCall = chatCallRef.current || incomingChatCallRef.current;
+    const callId = currentCall?.id;
     if (notify && callId && kickoutChannelRef.current) {
       kickoutChannelRef.current.send({ type: 'broadcast', event: 'chat-call-ended', payload: { id: callId } });
     }
+    if (notify && currentCall?.callerId === currentUserRef.current?.id) {
+      const hasAnswered = chatCallAnsweredRef.current || Object.keys(chatCallRemoteStreamsRef.current || {}).length > 0;
+      const duration = hasAnswered && chatCallStartedAtRef.current ? Date.now() - chatCallStartedAtRef.current : 0;
+      logChatCallMessage(currentCall, hasAnswered ? 'completed' : 'missed', duration).catch(err => console.error('Call log failed:', err));
+    }
     cleanupChatCall();
+    chatCallAnsweredRef.current = false;
+    chatCallStartedAtRef.current = null;
     setChatCall(null);
     setIncomingChatCall(null);
+    setIsChatCallMinimized(false);
   };
 
   const createChatCallPeer = (peerId, callChannel) => {
@@ -1824,6 +1938,10 @@ export default function AppContainer() {
     };
     pc.ontrack = (e) => {
       const remoteStream = e.streams[0];
+      chatCallAnsweredRef.current = true;
+      chatCallStartedAtRef.current = chatCallStartedAtRef.current || Date.now();
+      if (chatCallNoAnswerTimerRef.current) clearTimeout(chatCallNoAnswerTimerRef.current);
+      setChatCall(prev => prev ? { ...prev, status: 'connected' } : prev);
       setChatCallRemoteStreams(prev => ({ ...prev, [peerId]: remoteStream }));
       if (!remoteStream.getVideoTracks().length) {
         const audio = new Audio();
@@ -1838,7 +1956,14 @@ export default function AppContainer() {
   const joinChatCall = async (call) => {
     cleanupChatCall();
     setIncomingChatCall(null);
-    setChatCall({ ...call, status: 'connected' });
+    const me = currentUserRef.current?.id;
+    const amCaller = call.callerId === me;
+    setChatCall({ ...call, status: amCaller ? (call.status || 'calling') : 'connected' });
+    if (!amCaller) {
+      chatCallAnsweredRef.current = true;
+      chatCallStartedAtRef.current = Date.now();
+      kickoutChannelRef.current?.send({ type: 'broadcast', event: 'chat-call-accepted', payload: { id: call.id, userId: me } });
+    }
     setChatCallMuted(false);
     setChatCallVideoOff(call.type !== 'video');
     const stream = await navigator.mediaDevices.getUserMedia({ video: call.type === 'video', audio: { echoCancellation: true, noiseSuppression: true } });
@@ -1848,7 +1973,6 @@ export default function AppContainer() {
     chatCallChannelRef.current = callChannel;
     callChannel.on('broadcast', { event: 'chat-call-signal' }, async ({ payload }) => {
       const { type, from, to, sdp, candidate } = payload || {};
-      const me = currentUserRef.current?.id;
       if (!from || from === me || (to && to !== me)) return;
 
       if (type === 'JOINED') {
@@ -1896,11 +2020,20 @@ export default function AppContainer() {
       title: activeChat === 'group' ? 'Team General' : activeDmUser.full_name
     };
     try {
+      chatCallAnsweredRef.current = false;
+      chatCallStartedAtRef.current = null;
+      setIsChatCallMinimized(false);
       setChatCall({ ...call, status: 'calling' });
       if (kickoutChannelRef.current) {
         kickoutChannelRef.current.send({ type: 'broadcast', event: 'chat-call-invite', payload: call });
       }
       await joinChatCall(call);
+      chatCallNoAnswerTimerRef.current = setTimeout(() => {
+        if (chatCallRef.current?.id === call.id && !chatCallAnsweredRef.current) {
+          addNotification('No answer. You can call again from the chat header.', 'warning');
+          endChatCall(true);
+        }
+      }, 30000);
     } catch (err) {
       console.error('Failed to start chat call:', err);
       endChatCall(true);
@@ -2063,7 +2196,7 @@ export default function AppContainer() {
       }
       addNotification(`You left "${currentMeetingSession?.title}".`, 'info');
     }
-    setIsInMeeting(false); setCurrentMeetingSession(null); setMeetingParticipants([]);
+    setIsInMeeting(false); setIsMeetingMinimized(false); setCurrentMeetingSession(null); setMeetingParticipants([]);
     setMeetingChat([]); setIsMuted(false); setIsVideoOff(false);
     setIsScreenSharing(false); setIsChatLocked(false); setAreAllMuted(false);
   };
@@ -2230,6 +2363,43 @@ export default function AppContainer() {
         chat: activeChatRef.current,
         thread_key: threadKey
       }
+    });
+  };
+
+  const getChatUnreadTotal = () => chatUnreadCounts.group + Object.values(chatUnreadCounts.dm || {}).reduce((sum, count) => sum + count, 0);
+
+  const markMessageUnread = (message, threadKey = null) => {
+    const user = currentUserRef.current;
+    if (!message?.id || !user?.id || message.from === user.id || unreadSeenRef.current.has(message.id)) return;
+    unreadSeenRef.current.add(message.id);
+    const isCurrentGroup = activeTabRef.current === 'chat' && activeChatRef.current === 'group' && message.organization_id === activeOrgRef.current?.id && !isChatClosedRef.current;
+    const isCurrentDm = activeTabRef.current === 'chat' && activeChatRef.current === 'dm' && activeDmUserRef.current?.id === message.from && !isChatClosedRef.current;
+    if (isCurrentGroup || isCurrentDm) return;
+    if (threadKey) {
+      setChatUnreadCounts(prev => ({ ...prev, dm: { ...(prev.dm || {}), [threadKey]: (prev.dm?.[threadKey] || 0) + 1 } }));
+    } else {
+      setChatUnreadCounts(prev => ({ ...prev, group: prev.group + 1 }));
+    }
+  };
+
+  const openGroupChat = () => {
+    setActiveChat('group');
+    setActiveDmUser(null);
+    setIsChatClosed(false);
+    setShowChatMenu(false);
+    setChatUnreadCounts(prev => ({ ...prev, group: 0 }));
+  };
+
+  const openDmChat = (user) => {
+    const key = getDmKey(user.id);
+    setActiveChat('dm');
+    setActiveDmUser(user);
+    setIsChatClosed(false);
+    setShowChatMenu(false);
+    setChatUnreadCounts(prev => {
+      const nextDm = { ...(prev.dm || {}) };
+      delete nextDm[key];
+      return { ...prev, dm: nextDm };
     });
   };
   
@@ -3727,15 +3897,15 @@ export default function AppContainer() {
 
       {/* ── END MEETING MODAL ── */}
       {incomingChatCall && (
-        <div className="fixed inset-0 z-[980] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
-          <div className="w-full max-w-sm bg-[#0d111f] border border-emerald-500/25 rounded-3xl p-7 text-center shadow-[0_0_50px_rgba(16,185,129,0.18)]">
-            <div className="w-20 h-20 rounded-full mx-auto mb-4 bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-2xl font-black text-white">
+        <div className="fixed top-4 right-4 z-[980] w-[min(92vw,360px)]">
+          <div className="bg-[#0d111f] border border-emerald-500/25 rounded-2xl p-5 text-center shadow-[0_12px_50px_rgba(0,0,0,0.45)]">
+            <div className="w-16 h-16 rounded-full mx-auto mb-4 bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-2xl font-black text-white">
               {incomingChatCall.callerName?.[0]?.toUpperCase() || 'A'}
             </div>
             <p className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold mb-2">Incoming {incomingChatCall.type} call</p>
-            <h3 className="text-xl font-bold text-white">{incomingChatCall.callerName}</h3>
-            <p className="text-xs text-purple-300 mt-1">{incomingChatCall.scope === 'group' ? 'Team General' : 'Direct Message'}</p>
-            <div className="flex items-center justify-center gap-5 mt-7">
+            <h3 className="text-lg font-bold text-white">{incomingChatCall.callerName}</h3>
+            <p className="text-xs text-purple-300 mt-1">{incomingChatCall.scope === 'group' ? 'Team General' : 'Direct Call'}</p>
+            <div className="flex items-center justify-center gap-5 mt-5">
               <button onClick={() => incomingChatCall.scope === 'dm' ? endChatCall(true) : setIncomingChatCall(null)} className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="Decline">
                 <PhoneOff size={22} />
               </button>
@@ -3747,14 +3917,37 @@ export default function AppContainer() {
         </div>
       )}
 
-      {chatCall && (
+      {chatCall && isChatCallMinimized && (
+        <div className="fixed right-5 bottom-5 z-[970] bg-[#101827] border border-emerald-500/30 shadow-2xl rounded-2xl px-4 py-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-emerald-900/40 flex items-center justify-center text-emerald-200">
+            {chatCall.type === 'video' ? <Video size={17} /> : <Phone size={17} />}
+          </div>
+          <div>
+            <p className="text-xs font-bold text-white">{chatCall.title}</p>
+            <p className="text-[10px] text-purple-300">{chatCall.status === 'ringing' ? 'Ringing...' : chatCall.status === 'connected' || Object.keys(chatCallRemoteStreams).length ? 'Connected' : 'Calling...'}</p>
+          </div>
+          <button onClick={() => setIsChatCallMinimized(false)} className="p-2 rounded-full bg-white/10 text-white hover:bg-white/15" title="Restore call">
+            <Maximize2 size={14} />
+          </button>
+          <button onClick={() => endChatCall(true)} className="p-2 rounded-full bg-red-600 text-white hover:bg-red-500" title="End call">
+            <PhoneOff size={14} />
+          </button>
+        </div>
+      )}
+
+      {chatCall && !isChatCallMinimized && (
         <div className="fixed inset-0 z-[970] bg-[#05070d]/95 backdrop-blur-md flex flex-col">
           <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold">{chatCall.type} call</p>
               <h3 className="text-lg font-bold text-white">{chatCall.title}</h3>
             </div>
-            <span className="text-xs text-purple-300">{Object.keys(chatCallRemoteStreams).length ? 'Connected' : 'Calling...'}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-purple-300">{chatCall.status === 'ringing' ? 'Ringing...' : chatCall.status === 'connected' || Object.keys(chatCallRemoteStreams).length ? 'Connected' : 'Calling...'}</span>
+              <button onClick={() => setIsChatCallMinimized(true)} className="p-2 rounded-full bg-white/10 text-white hover:bg-white/15" title="Minimize call">
+                <Minimize2 size={16} />
+              </button>
+            </div>
           </div>
           <div className="flex-1 p-4 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
             <div className="relative rounded-3xl overflow-hidden bg-[#111827] border border-white/10 flex items-center justify-center">
@@ -3803,7 +3996,7 @@ export default function AppContainer() {
                 {chatCallVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
               </button>
             )}
-            <button onClick={() => endChatCall(chatCall.scope === 'dm')} className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="End call">
+            <button onClick={() => endChatCall(true)} className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="End call">
               <PhoneOff size={24} />
             </button>
           </div>
@@ -3940,7 +4133,27 @@ export default function AppContainer() {
 
 
       {/* ── ZOOM MEETING OVERLAY ── */}
-      {isInMeeting && currentMeetingSession && (
+      {isInMeeting && currentMeetingSession && isMeetingMinimized && (
+        <div className="fixed right-5 bottom-24 z-[60] bg-[#101827] border border-purple-500/30 shadow-2xl rounded-2xl px-4 py-3 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-purple-900/40 flex items-center justify-center text-purple-200">
+            <Video size={17} />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-white">{currentMeetingSession.title}</p>
+            <p className="text-[10px] text-purple-300">Live meeting minimized</p>
+          </div>
+          <button onClick={() => setIsMeetingMinimized(false)} className="p-2 rounded-full bg-white/10 text-white hover:bg-white/15" title="Restore meeting">
+            <Maximize2 size={14} />
+          </button>
+          <button onClick={() => {
+            if (currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) setShowEndMeetingModal(true);
+            else handleEndMeeting(false);
+          }} className="p-2 rounded-full bg-red-600 text-white hover:bg-red-500" title="End or leave meeting">
+            <PhoneOff size={14} />
+          </button>
+        </div>
+      )}
+      {isInMeeting && currentMeetingSession && !isMeetingMinimized && (
         <div className="absolute inset-0 bg-[#070509]/98 z-50 flex flex-col p-5 space-y-4">
           <header className="flex justify-between items-center border-b border-purple-500/15 pb-4 shrink-0">
             <div>
@@ -3953,6 +4166,10 @@ export default function AppContainer() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button onClick={() => setIsMeetingMinimized(true)}
+                className="px-3 py-2 bg-white/10 hover:bg-white/15 border border-white/10 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                <Minimize2 size={12} /> Minimize
+              </button>
               {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                 <button onClick={() => { setMeetingInviteModal(currentMeetingSession); setSelectedInvitees([]); }}
                   className="px-3 py-2 bg-purple-900/50 hover:bg-purple-800/60 border border-purple-500/30 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5">
@@ -4432,13 +4649,19 @@ export default function AppContainer() {
               if (item.hideForClient && currentUser.role === 'client') return false;
               return true;
             }).map(item => (
-              <button key={item.id} onClick={() => setActiveTab(item.id)}
+              <button key={item.id} onClick={() => {
+                setActiveTab(item.id);
+                if (item.id === 'chat' && !isChatClosed) {
+                  if (activeChat === 'group') setChatUnreadCounts(prev => ({ ...prev, group: 0 }));
+                  if (activeChat === 'dm' && activeDmUser) openDmChat(activeDmUser);
+                }
+              }}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === item.id ? 'bg-purple-900/40 border border-purple-500/30 text-white' : 'text-purple-300 hover:bg-[#191325] hover:text-white'}`}>
                 <span className="text-purple-400">{item.icon}</span>
                 {item.label}
-                {item.id === 'chat' && (groupMessages.length > 0) && (
+                {item.id === 'chat' && getChatUnreadTotal() > 0 && (
                   <span className="ml-auto w-4 h-4 rounded-full bg-purple-600 text-[9px] text-white flex items-center justify-center font-bold">
-                    {Math.min(groupMessages.length, 9)}
+                    {Math.min(getChatUnreadTotal(), 9)}
                   </span>
                 )}
                 {item.id === 'meetings' && myInvitedMeetings.length > 0 && (
@@ -5221,13 +5444,18 @@ export default function AppContainer() {
                   </div>
                   <div className="flex-1 overflow-y-auto">
                     {/* Group Chat */}
-                    <button onClick={() => { setActiveChat('group'); setActiveDmUser(null); }}
+                    <button onClick={openGroupChat}
                       className={`w-full flex items-center gap-2.5 px-4 py-3 text-left transition-all ${activeChat === 'group' && !activeDmUser ? 'bg-purple-900/30 border-r-2 border-purple-500' : 'hover:bg-purple-950/20'}`}>
                       <Hash size={14} className="text-purple-400 shrink-0" />
                       <div>
                         <div className="text-xs font-semibold text-white">Team General</div>
                         <div className="text-[9px] text-purple-400">Whole organization</div>
                       </div>
+                      {chatUnreadCounts.group > 0 && (
+                        <span className="ml-auto w-4 h-4 rounded-full bg-purple-600 text-[9px] text-white flex items-center justify-center font-bold shrink-0">
+                          {Math.min(chatUnreadCounts.group, 9)}
+                        </span>
+                      )}
                     </button>
                     <div className="px-4 py-2">
                       <span className="text-[9px] text-purple-500 uppercase font-bold tracking-wider">Direct Messages</span>
@@ -5238,7 +5466,7 @@ export default function AppContainer() {
                       return (
                         <div key={user.id} className="group relative">
                           <button
-                            onClick={() => { setActiveChat('dm'); setActiveDmUser(user); }}
+                            onClick={() => openDmChat(user)}
                             className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-left transition-all ${activeDmUser?.id === user.id ? 'bg-purple-900/30 border-r-2 border-purple-500' : 'hover:bg-purple-950/20'}`}>
                             <div className="relative shrink-0">
                               <div className="w-7 h-7 rounded-full bg-purple-700/40 flex items-center justify-center text-xs font-bold text-white border border-purple-500/20">
@@ -5252,9 +5480,9 @@ export default function AppContainer() {
                               <div className="text-xs font-semibold text-white truncate">{user.full_name}</div>
                               <div className="text-[9px] text-purple-400 truncate">{user.role}</div>
                             </div>
-                            {msgs.length > 0 && (
+                            {(chatUnreadCounts.dm?.[key] || 0) > 0 && (
                               <span className="w-4 h-4 rounded-full bg-purple-600 text-[9px] text-white flex items-center justify-center font-bold shrink-0">
-                                {Math.min(msgs.length, 9)}
+                                {Math.min(chatUnreadCounts.dm?.[key] || 0, 9)}
                               </span>
                             )}
                           </button>
@@ -5298,6 +5526,21 @@ export default function AppContainer() {
                           <button type="button" onClick={() => handleStartChatCall('video')} className="p-2 rounded-xl bg-blue-900/30 border border-blue-500/25 text-blue-300 hover:bg-blue-900/50 transition-colors" title="Start group video call">
                             <Video size={14} />
                           </button>
+                          <div className="relative">
+                            <button type="button" onClick={() => setShowChatMenu(p => !p)} className="p-2 rounded-xl bg-purple-900/30 border border-purple-500/25 text-purple-300 hover:bg-purple-900/50 transition-colors" title="Chat options">
+                              <MoreVertical size={14} />
+                            </button>
+                            {showChatMenu && (
+                              <div className="absolute right-0 top-full mt-2 w-44 bg-[#160c24] border border-purple-500/30 rounded-xl p-2 z-50 shadow-2xl">
+                                <button onClick={() => { setIsChatClosed(true); setShowChatMenu(false); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-100 hover:bg-purple-900/40">Close Chat</button>
+                                {['midnight', 'aurora', 'graphite', 'emerald'].map(theme => (
+                                  <button key={theme} onClick={() => { setChatTheme(theme); setShowChatMenu(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${chatTheme === theme ? 'text-emerald-300 bg-emerald-950/30' : 'text-purple-200 hover:bg-purple-900/40'}`}>
+                                    <Palette size={12} /> {theme[0].toUpperCase() + theme.slice(1)}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </>
                     ) : activeDmUser ? (
@@ -5321,6 +5564,21 @@ export default function AppContainer() {
                           <button type="button" onClick={() => handleStartChatCall('video')} className="p-2 rounded-xl bg-blue-900/30 border border-blue-500/25 text-blue-300 hover:bg-blue-900/50 transition-colors" title="Start video call">
                             <Video size={14} />
                           </button>
+                          <div className="relative">
+                            <button type="button" onClick={() => setShowChatMenu(p => !p)} className="p-2 rounded-xl bg-purple-900/30 border border-purple-500/25 text-purple-300 hover:bg-purple-900/50 transition-colors" title="Chat options">
+                              <MoreVertical size={14} />
+                            </button>
+                            {showChatMenu && (
+                              <div className="absolute right-0 top-full mt-2 w-44 bg-[#160c24] border border-purple-500/30 rounded-xl p-2 z-50 shadow-2xl">
+                                <button onClick={() => { setIsChatClosed(true); setShowChatMenu(false); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-100 hover:bg-purple-900/40">Close Chat</button>
+                                {['midnight', 'aurora', 'graphite', 'emerald'].map(theme => (
+                                  <button key={theme} onClick={() => { setChatTheme(theme); setShowChatMenu(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${chatTheme === theme ? 'text-emerald-300 bg-emerald-950/30' : 'text-purple-200 hover:bg-purple-900/40'}`}>
+                                    <Palette size={12} /> {theme[0].toUpperCase() + theme.slice(1)}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         {activeMeetings.some(m => m.host_id === currentUser.id) && (
                           <button onClick={() => {
@@ -5386,9 +5644,21 @@ export default function AppContainer() {
                       const el = e.currentTarget;
                       chatShouldStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
                     }}
-                    className="flex-1 overflow-y-auto p-5 space-y-4"
+                    className={`flex-1 overflow-y-auto p-5 space-y-4 ${
+                      chatTheme === 'aurora' ? 'bg-[radial-gradient(circle_at_15%_20%,rgba(16,185,129,0.12),transparent_28%),radial-gradient(circle_at_85%_15%,rgba(59,130,246,0.12),transparent_30%),#07040d]'
+                      : chatTheme === 'graphite' ? 'bg-[linear-gradient(135deg,rgba(255,255,255,0.035)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.035)_50%,rgba(255,255,255,0.035)_75%,transparent_75%,transparent)] bg-[length:28px_28px]'
+                      : chatTheme === 'emerald' ? 'bg-[radial-gradient(circle_at_30%_30%,rgba(16,185,129,0.14),transparent_35%),#06110f]'
+                      : ''
+                    }`}
                   >
                     {(() => {
+                      if (isChatClosed) return (
+                        <div className="flex flex-col items-center justify-center h-full text-center">
+                          <MessageSquare size={34} className="text-purple-700 mb-3" />
+                          <p className="text-sm font-bold text-white">Chat closed</p>
+                          <p className="text-xs text-purple-400 mt-1">Open Team General or a DM from the sidebar.</p>
+                        </div>
+                      );
                       const msgs = activeChat === 'group'
                         ? groupMessages.filter(m => m.organization_id === activeOrg?.id)
                         : activeDmUser ? (dmThreads[getDmKey(activeDmUser.id)] || []) : [];
@@ -5420,21 +5690,23 @@ export default function AppContainer() {
                             </div>
                             <div className={`max-w-[70%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-1 group/msg`}>
                               <div className="flex items-center gap-2">
-                                <div className="relative group/del opacity-0 group-hover/msg:opacity-100 transition-opacity">
-                                  <button className="text-purple-500/50 hover:text-purple-300 transition-colors p-1" title="Options">
-                                    <Edit3 size={12} />
+                                <div className="relative">
+                                  <button onClick={() => setOpenMessageMenuId(openMessageMenuId === msg.id ? null : msg.id)} className="text-purple-500/80 hover:text-purple-200 transition-colors p-1 rounded-full hover:bg-purple-900/30" title="Options">
+                                    <MoreVertical size={13} />
                                   </button>
-                                  <div className={`absolute top-full mt-1 ${isMine ? 'right-0' : 'left-0'} hidden group-hover/del:flex flex-col bg-[#1a0e2a] border border-purple-500/30 rounded-lg p-1 z-50 w-36 shadow-xl`}>
+                                  {openMessageMenuId === msg.id && (
+                                  <div className={`absolute top-full mt-1 ${isMine ? 'right-0' : 'left-0'} flex flex-col bg-[#1a0e2a] border border-purple-500/30 rounded-lg p-1 z-50 w-36 shadow-xl`}>
                                     <div className="flex gap-2 justify-center p-1 border-b border-purple-500/20 mb-1">
                                       {['👍', '❤️', '😂', '🔥', '👀'].map(emoji => (
-                                        <button key={emoji} onClick={() => handleReactMessage(msg, emoji)} className="hover:scale-125 transition-transform text-sm">{emoji}</button>
+                                        <button key={emoji} onClick={() => { handleReactMessage(msg, emoji); setOpenMessageMenuId(null); }} className="hover:scale-125 transition-transform text-sm">{emoji}</button>
                                       ))}
                                     </div>
-                                    <button onClick={() => handleDeleteMessage(msg, activeChat, 'me')} className="text-[10px] text-left px-2 py-1.5 hover:bg-purple-900/40 rounded text-purple-200">Delete for Me</button>
+                                    <button onClick={() => { handleDeleteMessage(msg, activeChat, 'me'); setOpenMessageMenuId(null); }} className="text-[10px] text-left px-2 py-1.5 hover:bg-purple-900/40 rounded text-purple-200">Delete for Me</button>
                                     {canDeleteEveryone && (
-                                       <button onClick={() => handleDeleteMessage(msg, activeChat, 'everyone')} className="text-[10px] text-left px-2 py-1.5 hover:bg-red-900/40 rounded text-red-400">Delete for Everyone</button>
+                                       <button onClick={() => { handleDeleteMessage(msg, activeChat, 'everyone'); setOpenMessageMenuId(null); }} className="text-[10px] text-left px-2 py-1.5 hover:bg-red-900/40 rounded text-red-400">Delete for Everyone</button>
                                     )}
                                   </div>
+                                  )}
                                 </div>
                                 <span className="text-[9px] text-purple-400 flex items-center gap-1">
                                   {msg.fromName} · {msg.time}
@@ -5516,7 +5788,10 @@ export default function AppContainer() {
                               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                                 <div className={`flex gap-1 -mt-2 z-10 ${isMine ? 'justify-end' : 'justify-start'}`}>
                                   {Object.entries(msg.reactions).map(([emoji, userIds]) => (
-                                    <button key={emoji} onClick={(e) => setReactionModalData({ msgId: msg.id, reactions: msg.reactions || {}, x: e.clientX, y: e.clientY })} title="View Reactions" className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
+                                    <button key={emoji} onClick={(e) => {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setReactionModalData({ msgId: msg.id, reactions: msg.reactions || {}, x: rect.left + rect.width / 2, y: rect.bottom });
+                                    }} title="View Reactions" className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
                                       {emoji} {userIds.length > 1 && <span className="text-purple-300 ml-0.5">{userIds.length}</span>}
                                     </button>
                                   ))}
@@ -5532,7 +5807,9 @@ export default function AppContainer() {
 
                   {/* Input */}
                   <div className="p-4 border-t border-purple-500/10 shrink-0">
-                    {isRecordingAudio ? (
+                    {isChatClosed ? (
+                      <div className="text-center text-xs text-purple-400 py-3">Chat is closed. Choose a conversation to continue.</div>
+                    ) : isRecordingAudio ? (
                       <div className="flex items-center gap-3 bg-[#11081c] border border-purple-500/20 rounded-xl px-4 py-2 w-full">
                         <button type="button" onClick={() => { audioDiscardRef.current = true; audioShouldSendRef.current = false; stopRecording(); }} className="p-2 rounded-full text-red-400 hover:bg-red-900/30 transition-colors">
                           <Trash2 size={18} />
@@ -6228,40 +6505,43 @@ export default function AppContainer() {
       {reactionModalData && (
         <div className="fixed inset-0 z-[100] bg-black/10" onClick={() => setReactionModalData(null)}>
           <div 
-            className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-80 max-h-[80vh] overflow-y-auto p-4 shadow-2xl" 
+            className="absolute bg-[#11081c] border border-purple-500/30 rounded-xl w-72 max-h-[70vh] overflow-y-auto p-3 shadow-2xl"
             style={{ 
-              top: Math.min(window.innerHeight - 320, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 35)) + 'px', 
-              left: Math.min(window.innerWidth - 330, Math.max(10, (reactionModalData.x || window.innerWidth/2) - 160)) + 'px',
-              maxHeight: '300px'
+              top: Math.min(window.innerHeight - 230, Math.max(10, (reactionModalData.y || window.innerHeight/2) + 8)) + 'px',
+              left: Math.min(window.innerWidth - 300, Math.max(10, (reactionModalData.x || window.innerWidth/2) - 144)) + 'px',
+              maxHeight: '220px'
             }} 
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-white font-semibold">Reactions</h3>
-              <button onClick={() => setReactionModalData(null)} className="text-gray-400 hover:text-white"><X size={20}/></button>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm text-white font-semibold">Reactions</h3>
+              <button onClick={() => setReactionModalData(null)} className="text-gray-400 hover:text-white"><X size={16}/></button>
             </div>
-            <div className="space-y-3">
-              {Object.entries(reactionModalData.reactions).map(([emoji, users]) => 
-                  users.map(uid => {
+            <div className="space-y-2">
+              {(() => {
+                const rows = Object.entries(reactionModalData.reactions || {}).flatMap(([emoji, users]) =>
+                  (users || []).map(uid => ({ emoji, uid }))
+                ).sort((a, b) => (b.uid === currentUser?.id ? 1 : 0) - (a.uid === currentUser?.id ? 1 : 0));
+                return rows.map(({ emoji, uid }) => {
                     const user = orgUsers?.find(u => u.id === uid);
                     const isMe = uid === currentUser?.id;
                     return (
                       <div key={`${emoji}-${uid}`} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-purple-900/30 flex items-center justify-center text-xl">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-purple-900/30 flex items-center justify-center text-lg">
                             {emoji}
                           </div>
-                          <span className="text-sm text-gray-200">{isMe ? 'You' : (user?.full_name || 'Unknown')}</span>
+                          <span className="text-xs text-gray-200">{isMe ? 'You' : (user?.full_name || 'Unknown')}</span>
                         </div>
                         {isMe && (
-                          <button onClick={() => { handleReactMessage({ id: reactionModalData.msgId, reactions: reactionModalData.reactions }, emoji); setReactionModalData(null); }} className="text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-1 transition-colors">
+                          <button onClick={() => { handleReactMessage({ id: reactionModalData.msgId, reactions: reactionModalData.reactions }, emoji); setReactionModalData(null); }} className="text-[10px] text-red-400 hover:text-red-300 border border-red-500/30 rounded px-2 py-1 transition-colors">
                             Tap to remove
                           </button>
                         )}
                       </div>
                     );
-                  })
-              )}
+                  });
+              })()}
             </div>
           </div>
         </div>
