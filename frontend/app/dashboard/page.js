@@ -671,6 +671,7 @@ export default function AppContainer() {
   const pcsRef = useRef({});
   const channelRef = useRef(null);
   const audioElementsRef = useRef({}); // persistent Audio objects, never re-mounted
+  const ringtoneRef = useRef({ ctx: null, timer: null });
   const [localStream, setLocalStream] = useState(null);
   const [screenStream, setScreenStream] = useState(null);
   const [streamTrigger, setStreamTrigger] = useState(0);
@@ -1111,6 +1112,7 @@ export default function AppContainer() {
           if (call.organization_id && activeOrgRef.current?.id && call.organization_id !== activeOrgRef.current.id) return;
           if (call.scope === 'dm' && call.targetId !== currentId) return;
           setIncomingChatCall(call);
+          startIncomingRingtone();
           if (kickoutChannelRef.current) {
             kickoutChannelRef.current.send({ type: 'broadcast', event: 'chat-call-ringing', payload: { id: call.id, userId: currentId } });
           }
@@ -1134,6 +1136,7 @@ export default function AppContainer() {
       .on('broadcast', { event: 'chat-call-ended' }, (payload) => {
           const callId = payload?.payload?.id;
           if (callId && (chatCallRef.current?.id === callId || incomingChatCallRef.current?.id === callId)) {
+            stopIncomingRingtone();
             endChatCall(false);
           }
         })
@@ -1888,13 +1891,7 @@ export default function AppContainer() {
       try { supabase.removeChannel(chatCallChannelRef.current); } catch(e){}
       chatCallChannelRef.current = null;
     }
-    Object.values(chatCallAudioElementsRef.current).forEach(audio => {
-      try {
-        audio.pause();
-        audio.srcObject = null;
-      } catch(e){}
-    });
-    chatCallAudioElementsRef.current = {};
+    cleanupAudioStore(chatCallAudioElementsRef);
     setChatCallRemoteStreams({});
     setChatCallMuted(false);
     setChatCallVideoOff(false);
@@ -1964,6 +1961,7 @@ export default function AppContainer() {
   };
 
   const endChatCall = (notify = true) => {
+    stopIncomingRingtone();
     const currentCall = chatCallRef.current || incomingChatCallRef.current;
     const callId = currentCall?.id;
     if (notify && callId && kickoutChannelRef.current) {
@@ -1999,16 +1997,7 @@ export default function AppContainer() {
       if (chatCallNoAnswerTimerRef.current) clearTimeout(chatCallNoAnswerTimerRef.current);
       setChatCall(prev => prev ? { ...prev, status: 'connected' } : prev);
       setChatCallRemoteStreams(prev => prev[peerId]?.id === remoteStream.id ? prev : { ...prev, [peerId]: remoteStream });
-      if (!chatCallAudioElementsRef.current[peerId]) {
-        const audio = new Audio();
-        audio.autoplay = true;
-        audio.volume = 1;
-        chatCallAudioElementsRef.current[peerId] = audio;
-      }
-      if (chatCallAudioElementsRef.current[peerId].srcObject !== remoteStream) {
-        chatCallAudioElementsRef.current[peerId].srcObject = remoteStream;
-      }
-      chatCallAudioElementsRef.current[peerId].play().catch(() => {});
+      attachBoostedAudio(chatCallAudioElementsRef, peerId, remoteStream, 2.3);
     };
     return pc;
   };
@@ -2037,8 +2026,87 @@ export default function AppContainer() {
     }
   };
 
+  const attachBoostedAudio = (storeRef, peerId, stream, gainValue = 2.2) => {
+    if (!peerId || !stream) return;
+    let entry = storeRef.current[peerId];
+    if (!entry || entry instanceof HTMLAudioElement) {
+      const audio = entry instanceof HTMLAudioElement ? entry : new Audio();
+      audio.autoplay = true;
+      audio.volume = 1;
+      let ctx = null;
+      let source = null;
+      let gain = null;
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        ctx = AudioCtx ? new AudioCtx() : null;
+        source = ctx ? ctx.createMediaElementSource(audio) : null;
+        gain = ctx ? ctx.createGain() : null;
+        if (source && gain) {
+          gain.gain.value = gainValue;
+          source.connect(gain).connect(ctx.destination);
+        }
+      } catch (e) {
+        try { ctx?.close?.(); } catch (ignored) {}
+        ctx = null;
+        source = null;
+        gain = null;
+      }
+      entry = { audio, ctx, source, gain };
+      storeRef.current[peerId] = entry;
+    }
+    if (entry.audio.srcObject !== stream) entry.audio.srcObject = stream;
+    if (entry.gain) entry.gain.gain.value = gainValue;
+    entry.ctx?.resume?.().catch(() => {});
+    entry.audio.play().catch(() => {});
+  };
+
+  const cleanupAudioStore = (storeRef) => {
+    Object.values(storeRef.current || {}).forEach(entry => {
+      const audio = entry?.audio || entry;
+      try {
+        audio.pause();
+        audio.srcObject = null;
+        entry?.source?.disconnect?.();
+        entry?.gain?.disconnect?.();
+        entry?.ctx?.close?.();
+      } catch(e){}
+    });
+    storeRef.current = {};
+  };
+
+  const stopIncomingRingtone = () => {
+    if (ringtoneRef.current.timer) clearInterval(ringtoneRef.current.timer);
+    ringtoneRef.current.timer = null;
+    try { ringtoneRef.current.ctx?.close?.(); } catch(e){}
+    ringtoneRef.current.ctx = null;
+  };
+
+  const startIncomingRingtone = () => {
+    stopIncomingRingtone();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    ringtoneRef.current.ctx = ctx;
+    const playTone = () => {
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.55);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.6);
+    };
+    playTone();
+    ringtoneRef.current.timer = setInterval(playTone, 1300);
+  };
+
   const joinChatCall = async (call) => {
     cleanupChatCall();
+    stopIncomingRingtone();
     setIncomingChatCall(null);
     const me = currentUserRef.current?.id;
     const amCaller = call.callerId === me;
@@ -2165,16 +2233,7 @@ export default function AppContainer() {
       } else {
         streamsRef.current[peerId] = remoteStream;
         // Attach remote audio to a persistent Audio object (never re-mounted by React)
-        if (!audioElementsRef.current[peerId]) {
-          const audio = new Audio();
-          audio.autoplay = true;
-          audio.volume = 1;
-          audioElementsRef.current[peerId] = audio;
-        }
-        if (audioElementsRef.current[peerId].srcObject !== remoteStream) {
-          audioElementsRef.current[peerId].srcObject = remoteStream;
-        }
-        audioElementsRef.current[peerId].play().catch(() => {});
+        attachBoostedAudio(audioElementsRef, peerId, remoteStream, 2.3);
       }
       setStreamTrigger(t => t + 1);
     };
@@ -2264,6 +2323,7 @@ export default function AppContainer() {
     Object.values(pcsRef.current).forEach(pc => { try { pc.close(); } catch(e){} });
     pcsRef.current = {};
     if (channelRef.current) { try { supabase.removeChannel(channelRef.current); } catch(e){} channelRef.current = null; }
+    cleanupAudioStore(audioElementsRef);
     setLocalStream(null); setScreenStream(null); setStreamTrigger(t => t + 1);
   };
 
@@ -4335,7 +4395,7 @@ export default function AppContainer() {
                 <p className="text-[10px] text-purple-300 truncate">{incomingChatCall.scope === 'group' ? 'Team General' : 'Direct Call'}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => incomingChatCall.scope === 'dm' ? endChatCall(true) : setIncomingChatCall(null)} className="w-10 h-10 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="Decline">
+                <button onClick={() => endChatCall(true)} className="w-10 h-10 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="Decline">
                   <PhoneOff size={18} />
                 </button>
                 <button onClick={() => joinChatCall(incomingChatCall).catch(() => addNotification('Could not join the call. Please check mic/camera permissions.', 'error'))} className="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center shadow-lg shadow-emerald-900/30" title="Accept">
