@@ -2745,7 +2745,8 @@ export default function AppContainer() {
       const msgTime = now();
       const tempAudioUrl = URL.createObjectURL(blob);
       
-      const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: '', time: msgTime, type: 'chat', audioUrl: tempAudioUrl, attachmentUrl: null, reactions: {} };
+      playSoundEffect('outgoing_msg');
+        const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: '', time: msgTime, type: 'chat', audioUrl: tempAudioUrl, attachmentUrl: null, reactions: {} };
       if (activeChat === 'group') setGroupMessages(prev => { const exists = prev.find(m=>m.id===msgId); if(exists) return prev; return [...prev, optimisticMsg]; });
       else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
       
@@ -2770,7 +2771,6 @@ export default function AppContainer() {
                 kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: '', time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {} } });
             }
       } else if (activeChat === 'dm' && activeDmUser) { 
-          playSoundEffect('outgoing_msg');
           const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); 
           supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }).then(() => {});
           broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: '', time: msgTime, type: 'chat', audioUrl, attachmentUrl: null, reactions: {} });
@@ -2818,7 +2818,8 @@ export default function AppContainer() {
           const msgId = genId('msg');
           const msgTime = now();
           const blobUrl = URL.createObjectURL(file);
-          const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: blobUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size, isPending: true };
+          playSoundEffect('outgoing_msg');
+        const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: i === 0 ? currentChatInput : '', time: msgTime, type: 'chat', attachmentUrl: blobUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size, isPending: true };
           
           if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
           else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
@@ -2866,6 +2867,7 @@ export default function AppContainer() {
         const msgTime = now();
         let audioUrl = null;
         
+        playSoundEffect('outgoing_msg');
         const optimisticMsg = { id: msgId, organization_id: activeOrg?.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: currentAudioBlob ? URL.createObjectURL(currentAudioBlob) : null, reactions: {} };
         if (activeChat === 'group') setGroupMessages(prev => [...prev, optimisticMsg]);
         else if (activeChat === 'dm' && activeDmUser) { const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); setDmThreads(prev => ({ ...prev, [key]: [...(prev[key] || []), optimisticMsg] })); }
@@ -2885,7 +2887,6 @@ export default function AppContainer() {
                 kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {} } });
             }
         } else if (activeChat === 'dm' && activeDmUser) { 
-          playSoundEffect('outgoing_msg');
           const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); 
             supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null }).then(() => {});
             broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl, reactions: {} });
