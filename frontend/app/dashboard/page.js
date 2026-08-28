@@ -389,7 +389,12 @@ export default function AppContainer() {
   const [dmThreads, setDmThreads] = useState({});              // { userId: [{id,from,text,time}] }
   const [activeDmUser, setActiveDmUser] = useState(null);
   const [chatInput, setChatInput] = useState('');
+  let lastSoundTime = 0;
+  let lastSoundType = '';
   const playSoundEffect = (type) => {
+    if (Date.now() - lastSoundTime < 200 && lastSoundType === type) return;
+    lastSoundTime = Date.now();
+    lastSoundType = type;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
@@ -1102,6 +1107,7 @@ export default function AppContainer() {
       .on('broadcast', { event: 'new-group-message' }, (payload) => {
           if (payload?.payload) {
             const message = payload.payload;
+            if (message.from !== currentUserRef.current?.id) playSoundEffect('incoming_msg');
             setGroupMessages(prev => {
               if (message.organization_id && activeOrgRef.current?.id && message.organization_id !== activeOrgRef.current.id) return prev;
               return mergeMessage(prev, message);
@@ -1127,6 +1133,7 @@ export default function AppContainer() {
           const message = payload?.payload;
           const currentId = currentUserRef.current?.id;
           if (!message?.thread_key || !currentId || !message.thread_key.includes(currentId)) return;
+          if (message.from !== currentId) playSoundEffect('incoming_msg');
           setDmThreads(prev => mergeThreadMessage(prev, message.thread_key, message));
           markMessageUnread(message, message.thread_key);
           sendChatReceipt(message, 'delivered', message.thread_key);
