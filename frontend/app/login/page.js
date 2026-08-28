@@ -1063,6 +1063,7 @@ export default function AppContainer() {
       .on('broadcast', { event: 'chat-call-accepted' }, (payload) => {
           const callId = payload?.payload?.id;
           if (callId && chatCallRef.current?.id === callId) {
+            stopDialingTone();
             chatCallAnsweredRef.current = true;
             chatCallStartedAtRef.current = chatCallStartedAtRef.current || Date.now();
             if (chatCallNoAnswerTimerRef.current) clearTimeout(chatCallNoAnswerTimerRef.current);
@@ -1073,6 +1074,7 @@ export default function AppContainer() {
           const callId = payload?.payload?.id;
           if (callId && (chatCallRef.current?.id === callId || incomingChatCallRef.current?.id === callId)) {
             stopIncomingRingtone();
+            stopDialingTone();
             endChatCall(false);
           }
         })
@@ -1914,6 +1916,7 @@ export default function AppContainer() {
 
   const endChatCall = (notify = true) => {
     stopIncomingRingtone();
+    stopDialingTone();
     const currentCall = chatCallRef.current || incomingChatCallRef.current;
     const callId = currentCall?.id;
     if (notify && callId && kickoutChannelRef.current) {
@@ -1944,8 +1947,9 @@ export default function AppContainer() {
     };
     pc.ontrack = (e) => {
       const remoteStream = e.streams[0];
-      chatCallAnsweredRef.current = true;
-      chatCallStartedAtRef.current = chatCallStartedAtRef.current || Date.now();
+      stopDialingTone();
+            chatCallAnsweredRef.current = true;
+            chatCallStartedAtRef.current = chatCallStartedAtRef.current || Date.now();
       if (chatCallNoAnswerTimerRef.current) clearTimeout(chatCallNoAnswerTimerRef.current);
       setChatCall(prev => prev ? { ...prev, status: 'connected' } : prev);
       setChatCallRemoteStreams(prev => prev[peerId]?.id === remoteStream.id ? prev : { ...prev, [peerId]: remoteStream });
@@ -2039,21 +2043,69 @@ export default function AppContainer() {
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     ringtoneRef.current.ctx = ctx;
-    const playTone = () => {
-      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    
+    const playNote = (freq, startTime, duration) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.55);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.6);
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      const osc2 = ctx.createOscillator();
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(freq * 2, ctx.currentTime);
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(0.2, startTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      osc.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
+      osc.start(startTime); osc2.start(startTime);
+      osc.stop(startTime + duration); osc2.stop(startTime + duration);
+    };
+
+    const playTone = () => {
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const now = ctx.currentTime;
+      playNote(440, now, 0.5);
+      playNote(523.25, now + 0.15, 0.5);
+      playNote(659.25, now + 0.3, 0.5);
+      playNote(880, now + 0.45, 0.8);
+      playNote(440, now + 1.2, 0.5);
+      playNote(523.25, now + 1.35, 0.5);
+      playNote(659.25, now + 1.5, 0.5);
+      playNote(880, now + 1.65, 0.8);
     };
     playTone();
-    ringtoneRef.current.timer = setInterval(playTone, 1300);
+    ringtoneRef.current.timer = setInterval(playTone, 3500);
+  };
+  
+  const dialingToneRef = useRef({ timer: null, ctx: null });
+  const stopDialingTone = () => {
+    if (dialingToneRef.current?.timer) clearInterval(dialingToneRef.current.timer);
+    try { dialingToneRef.current?.ctx?.close?.(); } catch(e){}
+    dialingToneRef.current = { timer: null, ctx: null };
+  };
+  const startDialingTone = () => {
+    stopDialingTone();
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    dialingToneRef.current.ctx = ctx;
+    const playTuun = () => {
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc1.type = 'sine'; osc2.type = 'sine';
+      osc1.frequency.value = 400; osc2.frequency.value = 425;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
+      gain.gain.setValueAtTime(0.15, now + 1.0);
+      gain.gain.linearRampToValueAtTime(0, now + 1.1);
+      osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
+      osc1.start(now); osc2.start(now);
+      osc1.stop(now + 1.2); osc2.stop(now + 1.2);
+    };
+    playTuun();
+    dialingToneRef.current.timer = setInterval(playTuun, 4000);
   };
 
   const joinChatCall = async (call) => {
@@ -2063,6 +2115,9 @@ export default function AppContainer() {
     const me = currentUserRef.current?.id;
     const amCaller = call.callerId === me;
     setChatCall({ ...call, status: amCaller ? (call.status || 'calling') : 'connected' });
+    if (amCaller && (!call.status || call.status === 'calling')) {
+      startDialingTone();
+    }
     if (!amCaller) {
       chatCallAnsweredRef.current = true;
       chatCallStartedAtRef.current = Date.now();
