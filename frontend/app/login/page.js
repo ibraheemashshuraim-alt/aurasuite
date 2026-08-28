@@ -134,7 +134,7 @@ function ParticipantTile({ part, stream, isHost, isMe, isMain, onPin, pinned, st
       {hasStream && (
         <video
           ref={videoRef}
-          autoPlay playsInline muted={isMe}
+          autoPlay playsInline muted
           className={`w-full h-full ${isMain ? 'object-contain' : 'object-cover'} absolute inset-0`}
         />
       )}
@@ -365,6 +365,7 @@ export default function AppContainer() {
   const chatCallLocalStreamRef = useRef(null);
   const chatCallRef = useRef(null);
   const incomingChatCallRef = useRef(null);
+  const chatCallAudioElementsRef = useRef({});
   const chatCallRemoteStreamsRef = useRef({});
   const chatCallAnsweredRef = useRef(false);
   const chatCallStartedAtRef = useRef(null);
@@ -1770,7 +1771,7 @@ export default function AppContainer() {
     try {
       // These exact constraints were stable in commit 2e6f49a — do NOT change noiseSuppression to false,
       // it makes the voice sound distant and slow every time it's been tried.
-      const audioConstraints = { echoCancellation: true, noiseSuppression: true };
+      const audioConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 };
       const stream = await navigator.mediaDevices.getUserMedia({ video: joinOptions.camOn, audio: audioConstraints });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
       streamsRef.current[currentUser.id] = stream;
@@ -1839,6 +1840,13 @@ export default function AppContainer() {
       try { supabase.removeChannel(chatCallChannelRef.current); } catch(e){}
       chatCallChannelRef.current = null;
     }
+    Object.values(chatCallAudioElementsRef.current).forEach(audio => {
+      try {
+        audio.pause();
+        audio.srcObject = null;
+      } catch(e){}
+    });
+    chatCallAudioElementsRef.current = {};
     setChatCallRemoteStreams({});
     setChatCallMuted(false);
     setChatCallVideoOff(false);
@@ -1943,15 +1951,35 @@ export default function AppContainer() {
       if (chatCallNoAnswerTimerRef.current) clearTimeout(chatCallNoAnswerTimerRef.current);
       setChatCall(prev => prev ? { ...prev, status: 'connected' } : prev);
       setChatCallRemoteStreams(prev => prev[peerId]?.id === remoteStream.id ? prev : { ...prev, [peerId]: remoteStream });
-      if (!remoteStream.getVideoTracks().length) {
+      if (!chatCallAudioElementsRef.current[peerId]) {
         const audio = new Audio();
         audio.autoplay = true;
         audio.volume = 1;
-        audio.srcObject = remoteStream;
-        audio.play().catch(() => {});
+        chatCallAudioElementsRef.current[peerId] = audio;
       }
+      if (chatCallAudioElementsRef.current[peerId].srcObject !== remoteStream) {
+        chatCallAudioElementsRef.current[peerId].srcObject = remoteStream;
+      }
+      chatCallAudioElementsRef.current[peerId].play().catch(() => {});
     };
     return pc;
+  };
+
+  const addChatCallTracks = (pc, stream) => {
+    stream.getTracks().forEach(track => {
+      const sender = pc.addTrack(track, stream);
+      if (track.kind === 'video' && sender.setParameters) {
+        const params = sender.getParameters();
+        params.encodings = params.encodings?.length ? params.encodings : [{}];
+        params.encodings[0] = {
+          ...params.encodings[0],
+          maxBitrate: 750000,
+          maxFramerate: 24,
+          scaleResolutionDownBy: 1
+        };
+        sender.setParameters(params).catch(() => {});
+      }
+    });
   };
 
   const attachMediaStream = (el, stream) => {
@@ -1975,8 +2003,8 @@ export default function AppContainer() {
     setChatCallMuted(false);
     setChatCallVideoOff(call.type !== 'video');
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: call.type === 'video' ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } } : false,
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      video: call.type === 'video' ? { width: { ideal: 640, max: 960 }, height: { ideal: 360, max: 540 }, frameRate: { ideal: 24, max: 24 } } : false,
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 }
     });
     chatCallLocalStreamRef.current = stream;
 
@@ -1990,7 +2018,7 @@ export default function AppContainer() {
         if (chatCallPcsRef.current[from]) return;
         const pc = createChatCallPeer(from, callChannel);
         chatCallPcsRef.current[from] = pc;
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+        addChatCallTracks(pc, stream);
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         callChannel.send({ type: 'broadcast', event: 'chat-call-signal', payload: { type: 'OFFER', from: me, to: from, sdp: { type: offer.type, sdp: offer.sdp } } });
@@ -1999,7 +2027,7 @@ export default function AppContainer() {
         if (!pc) {
           pc = createChatCallPeer(from, callChannel);
           chatCallPcsRef.current[from] = pc;
-          stream.getTracks().forEach(track => pc.addTrack(track, stream));
+          addChatCallTracks(pc, stream);
         }
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
         const answer = await pc.createAnswer();
@@ -2092,9 +2120,12 @@ export default function AppContainer() {
         if (!audioElementsRef.current[peerId]) {
           const audio = new Audio();
           audio.autoplay = true;
+          audio.volume = 1;
           audioElementsRef.current[peerId] = audio;
         }
-        audioElementsRef.current[peerId].srcObject = remoteStream;
+        if (audioElementsRef.current[peerId].srcObject !== remoteStream) {
+          audioElementsRef.current[peerId].srcObject = remoteStream;
+        }
         audioElementsRef.current[peerId].play().catch(() => {});
       }
       setStreamTrigger(t => t + 1);
@@ -4044,7 +4075,7 @@ export default function AppContainer() {
               return (
                 <div key={peerId} className="relative rounded-3xl overflow-hidden bg-[#111827] border border-white/10 flex items-center justify-center">
                   {stream.getVideoTracks().length > 0 ? (
-                    <video autoPlay playsInline className="w-full h-full object-cover" ref={el => attachMediaStream(el, stream)} />
+                    <video autoPlay muted playsInline className="w-full h-full object-cover" ref={el => attachMediaStream(el, stream)} />
                   ) : (
                     <div className="text-center">
                       <div className="w-20 h-20 rounded-full bg-emerald-700/40 border border-emerald-400/30 flex items-center justify-center text-2xl font-bold text-white mx-auto mb-3">{peer?.full_name?.[0]?.toUpperCase() || 'U'}</div>
