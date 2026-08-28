@@ -389,6 +389,48 @@ export default function AppContainer() {
   const [dmThreads, setDmThreads] = useState({});              // { userId: [{id,from,text,time}] }
   const [activeDmUser, setActiveDmUser] = useState(null);
   const [chatInput, setChatInput] = useState('');
+  const playSoundEffect = (type) => {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    if (type === 'incoming_msg') {
+      const play = (f, t, d) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = f;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.3, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + d);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + d);
+      };
+      play(783.99, now, 0.15); 
+      play(1046.50, now + 0.1, 0.3); 
+    } else if (type === 'outgoing_msg') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.15);
+    } else if (type === 'mic_start') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.exponentialRampToValueAtTime(500, now + 0.1);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.2);
+    }
+  };
   const [activeChat, setActiveChat] = useState('group');        // 'group' | 'dm'
   const [messageReceipts, setMessageReceipts] = useState({});
   const [chatActivity, setChatActivity] = useState({});
@@ -473,6 +515,21 @@ export default function AppContainer() {
   const [editOrgData, setEditOrgData] = useState(null);
 
   useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
+  useEffect(() => {
+    const savedChat = localStorage.getItem('aura_chat_state');
+    if (savedChat) {
+      try {
+        const parsed = JSON.parse(savedChat);
+        if (parsed.type === 'closed') {
+          setIsChatClosed(true);
+        } else if (parsed.type === 'group') {
+          setIsChatClosed(false); setActiveChat('group'); setActiveDmUser(null);
+        } else if (parsed.type === 'dm' && parsed.user) {
+          setIsChatClosed(false); setActiveChat('dm'); setActiveDmUser(parsed.user);
+        }
+      } catch (e) {}
+    }
+  }, []);
   useEffect(() => { localStorage.setItem('aura_admin_tab', activeTab); }, [activeTab]);
   const activeTabRef = useRef(activeTab);
   const activeChatRef = useRef(activeChat);
@@ -896,7 +953,8 @@ export default function AppContainer() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_messages' }, payload => {
         if (payload.eventType === 'INSERT') {
-          const m = payload.new;
+            const m = payload.new;
+            if (m.from_id !== currentUserRef.current?.id) playSoundEffect('incoming_msg');
           const message = mapGroupMessage(m);
           setGroupMessages(prev => mergeMessage(prev, message));
           markMessageUnread(message);
@@ -963,7 +1021,8 @@ export default function AppContainer() {
         const row = payload.new || payload.old;
         if (!row?.thread_key?.includes(currentUser.id)) return;
         if (payload.eventType === 'INSERT') {
-          const m = payload.new;
+            const m = payload.new;
+            if (m.from_id !== currentUserRef.current?.id) playSoundEffect('incoming_msg');
           const message = { id: m.id, from: m.from_id, fromName: m.from_name, text: m.text, time: m.msg_time, type: m.type, meetingId: m.meeting_id, isDeleted: m.is_deleted, deletedFor: m.deleted_for || [], attachmentUrl: m.attachment_url, audioUrl: m.audio_url, reactions: m.reactions || {}, fileName: m.file_name, fileSize: m.file_size, thread_key: m.thread_key };
           setDmThreads(prev => {
             const thread = prev[m.thread_key] || [];
@@ -2645,6 +2704,7 @@ export default function AppContainer() {
     setActiveChat('group');
     setActiveDmUser(null);
     setIsChatClosed(false);
+    localStorage.setItem('aura_chat_state', JSON.stringify({ type: 'group' }));
     setShowChatMenu(false);
     setChatUnreadCounts(prev => ({ ...prev, group: 0 }));
   };
@@ -2654,6 +2714,7 @@ export default function AppContainer() {
     setActiveChat('dm');
     setActiveDmUser(user);
     setIsChatClosed(false);
+    localStorage.setItem('aura_chat_state', JSON.stringify({ type: 'dm', user }));
     setShowChatMenu(false);
     setChatUnreadCounts(prev => {
       const nextDm = { ...(prev.dm || {}) };
@@ -2695,6 +2756,7 @@ export default function AppContainer() {
                 kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: '', time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {} } });
             }
       } else if (activeChat === 'dm' && activeDmUser) { 
+          playSoundEffect('outgoing_msg');
           const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); 
           supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null }).then(() => {});
           broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: '', time: msgTime, type: 'chat', audioUrl, attachmentUrl: null, reactions: {} });
@@ -2809,7 +2871,8 @@ export default function AppContainer() {
                 kickoutChannelRef.current.send({ type: 'broadcast', event: 'new-group-message', payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl: audioUrl, reactions: {} } });
             }
         } else if (activeChat === 'dm' && activeDmUser) { 
-            const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); 
+          playSoundEffect('outgoing_msg');
+          const key = [currentUser?.id, activeDmUser?.id].sort().join('_'); 
             supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null }).then(() => {});
             broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl, reactions: {} });
         }
@@ -2891,6 +2954,7 @@ export default function AppContainer() {
       
       audioRecorderRef.current.start();
       setIsRecordingAudio(true);
+      playSoundEffect('mic_start');
     } catch (err) {
       console.error("Error accessing microphone:", err);
       alert(`Microphone error: ${err.name}. If 'NotReadableError', close other tabs using the mic!`);
@@ -6078,7 +6142,7 @@ export default function AppContainer() {
                             </button>
                             {showChatMenu && (
                               <div className="absolute right-0 top-full mt-2 w-44 bg-[#160c24] border border-purple-500/30 rounded-xl p-2 z-50 shadow-2xl">
-                                <button onClick={() => { setIsChatClosed(true); setShowChatMenu(false); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-100 hover:bg-purple-900/40">Close Chat</button>
+                                <button onClick={() => { setIsChatClosed(true); setShowChatMenu(false); localStorage.setItem('aura_chat_state', JSON.stringify({ type: 'closed' })); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-100 hover:bg-purple-900/40">Close Chat</button>
                                 {chatThemeOptions.map(theme => (
                                   <button key={theme.id} onClick={() => { setChatTheme(theme.id); setShowChatMenu(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${chatTheme === theme.id ? 'text-emerald-300 bg-emerald-950/30' : 'text-purple-200 hover:bg-purple-900/40'}`}>
                                     <Palette size={12} /> {theme.label}
@@ -6116,7 +6180,7 @@ export default function AppContainer() {
                             </button>
                             {showChatMenu && (
                               <div className="absolute right-0 top-full mt-2 w-44 bg-[#160c24] border border-purple-500/30 rounded-xl p-2 z-50 shadow-2xl">
-                                <button onClick={() => { setIsChatClosed(true); setShowChatMenu(false); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-100 hover:bg-purple-900/40">Close Chat</button>
+                                <button onClick={() => { setIsChatClosed(true); setShowChatMenu(false); localStorage.setItem('aura_chat_state', JSON.stringify({ type: 'closed' })); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-purple-100 hover:bg-purple-900/40">Close Chat</button>
                                 {chatThemeOptions.map(theme => (
                                   <button key={theme.id} onClick={() => { setChatTheme(theme.id); setShowChatMenu(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${chatTheme === theme.id ? 'text-emerald-300 bg-emerald-950/30' : 'text-purple-200 hover:bg-purple-900/40'}`}>
                                     <Palette size={12} /> {theme.label}
