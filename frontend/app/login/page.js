@@ -1913,7 +1913,7 @@ export default function AppContainer() {
     if (notify && callId && kickoutChannelRef.current) {
       kickoutChannelRef.current.send({ type: 'broadcast', event: 'chat-call-ended', payload: { id: callId } });
     }
-    if (notify && currentCall?.callerId === currentUserRef.current?.id) {
+    if (notify && chatCallRef.current) {
       const hasAnswered = chatCallAnsweredRef.current || Object.keys(chatCallRemoteStreamsRef.current || {}).length > 0;
       const duration = hasAnswered && chatCallStartedAtRef.current ? Date.now() - chatCallStartedAtRef.current : 0;
       logChatCallMessage(currentCall, hasAnswered ? 'completed' : 'missed', duration).catch(err => console.error('Call log failed:', err));
@@ -3897,21 +3897,25 @@ export default function AppContainer() {
 
       {/* ── END MEETING MODAL ── */}
       {incomingChatCall && (
-        <div className="fixed top-4 right-4 z-[980] w-[min(92vw,360px)]">
-          <div className="bg-[#0d111f] border border-emerald-500/25 rounded-2xl p-5 text-center shadow-[0_12px_50px_rgba(0,0,0,0.45)]">
-            <div className="w-16 h-16 rounded-full mx-auto mb-4 bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-2xl font-black text-white">
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[980] w-[min(92vw,340px)]">
+          <div className="bg-[#0d111f]/98 border border-emerald-500/25 rounded-2xl px-4 py-3 shadow-[0_14px_42px_rgba(0,0,0,0.5)]">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-lg font-black text-white shrink-0">
               {incomingChatCall.callerName?.[0]?.toUpperCase() || 'A'}
-            </div>
-            <p className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold mb-2">Incoming {incomingChatCall.type} call</p>
-            <h3 className="text-lg font-bold text-white">{incomingChatCall.callerName}</h3>
-            <p className="text-xs text-purple-300 mt-1">{incomingChatCall.scope === 'group' ? 'Team General' : 'Direct Call'}</p>
-            <div className="flex items-center justify-center gap-5 mt-5">
-              <button onClick={() => incomingChatCall.scope === 'dm' ? endChatCall(true) : setIncomingChatCall(null)} className="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="Decline">
-                <PhoneOff size={22} />
-              </button>
-              <button onClick={() => joinChatCall(incomingChatCall).catch(() => addNotification('Could not join the call. Please check mic/camera permissions.', 'error'))} className="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center shadow-lg shadow-emerald-900/30" title="Accept">
-                {incomingChatCall.type === 'video' ? <Video size={22} /> : <Phone size={22} />}
-              </button>
+              </div>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-[9px] uppercase tracking-wider text-emerald-300 font-bold">Incoming {incomingChatCall.type} call</p>
+                <h3 className="text-sm font-bold text-white truncate">{incomingChatCall.callerName}</h3>
+                <p className="text-[10px] text-purple-300 truncate">{incomingChatCall.scope === 'group' ? 'Team General' : 'Direct Call'}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => incomingChatCall.scope === 'dm' ? endChatCall(true) : setIncomingChatCall(null)} className="w-10 h-10 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-900/30" title="Decline">
+                  <PhoneOff size={18} />
+                </button>
+                <button onClick={() => joinChatCall(incomingChatCall).catch(() => addNotification('Could not join the call. Please check mic/camera permissions.', 'error'))} className="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center shadow-lg shadow-emerald-900/30" title="Accept">
+                  {incomingChatCall.type === 'video' ? <Video size={18} /> : <Phone size={18} />}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -5644,12 +5648,23 @@ export default function AppContainer() {
                       const el = e.currentTarget;
                       chatShouldStickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
                     }}
-                    className={`flex-1 overflow-y-auto p-5 space-y-4 ${
-                      chatTheme === 'aurora' ? 'bg-[radial-gradient(circle_at_15%_20%,rgba(16,185,129,0.12),transparent_28%),radial-gradient(circle_at_85%_15%,rgba(59,130,246,0.12),transparent_30%),#07040d]'
-                      : chatTheme === 'graphite' ? 'bg-[linear-gradient(135deg,rgba(255,255,255,0.035)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.035)_50%,rgba(255,255,255,0.035)_75%,transparent_75%,transparent)] bg-[length:28px_28px]'
-                      : chatTheme === 'emerald' ? 'bg-[radial-gradient(circle_at_30%_30%,rgba(16,185,129,0.14),transparent_35%),#06110f]'
-                      : ''
-                    }`}
+                    className="flex-1 overflow-y-auto p-5 space-y-4"
+                    style={chatTheme === 'aurora' ? {
+                      backgroundColor: '#07100f',
+                      backgroundImage: 'radial-gradient(circle at 12% 18%, rgba(16,185,129,0.24), transparent 26%), radial-gradient(circle at 88% 18%, rgba(59,130,246,0.22), transparent 28%), radial-gradient(circle at 50% 95%, rgba(168,85,247,0.16), transparent 34%), radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)',
+                      backgroundSize: 'auto, auto, auto, 22px 22px'
+                    } : chatTheme === 'graphite' ? {
+                      backgroundColor: '#0c0c10',
+                      backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.07) 12%, transparent 12%, transparent 50%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.07) 62%, transparent 62%), radial-gradient(circle at 80% 15%, rgba(148,163,184,0.16), transparent 26%)',
+                      backgroundSize: '28px 28px, auto'
+                    } : chatTheme === 'emerald' ? {
+                      backgroundColor: '#061411',
+                      backgroundImage: 'radial-gradient(circle at 25% 22%, rgba(52,211,153,0.24), transparent 28%), radial-gradient(circle at 78% 70%, rgba(20,184,166,0.2), transparent 30%), linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.04) 75%)',
+                      backgroundSize: 'auto, auto, 24px 24px'
+                    } : {
+                      backgroundColor: '#07040d',
+                      backgroundImage: 'radial-gradient(circle at 20% 25%, rgba(147,51,234,0.16), transparent 26%), radial-gradient(circle at 85% 70%, rgba(79,70,229,0.14), transparent 30%)'
+                    }}
                   >
                     {(() => {
                       if (isChatClosed) return (
@@ -5717,6 +5732,27 @@ export default function AppContainer() {
                                   )}
                                 </span>
                               </div>
+                              {msg.type === 'call_log' ? (
+                                <button onClick={() => handleStartChatCall((msg.text || '').toLowerCase().includes('video') ? 'video' : 'audio')} className={`px-3 py-2 rounded-2xl border text-left flex items-center gap-2.5 min-w-[190px] transition-all ${
+                                  (msg.text || '').toLowerCase().includes('missed')
+                                    ? 'bg-red-950/25 border-red-500/25 hover:bg-red-950/40'
+                                    : 'bg-emerald-950/20 border-emerald-500/25 hover:bg-emerald-950/35'
+                                }`}>
+                                  <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                                    (msg.text || '').toLowerCase().includes('missed') ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-300'
+                                  }`}>
+                                    {(msg.text || '').toLowerCase().includes('video') ? <Video size={15} /> : ((msg.text || '').toLowerCase().includes('missed') ? <PhoneOff size={15} /> : <Phone size={15} />)}
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className={`block text-xs font-bold ${(msg.text || '').toLowerCase().includes('missed') ? 'text-red-300' : 'text-emerald-200'}`}>
+                                      {(msg.text || '').toLowerCase().includes('missed') ? ((msg.text || '').toLowerCase().includes('video') ? 'Missed video call' : 'Missed voice call') : ((msg.text || '').toLowerCase().includes('video') ? 'Video call' : 'Voice call')}
+                                    </span>
+                                    <span className="block text-[10px] text-purple-300 truncate">
+                                      {(msg.text || '').includes('·') ? (msg.text || '').split('·').slice(1).join('·').trim() : 'Tap to call again'}
+                                    </span>
+                                  </span>
+                                </button>
+                              ) : (
                               <div className={`px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed ${
                                 msg.type === 'meeting_invite' || msg.text.includes('[MEET_ID:')
                                   ? 'bg-purple-900/60 border border-purple-500/40 text-purple-100'
@@ -5784,6 +5820,7 @@ export default function AppContainer() {
                                   </button>
                                 )}
                               </div>
+                              )}
                               {/* Reactions */}
                               {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                                 <div className={`flex gap-1 -mt-2 z-10 ${isMine ? 'justify-end' : 'justify-start'}`}>
