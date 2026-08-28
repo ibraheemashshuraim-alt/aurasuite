@@ -394,41 +394,55 @@ export default function AppContainer() {
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
+    
     if (type === 'incoming_msg') {
-      const play = (f, t, d) => {
+      const playNote = (freq, t, d) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'sine'; osc.frequency.value = f;
+        osc.type = 'sine'; 
+        osc.frequency.setValueAtTime(freq, t);
+        
+        // Mallet click
+        const click = ctx.createOscillator();
+        const clickGain = ctx.createGain();
+        click.type = 'square';
+        click.frequency.setValueAtTime(freq * 2, t);
+        clickGain.gain.setValueAtTime(0, t);
+        clickGain.gain.linearRampToValueAtTime(0.05, t + 0.005);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+        click.connect(clickGain); clickGain.connect(ctx.destination);
+        click.start(t); click.stop(t + 0.05);
+
         gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.3, t + 0.02);
+        gain.gain.linearRampToValueAtTime(0.4, t + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.001, t + d);
         osc.connect(gain); gain.connect(ctx.destination);
         osc.start(t); osc.stop(t + d);
       };
-      play(783.99, now, 0.15); 
-      play(1046.50, now + 0.1, 0.3); 
+      playNote(880, now, 0.3); // A5
+      playNote(1108.73, now + 0.12, 0.5); // C#6
     } else if (type === 'outgoing_msg') {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(600, now);
-      osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
+      osc.type = 'triangle'; // Woodblock feel
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(100, now + 0.05); // sharp drop creates "tick"
       gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.2, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
       osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(now); osc.stop(now + 0.15);
+      osc.start(now); osc.stop(now + 0.06);
     } else if (type === 'mic_start') {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(400, now);
-      osc.frequency.exponentialRampToValueAtTime(500, now + 0.1);
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(600, now + 0.1); // Sweeping up
       gain.gain.setValueAtTime(0, now);
       gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
       osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(now); osc.stop(now + 0.2);
+      osc.start(now); osc.stop(now + 0.1);
     }
   };
   const [activeChat, setActiveChat] = useState('group');        // 'group' | 'dm'
