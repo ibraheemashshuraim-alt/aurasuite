@@ -5548,7 +5548,7 @@ export default function AppContainer() {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2">
-                                <button onClick={() => handleReactivateUser(user)} disabled={isBanActive} title={isBanActive ? `Eligible on ${formatOrgDate(expiryDate)}` : \'Reactivate\'}
+                                <button onClick={() => handleReactivateUser(user)} disabled={isBanActive} title={isBanActive ? `Eligible on ${formatOrgDate(expiryDate)}` : 'Reactivate'}
                                   className="px-3 py-1.5 bg-green-950/50 hover:bg-green-600/80 text-green-200 hover:text-white text-[10px] font-bold rounded-lg border border-green-500/30 transition-all flex items-center gap-1 disabled:bg-gray-900 disabled:border-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed">
                                   <PlayCircle size={11} /> Reactivate
                                 </button>
