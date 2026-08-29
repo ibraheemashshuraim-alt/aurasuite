@@ -3220,7 +3220,7 @@ export default function AppContainer() {
 
   const handleReactivateUser = async (user) => {
     const userEmail = user.email?.toLowerCase();
-    const banRecord = bannedEmails.find(b => b.email === userEmail);
+    const banRecord = bannedEmails.find(b => b.email === userEmail || b.email === `${activeOrg?.id}:${userEmail}`);
     const isBanActive = banRecord && new Date(banRecord.banned_until) > new Date();
     if (isBanActive) {
       setCustomAlert(`This email can be reactivated on ${formatOrgDate(banRecord.banned_until)}.`);
@@ -3240,8 +3240,8 @@ export default function AppContainer() {
 
         await supabase.from('digital_cards').update({ is_revoked: false }).eq('profile_id', user.id);
         if (banRecord) {
-          await supabase.from('banned_emails').delete().eq('email', userEmail);
-          setBannedEmails(prev => prev.filter(b => b.email !== userEmail));
+          await supabase.from('banned_emails').delete().in('email', [userEmail, `${activeOrg?.id}:${userEmail}`]);
+          setBannedEmails(prev => prev.filter(b => b.email !== userEmail && b.email !== `${activeOrg?.id}:${userEmail}`));
         }
 
         const updatedUser = { ...user, role: nextRole, is_locked: false, force_unlocked: false };
@@ -3575,7 +3575,8 @@ export default function AppContainer() {
         if (userEmail && !userEmail.includes('_deleted@') && !userEmail.includes('_banned@')) {
           const banDate = new Date();
           banDate.setMonth(banDate.getMonth() + 1);
-          const newBanRecord = { email: userEmail.toLowerCase(), banned_until: banDate.toISOString(), created_at: new Date().toISOString() };
+          const orgSpecificEmail = `${activeOrg.id}:${userEmail.toLowerCase()}`;
+          const newBanRecord = { email: orgSpecificEmail, banned_until: banDate.toISOString(), created_at: new Date().toISOString() };
           await supabase.from('banned_emails').upsert(newBanRecord, { onConflict: 'email' });
           setBannedEmails(prev => {
              const existing = prev.find(b => b.email === newBanRecord.email);
@@ -5475,14 +5476,27 @@ export default function AppContainer() {
                   setIsGeneratingInvite(true);
                   
                   // Task A: STRICTLY QUERY banned_emails FIRST
-                  const { data: banRecord } = await supabase
+                  const { data: banRecordOrg } = await supabase
+                    .from('banned_emails')
+                    .select('*')
+                    .eq('email', `${activeOrg.id}:${inviteEmail.toLowerCase()}`)
+                    .single();
+                    
+                  const { data: banRecordGlobal } = await supabase
                     .from('banned_emails')
                     .select('*')
                     .eq('email', inviteEmail.toLowerCase())
                     .single();
 
-                  if (banRecord && new Date(banRecord.banned_until) > new Date()) {
-                    setCustomAlert('This email is banned for 30 days.');
+                  if (banRecordGlobal && new Date(banRecordGlobal.banned_until) > new Date()) {
+                    setCustomAlert('This email is permanently banned globally.');
+                    setIsGeneratingInvite(false);
+                    return;
+                  }
+
+                  if (banRecordOrg && new Date(banRecordOrg.banned_until) > new Date()) {
+                    setCustomAlert('This email is banned from this organization for 30 days.');
+                    setIsGeneratingInvite(false);
                     return;
                   }
                   
@@ -5823,7 +5837,7 @@ export default function AppContainer() {
                     </thead>
                     <tbody>
                       {suspendedOrgUsers.map((user, i) => {
-                        const banRecord = bannedEmails.find(b => b.email === user.email?.toLowerCase());
+                        const banRecord = bannedEmails.find(b => b.email === user.email?.toLowerCase() || b.email === `${activeOrg?.id}:${user.email?.toLowerCase()}`);
                         const banDate = banRecord ? new Date(banRecord.created_at) : null;
                         const expiryDate = banRecord ? new Date(banRecord.banned_until) : null;
                         const isBanActive = expiryDate && expiryDate > new Date();
