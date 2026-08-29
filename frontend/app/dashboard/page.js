@@ -3222,16 +3222,26 @@ export default function AppContainer() {
     const userEmail = user.email?.toLowerCase();
     const banRecord = bannedEmails.find(b => b.email === userEmail || b.email === `${activeOrg?.id}:${userEmail}`);
     const isBanActive = banRecord && new Date(banRecord.banned_until) > new Date();
+
+    let warningMsg = '';
     if (isBanActive) {
-      setCustomAlert(`This email can be reactivated on ${formatOrgDate(banRecord.banned_until)}.`);
-      return;
+      warningMsg = `
+
+WARNING: This user is currently serving a 30-day ban until ${formatOrgDate(banRecord.banned_until)}. By proceeding, you are pardoning them early.`;
     }
 
     setConfirmModal({
       title: `Reactivate ${user.full_name}?`,
-      message: 'This will restore the user profile and reactivate their existing access card.',
+      message: `This will restore the user profile and reactivate their existing access card.${warningMsg}`,
       onConfirm: async () => {
-        const nextRole = user.category === 'A' && user.domain === 'Admin' ? 'admin' : 'worker';
+        // Fetch original role from digital_cards
+        const { data: cards } = await supabase.from('digital_cards').select('role').eq('profile_id', user.id).limit(1);
+        let originalRole = cards && cards.length > 0 && cards[0].role ? cards[0].role : null;
+        if (!originalRole) {
+            originalRole = user.category === 'A' && user.domain === 'Admin' ? 'admin' : 'worker';
+        }
+        
+        const nextRole = originalRole;
         const { error } = await supabase
           .from('profiles')
           .update({ role: nextRole, is_locked: false, force_unlocked: false })
@@ -3253,7 +3263,7 @@ export default function AppContainer() {
             payload: { userId: user.id, role: nextRole }
           });
         }
-        addNotification(`${user.full_name} reactivated successfully.`, 'success');
+        addNotification(`User ${user.full_name} reactivated successfully.`, 'success');
       }
     });
   };
@@ -5872,8 +5882,8 @@ export default function AppContainer() {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2">
-                                <button onClick={() => handleReactivateUser(user)} disabled={isBanActive} title={isBanActive ? `Eligible on ${formatOrgDate(expiryDate)}` : 'Reactivate'}
-                                  className="px-3 py-1.5 bg-green-950/50 hover:bg-green-600/80 text-green-200 hover:text-white text-[10px] font-bold rounded-lg border border-green-500/30 transition-all flex items-center gap-1 disabled:bg-gray-900 disabled:border-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed">
+                                <button onClick={() => handleReactivateUser(user)}  title={isBanActive ? `Eligible on ${formatOrgDate(expiryDate)}` : 'Reactivate'}
+                                  className="px-3 py-1.5 bg-green-950/50 hover:bg-green-600/80 text-green-200 hover:text-white text-[10px] font-bold rounded-lg border border-green-500/30 transition-all flex items-center gap-1 ">
                                   <PlayCircle size={11} /> Reactivate
                                 </button>
                                 <button onClick={() => handleDeletePermanentlyFromDB(user.id, user.email)} title="Permanently Delete From DB"
