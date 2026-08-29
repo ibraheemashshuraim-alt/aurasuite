@@ -378,6 +378,11 @@ export default function AppContainer() {
   const [bannedEmails, setBannedEmails] = useState([]);
   const [showSuspendedUsers, setShowSuspendedUsers] = useState(false);
   const [tasks, setTasks] = useState([]);
+  const [clientProjects, setClientProjects] = useState([]);
+  const [clientMilestones, setClientMilestones] = useState([]);
+  const [clientDeliverables, setClientDeliverables] = useState([]);
+  const [clientInvoices, setClientInvoices] = useState([]);
+
   const [activeMeetings, setActiveMeetings] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [productionLines, setProductionLines] = useState([]);
@@ -785,7 +790,7 @@ export default function AppContainer() {
     setMounted(true);
     const loadAll = async () => {
       try {
-        const [orgs, profs, tsk, meets, scheds, msgs, invites, mStates, fin, bans] = await Promise.all([
+        const [orgs, profs, tsk, meets, scheds, msgs, invites, mStates, fin, bans, cProj, cMile, cDel, cInv] = await Promise.all([
           supabase.from('organizations').select('*'),
           supabase.from('profiles').select('*'),
           supabase.from('tasks').select('*'),
@@ -801,6 +806,10 @@ export default function AppContainer() {
         if (orgs.data) setOrganizations(orgs.data);
         if (profs.data) setProfiles(profs.data);
         if (bans.data) setBannedEmails(bans.data);
+          if (cProj?.data) setClientProjects(cProj.data);
+          if (cMile?.data) setClientMilestones(cMile.data);
+          if (cDel?.data) setClientDeliverables(cDel.data);
+          if (cInv?.data) setClientInvoices(cInv.data);
         if (tsk.data) setTasks(tsk.data);
         if (meets.data) setActiveMeetings(meets.data);
         if (scheds.data) setSchedules(scheds.data);
@@ -5282,13 +5291,19 @@ export default function AppContainer() {
               { id: 'admin', icon: <Shield size={15} />, label: 'Admin Control', adminOnly: true },
               { id: 'users', icon: <Users size={15} />, label: 'Users', adminOnly: true },
               { id: 'meetings', icon: <Video size={15} />, label: 'Meetings' },
-              { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat' },
+              { id: 'chat', icon: <MessageSquare size={15} />, label: 'Team Chat', hideForClient: true },
+              { id: 'client_chat', icon: <MessageSquare size={15} />, label: 'Admin Chat (DM)', clientOnly: true },
+              { id: 'project_preview', icon: <Globe size={15} />, label: 'Project Preview', clientOnly: true },
+              { id: 'deliverables', icon: <FileText size={15} />, label: 'Deliverables', clientOnly: true },
+              { id: 'client_invoices', icon: <CreditCard size={15} />, label: 'Invoices', clientOnly: true },
+              { id: 'client_mgmt', icon: <Star size={15} />, label: 'Client Management', adminOnly: true },
               { id: 'schedules', icon: <Calendar size={15} />, label: 'Schedules', hideForClient: true },
               { id: 'financials', icon: <CreditCard size={15} />, label: 'Financials', hideForClient: true },
             ].filter(item => {
               if (item.superAdminOnly && currentUser.role !== 'super_admin') return false;
               if (item.adminOnly && !['admin', 'super_admin', 'sub_admin', 'manager'].includes(currentUser.role)) return false;
               if (item.hideForClient && currentUser.role === 'client') return false;
+              if (item.clientOnly && currentUser.role !== 'client') return false;
               return true;
             }).map(item => (
               <button key={item.id} onClick={() => {
@@ -6089,7 +6104,7 @@ export default function AppContainer() {
           )}
 
           {/* ═══════ CHAT TAB ═══════ */}
-          {activeTab === 'chat' && (
+          {(activeTab === 'chat' || activeTab === 'client_chat') && (
             <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>
               <div className="flex h-full">
                 {/* Sidebar */}
@@ -6115,7 +6130,7 @@ export default function AppContainer() {
                     <div className="px-4 py-2">
                       <span className="text-[9px] text-purple-500 uppercase font-bold tracking-wider">Direct Messages</span>
                     </div>
-                    {orgMembers.filter(u => u.role !== 'deleted' && u.role !== 'pending_worker' && u.role !== 'suspended').map(user => {
+                    {orgMembers.filter(u => u.role !== 'deleted' && u.role !== 'pending_worker' && u.role !== 'suspended' && (currentUser?.role !== 'client' || ['admin', 'super_admin', 'sub_admin'].includes(u.role))).map(user => {
                       const key = getDmKey(user.id);
                       const msgs = dmThreads[key] || [];
                       return (
@@ -6779,199 +6794,29 @@ export default function AppContainer() {
                 </div>
               )}
 
-              {/* CLIENT VIEW */}
+              {/* CLIENT VIEW IN DASHBOARD */}
               {currentUser.role === 'client' && (
                 <div className="space-y-5">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="glass-panel p-5 rounded-2xl border border-yellow-500/20">
-                      <div className="flex items-center gap-2 mb-2"><Star size={16} className="text-yellow-400" /><h3 className="font-bold text-white text-sm">Project Status</h3></div>
-                      <div className="text-3xl font-bold text-yellow-400 mt-2">Active</div>
-                      <p className="text-xs text-yellow-200/50 mt-1">Your project is on track.</p>
+                      <div className="flex items-center gap-2 mb-2"><Activity size={16} className="text-yellow-400" /><h3 className="font-bold text-white text-sm">Project Radar</h3></div>
+                      <div className="text-3xl font-bold text-yellow-400 mt-2">{clientProjects.find(p => p.client_id === currentUser.id)?.status?.replace('_', ' ')?.toUpperCase() || 'NO PROJECT'}</div>
+                      <p className="text-xs text-yellow-200/50 mt-1">Real-time status.</p>
                     </div>
-                    <div className="glass-panel p-5 rounded-2xl border border-blue-500/20">
-                      <div className="flex items-center gap-2 mb-2"><CreditCard size={16} className="text-blue-400" /><h3 className="font-bold text-white text-sm">Outstanding Balance</h3></div>
-                      <div className="text-3xl font-bold text-blue-400 mt-2">PKR 0</div>
-                      <p className="text-xs text-blue-200/50 mt-1">All invoices paid.</p>
-                    </div>
-                    <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20">
-                      <div className="flex items-center gap-2 mb-2"><Clock size={16} className="text-emerald-400" /><h3 className="font-bold text-white text-sm">Completed Tasks</h3></div>
-                      <div className="text-3xl font-bold text-emerald-400 mt-2">{tasks.filter(t => t.status === 'done').length}</div>
-                      <p className="text-xs text-emerald-200/50 mt-1">Tasks delivered successfully.</p>
-                    </div>
-                  </div>
-                  
-                  <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
-                    <h3 className="text-sm font-bold text-white mb-4">Recent Updates</h3>
-                    {tasks.filter(t => t.status === 'done').slice(0, 5).map(t => (
-                      <div key={t.id} className="flex justify-between items-center py-2 border-b border-purple-500/10 last:border-0">
-                        <span className="text-xs text-white">{t.title}</span>
-                        <span className="text-[10px] text-emerald-400 font-bold px-2 py-1 bg-emerald-900/20 rounded-md">Completed</span>
-                      </div>
-                    ))}
-                    {tasks.filter(t => t.status === 'done').length === 0 && <div className="text-xs text-white/50">No updates yet.</div>}
-                  </div>
-                </div>
-              )}
-
-              {/* FACTORY MANAGER VIEW */}
-              {currentUser.role === 'manager' && (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="glass-panel p-5 rounded-2xl border border-purple-500/20">
-                      <div className="flex items-center gap-2 mb-2"><Factory size={16} className="text-purple-400" /><h3 className="font-bold text-white text-sm">Active Lines</h3></div>
-                      <div className="text-3xl font-bold text-purple-400 mt-2">4 / 5</div>
-                      <p className="text-xs text-purple-200/50 mt-1">Production lines operational.</p>
+                      <div className="flex items-center gap-2 mb-2"><Globe size={16} className="text-purple-400" /><h3 className="font-bold text-white text-sm">Overall Progress</h3></div>
+                      <div className="text-3xl font-bold text-purple-400 mt-2">{clientProjects.find(p => p.client_id === currentUser.id)?.overall_progress || 0}%</div>
+                      <p className="text-xs text-purple-200/50 mt-1">Development completion.</p>
                     </div>
                     <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20">
-                      <div className="flex items-center gap-2 mb-2"><Users size={16} className="text-emerald-400" /><h3 className="font-bold text-white text-sm">Shift Workers</h3></div>
-                      <div className="text-3xl font-bold text-emerald-400 mt-2">{orgUsers.filter(u => onlineUsers.includes(u.id)).length}</div>
-                      <p className="text-xs text-emerald-200/50 mt-1">Workers clocked in today.</p>
-                    </div>
-                    <div className="glass-panel p-5 rounded-2xl border border-blue-500/20">
-                      <div className="flex items-center gap-2 mb-2"><TrendingUp size={16} className="text-blue-400" /><h3 className="font-bold text-white text-sm">Daily Output</h3></div>
-                      <div className="text-3xl font-bold text-blue-400 mt-2">92%</div>
-                      <p className="text-xs text-blue-200/50 mt-1">Efficiency target reached.</p>
+                      <div className="flex items-center gap-2 mb-2"><CheckCircle size={16} className="text-emerald-400" /><h3 className="font-bold text-white text-sm">Milestones</h3></div>
+                      <div className="text-3xl font-bold text-emerald-400 mt-2">{clientMilestones.filter(m => m.project_id === clientProjects.find(p => p.client_id === currentUser.id)?.id && m.status === 'approved').length}</div>
+                      <p className="text-xs text-emerald-200/50 mt-1">Approved by you.</p>
                     </div>
                   </div>
                 </div>
               )}
-
-              {/* WORKER VIEW */}
-              {currentUser.role === 'worker' && (
-                <div className="space-y-5">
-                  {!currentUser.category ? (
-                    <div className="glass-panel-glow p-6 rounded-2xl border border-[#9333ea]/30">
-                      <div className="flex items-center gap-2 mb-3">
-                        <UserCheck className="text-purple-400" size={18} />
-                        <h3 className="text-sm font-bold text-white">AI-Powered Profile Setup</h3>
-                      </div>
-                      <p className="text-xs text-purple-200 mb-4">Enter your skills and bio. AuraSuite AI will classify you into Tier A, B, or C and assign your domain automatically.</p>
-                      <form onSubmit={handleOnboarding} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="md:col-span-1">
-                          <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">Skills (comma separated)</label>
-                          <input type="text" value={onboardSkills} onChange={e => setOnboardSkills(e.target.value)}
-                            className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2 text-xs text-white focus:outline-none" required />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">Bio / Description</label>
-                          <input type="text" value={onboardBio} onChange={e => setOnboardBio(e.target.value)}
-                            className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2 text-xs text-white focus:outline-none" required />
-                        </div>
-                        <div className="md:col-span-3 flex justify-end">
-                          <button type="submit" disabled={onboardLoading}
-                            className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
-                            {onboardLoading ? 'AI Analyzing...' : 'Analyze & Tag Profile'}
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  ) : (
-                    <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Award size={16} className="text-purple-400" />
-                        <h3 className="text-sm font-bold text-white">Your AI Profile</h3>
-                      </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="p-3 bg-[#0f0b18] rounded-xl border border-purple-500/10">
-                          <span className="text-[9px] text-purple-400 uppercase font-bold block mb-1">AI Category</span>
-                          <div className="text-xl font-bold text-white">Tier {currentUser.category}</div>
-                        </div>
-                        <div className="p-3 bg-[#0f0b18] rounded-xl border border-purple-500/10">
-                          <span className="text-[9px] text-purple-400 uppercase font-bold block mb-1">Domain</span>
-                          <div className="text-sm font-bold text-purple-200">{currentUser.domain}</div>
-                        </div>
-                        <div className="p-3 bg-[#0f0b18] rounded-xl border border-purple-500/10">
-                          <span className="text-[9px] text-purple-400 uppercase font-bold block mb-1">Skills</span>
-                          <div className="flex flex-wrap gap-1">
-                            {(currentUser.skills || []).slice(0, 3).map(sk => (
-                              <span key={sk} className="px-1.5 py-0.5 bg-purple-950/50 border border-purple-500/10 text-[9px] text-purple-300 rounded">{sk}</span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Kanban */}
-                  {activeOrg.type === 'software_house' && (
-                    <div className="glass-panel p-5 rounded-2xl border border-purple-500/10 space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-sm font-bold text-white">Task Kanban Board</h3>
-                        <button onClick={() => {
-                          const title = prompt('Task title:');
-                          if (title) setTasks(prev => [...prev, {
-                            id: genId('task'), project_id: 'proj-1', title, description: 'Custom task.',
-                            status: 'todo', complexity: 'medium', hours_spent: 4,
-                            suggested_payout: 0, final_payout: 0, payout_approved: false
-                          }]);
-                        }} className="px-2.5 py-1 bg-purple-900/40 hover:bg-purple-800/40 border border-purple-500/20 text-[10px] text-purple-300 font-bold rounded-lg">
-                          + Add Task
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {[
-                          { key: 'todo', label: 'Backlog', next: 'in_progress', nextLabel: 'Start →', color: 'text-purple-400' },
-                          { key: 'in_progress', label: 'In Progress', next: 'done', nextLabel: 'Complete →', color: 'text-blue-400' },
-                          { key: 'done', label: 'Completed', next: null, nextLabel: null, color: 'text-emerald-400' },
-                        ].map(col => (
-                          <div key={col.key} className="bg-[#0f0a1b] p-4 rounded-2xl border border-purple-500/5 space-y-3">
-                            <div className="border-b border-purple-500/10 pb-2 flex justify-between items-center">
-                              <span className={`text-[10px] uppercase font-bold ${col.color}`}>{col.label}</span>
-                              <span className="text-xs text-purple-300 font-bold">{tasks.filter(t => t.status === col.key).length}</span>
-                            </div>
-                            <div className="space-y-2">
-                              {tasks.filter(t => t.status === col.key).map(t => (
-                                <div key={t.id} className={`p-3 rounded-xl border ${col.key === 'done' ? 'bg-[#161122] border-emerald-500/20' : 'bg-[#161122] border-purple-500/10'}`}>
-                                  <div className="text-xs font-bold text-white flex items-center justify-between">
-                                    {t.title}
-                                    {col.key === 'done' && <CheckCircle size={12} className="text-emerald-400" />}
-                                  </div>
-                                  <p className="text-[9px] text-purple-400 mt-1 truncate">{t.description}</p>
-                                  {t.payout_approved && <span className="text-[9px] text-emerald-400 font-bold block mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
-                                  {col.next && (
-                                    <button onClick={() => handleMoveTask(t.id, col.next)}
-                                      className="text-[9px] text-purple-400 hover:text-white mt-2 block font-bold">
-                                      {col.nextLabel}
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* CLIENT VIEW */}
-              {currentUser.role === 'client' && (
-                <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
-                  <h3 className="text-sm font-bold text-white mb-4">Project Progress</h3>
-                  <div className="space-y-4">
-                    {[
-                      { name: 'SaaS Layout Framework', pct: 80 },
-                      { name: 'Agora SDK Integration', pct: 100 },
-                      { name: 'AI Profiling Engine', pct: 65 },
-                    ].map(p => (
-                      <div key={p.name}>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-white">{p.name}</span>
-                          <span className={`font-bold ${p.pct === 100 ? 'text-emerald-400' : 'text-purple-400'}`}>{p.pct}%</span>
-                        </div>
-                        <div className="w-full bg-[#120a1f] h-2 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${p.pct === 100 ? 'bg-emerald-500' : 'accent-gradient'}`} style={{ width: `${p.pct}%` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ═══════ SCHEDULES TAB ═══════ */}
+              </div>)} {/* ═══════ SCHEDULES TAB ═══════ */}
           {activeTab === 'schedules' && (
             <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
               <div className="flex items-center gap-2 mb-4">
