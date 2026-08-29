@@ -3223,16 +3223,14 @@ export default function AppContainer() {
     const banRecord = bannedEmails.find(b => b.email === userEmail || b.email === `${activeOrg?.id}:${userEmail}`);
     const isBanActive = banRecord && new Date(banRecord.banned_until) > new Date();
 
-    let warningMsg = '';
     if (isBanActive) {
-      warningMsg = `
-
-WARNING: This user is currently serving a 30-day ban until ${formatOrgDate(banRecord.banned_until)}. By proceeding, you are pardoning them early.`;
+      setCustomAlert(`This email can be reactivated on ${formatOrgDate(banRecord.banned_until)}.`);
+      return;
     }
 
     setConfirmModal({
       title: `Reactivate ${user.full_name}?`,
-      message: `This will restore the user profile and reactivate their existing access card.${warningMsg}`,
+      message: 'This will restore the user profile and reactivate their existing access card.',
       onConfirm: async () => {
         // Fetch original role from digital_cards
         const { data: cards } = await supabase.from('digital_cards').select('role').eq('profile_id', user.id).limit(1);
@@ -5882,8 +5880,8 @@ WARNING: This user is currently serving a 30-day ban until ${formatOrgDate(banRe
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2">
-                                <button onClick={() => handleReactivateUser(user)}  title={isBanActive ? `Eligible on ${formatOrgDate(expiryDate)}` : 'Reactivate'}
-                                  className="px-3 py-1.5 bg-green-950/50 hover:bg-green-600/80 text-green-200 hover:text-white text-[10px] font-bold rounded-lg border border-green-500/30 transition-all flex items-center gap-1 ">
+                                <button onClick={() => handleReactivateUser(user)} disabled={isBanActive} title={isBanActive ? `Eligible on ${formatOrgDate(expiryDate)}` : \'Reactivate\'}
+                                  className="px-3 py-1.5 bg-green-950/50 hover:bg-green-600/80 text-green-200 hover:text-white text-[10px] font-bold rounded-lg border border-green-500/30 transition-all flex items-center gap-1 disabled:bg-gray-900 disabled:border-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed">
                                   <PlayCircle size={11} /> Reactivate
                                 </button>
                                 <button onClick={() => handleDeletePermanentlyFromDB(user.id, user.email)} title="Permanently Delete From DB"
