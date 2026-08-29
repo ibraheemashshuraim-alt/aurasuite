@@ -6114,7 +6114,8 @@ export default function AppContainer() {
                   </div>
                   <div className="flex-1 overflow-y-auto">
                     {/* Group Chat */}
-                    <button onClick={openGroupChat}
+                      {currentUser?.role !== 'client' && (
+                      <button onClick={openGroupChat}
                       className={`w-full flex items-center gap-2.5 px-4 py-3 text-left transition-all ${activeChat === 'group' && !activeDmUser ? 'bg-purple-900/30 border-r-2 border-purple-500' : 'hover:bg-purple-950/20'}`}>
                       <Hash size={14} className="text-purple-400 shrink-0" />
                       <div>
@@ -6127,7 +6128,8 @@ export default function AppContainer() {
                         </span>
                       )}
                     </button>
-                    <div className="px-4 py-2">
+)}
+<div className="px-4 py-2">
                       <span className="text-[9px] text-purple-500 uppercase font-bold tracking-wider">Direct Messages</span>
                     </div>
                     {orgMembers.filter(u => u.role !== 'deleted' && u.role !== 'pending_worker' && u.role !== 'suspended' && (currentUser?.role !== 'client' || ['admin', 'super_admin', 'sub_admin'].includes(u.role))).map(user => {
