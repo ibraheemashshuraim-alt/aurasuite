@@ -3293,7 +3293,8 @@ export default function AppContainer() {
         await supabase.from('organizations').update({ status: 'active' }).eq('id', org.id);
     
         let finalProfileId = null;
-        const { data: existingProfile } = await supabase.from('profiles').select('*').eq('email', org.email).maybeSingle();
+        const { data: existingProfileList } = await supabase.from('profiles').select('*').eq('email', org.email).eq('organization_id', org.id);
+                            const existingProfile = existingProfileList?.[0];
     
         if (existingProfile) {
            finalProfileId = existingProfile.id;
@@ -5503,7 +5504,7 @@ export default function AppContainer() {
                   let newProfileId = genId('user');
                   
                   // Check if this email exists - if it's a pending_worker, suspended, or banned, allow re-invite
-                  const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase());
+                  const existingProfile = profiles.find(p => p.email.toLowerCase() === inviteEmail.toLowerCase() && p.organization_id === activeOrg.id);
                   let isUpdate = false;
                   if (existingProfile) {
                     if (['pending_worker', 'suspended', 'banned'].includes(existingProfile.role)) {
