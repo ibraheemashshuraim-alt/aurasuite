@@ -859,7 +859,7 @@ export default function AppContainer() {
   // ── Session persistence ──
   useEffect(() => {
     if (currentUser && activeOrg) {
-      const sessionData = JSON.stringify({ userId: currentUser.id, orgId: activeOrg.id, loginMode });
+      const sessionData = JSON.stringify({ userId: currentUser?.id, orgId: activeOrg.id, loginMode });
       if (loginMode === 'worker') {
         sessionStorage.setItem('aura_session', sessionData);
       } else {
@@ -947,7 +947,7 @@ export default function AppContainer() {
       try {
         const { data, error } = await supabase.from('dm_messages')
           .select('*')
-          .like('thread_key', `%${currentUser.id}%`)
+          .like('thread_key', `%${currentUser?.id}%`)
           .order('created_at', { ascending: true });
         
         if (data) {
@@ -974,10 +974,10 @@ export default function AppContainer() {
     const dmPollInterval = setInterval(loadDMs, 5000);
     
     // Listen for incoming DMs or DELETES specifically for this user
-    const dmChannel = supabase.channel(`dm-chat-${currentUser.id}`)
+    const dmChannel = supabase.channel(`dm-chat-${currentUser?.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages' }, payload => {
         const row = payload.new || payload.old;
-        if (!row?.thread_key?.includes(currentUser.id)) return;
+        if (!row?.thread_key?.includes(currentUser?.id)) return;
         if (payload.eventType === 'INSERT') {
             const m = payload.new;
             if (m.from_id !== currentUserRef.current?.id) playSoundEffect('incoming_msg');
@@ -988,7 +988,7 @@ export default function AppContainer() {
             if (exists) {
               return { ...prev, [m.thread_key]: thread.map(msg => msg.id === m.id ? { ...msg, attachmentUrl: m.attachment_url, audioUrl: m.audio_url, time: m.msg_time, fileName: m.file_name, fileSize: m.file_size } : msg) };
             }
-            if (m.from_id !== currentUser.id && activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
+            if (m.from_id !== currentUser?.id && activeTab !== 'chat') { addNotification(`New DM from ${m.from_name}`, 'info'); }
             return { ...prev, [m.thread_key]: [...thread, message] };
           });
           markMessageUnread(message, m.thread_key);
@@ -1050,6 +1050,7 @@ export default function AppContainer() {
         }
       })
       .on('broadcast', { event: 'new-group-message' }, (payload) => {
+            if (currentUserRef.current?.role === 'client') return;
           if (payload?.payload) {
             const message = payload.payload;
             if (message.from !== currentUserRef.current?.id) playSoundEffect('incoming_msg');
@@ -1063,12 +1064,14 @@ export default function AppContainer() {
           }
         })
       .on('broadcast', { event: 'group-message-deleted' }, (payload) => {
+            if (currentUserRef.current?.role === 'client') return;
           const message = payload?.payload;
           if (!message?.id) return;
           if (message.organization_id && activeOrgRef.current?.id && message.organization_id !== activeOrgRef.current.id) return;
           setGroupMessages(prev => prev.filter(msg => msg.id !== message.id));
         })
       .on('broadcast', { event: 'group-message-updated' }, (payload) => {
+            if (currentUserRef.current?.role === 'client') return;
           const message = payload?.payload;
           if (!message?.id) return;
           if (message.organization_id && activeOrgRef.current?.id && message.organization_id !== activeOrgRef.current.id) return;
@@ -1131,6 +1134,7 @@ export default function AppContainer() {
           }, activity.mode === 'recording' ? 3500 : 2500);
         })
       .on('broadcast', { event: 'chat-call-invite' }, (payload) => {
+            if (currentUserRef.current?.role === 'client' && payload?.payload?.scope === 'group') return;
           const call = payload?.payload;
           const currentId = currentUserRef.current?.id;
           if (!call?.id || !currentId || call.callerId === currentId) return;
@@ -1311,12 +1315,12 @@ export default function AppContainer() {
 
     const updatePresence = async () => {
       try {
-        const { data: existing, error: selErr } = await supabase.from('presence').select('user_id').eq('user_id', currentUser.id).maybeSingle();
+        const { data: existing, error: selErr } = await supabase.from('presence').select('user_id').eq('user_id', currentUser?.id).maybeSingle();
         if (selErr) console.error('Presence select error:', selErr);
         if (existing) {
-          await supabase.from('presence').update({ last_seen: Date.now() }).eq('user_id', currentUser.id);
+          await supabase.from('presence').update({ last_seen: Date.now() }).eq('user_id', currentUser?.id);
         } else {
-          await supabase.from('presence').insert({ user_id: currentUser.id, organization_id: activeOrg?.id, last_seen: Date.now() });
+          await supabase.from('presence').insert({ user_id: currentUser?.id, organization_id: activeOrg?.id, last_seen: Date.now() });
         }
         
         const { data } = await supabase.from('presence').select('*');
@@ -1493,7 +1497,7 @@ export default function AppContainer() {
       ? groupMessages.filter(m => m.organization_id === activeOrg?.id)
       : activeDmUser ? (dmThreads[getDmKey(activeDmUser.id)] || []) : [];
     visibleMessages.forEach(message => {
-      if (message.from !== currentUser.id) {
+      if (message.from !== currentUser?.id) {
         sendChatReceipt(message, 'read', activeChat === 'dm' && activeDmUser ? getDmKey(activeDmUser.id) : null);
       }
     });
@@ -1697,7 +1701,7 @@ export default function AppContainer() {
     }
     
     // Check if user has a digital card
-    const { data: cards } = await supabase.from('digital_cards').select('*').eq('profile_id', currentUser.id);
+    const { data: cards } = await supabase.from('digital_cards').select('*').eq('profile_id', currentUser?.id);
     if (cards && cards.length > 0) {
       const { error } = await supabase.from('digital_cards').update({ permanent_password: passwordChangeNew }).eq('id', cards[0].id);
       if (error) { alert('Failed: ' + error.message); return; }
@@ -1791,7 +1795,7 @@ export default function AppContainer() {
 
   const handleLogout = async () => {
     if (currentUser) {
-      await supabase.from('presence').delete().eq('user_id', currentUser.id);
+      await supabase.from('presence').delete().eq('user_id', currentUser?.id);
     }
     sessionStorage.clear();
     localStorage.clear();
@@ -1818,8 +1822,8 @@ export default function AppContainer() {
     const meet = {
       id: genId('meet'),
       organization_id: activeOrg.id,
-      host_id: currentUser.id,
-      host_name: currentUser.full_name,
+      host_id: currentUser?.id,
+      host_name: currentUser?.full_name,
       title: newMeetingTitle,
       passcode,
       is_active: true,
@@ -1840,11 +1844,11 @@ export default function AppContainer() {
     const existingState = meetingStates[meet.id];
     const initialChat = existingState?.chat || [{ id: 1, sender: 'System', text: `Live session started: "${meet.title}"`, time: 'Live' }];
     const myParticipant = {
-      id: currentUser.id, name: currentUser.full_name, role: currentUser.role,
-      isMuted: !joinOptions.micOn || (existingState?.areAllMuted && currentUser.id !== meet.host_id),
+      id: currentUser?.id, name: currentUser?.full_name, role: currentUser.role,
+      isMuted: !joinOptions.micOn || (existingState?.areAllMuted && currentUser?.id !== meet.host_id),
       isVideoOff: !joinOptions.camOn, isScreenSharing: false
     };
-    const nextParticipants = [...(existingState?.participants || []).filter(p => p.id !== currentUser.id), myParticipant];
+    const nextParticipants = [...(existingState?.participants || []).filter(p => p.id !== currentUser?.id), myParticipant];
     const newState = { participants: nextParticipants, chat: initialChat, isChatLocked: existingState?.isChatLocked || false, areAllMuted: existingState?.areAllMuted || false };
 
     await supabase.from('meeting_states').upsert({
@@ -1868,7 +1872,7 @@ export default function AppContainer() {
       const audioConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 };
       const stream = await navigator.mediaDevices.getUserMedia({ video: joinOptions.camOn, audio: audioConstraints });
       if (myParticipant.isMuted) stream.getAudioTracks().forEach(t => t.enabled = false);
-      streamsRef.current[currentUser.id] = stream;
+      streamsRef.current[currentUser?.id] = stream;
       setLocalStream(stream);
       setStreamTrigger(t => t + 1);
       addNotification(`Joined "${meet.title}" successfully.`, 'success');
@@ -1882,26 +1886,26 @@ export default function AppContainer() {
 
     rtcChannel.on('broadcast', { event: 'webrtc' }, async ({ payload }) => {
       const { type, from, to, sdp, candidate, streamId } = payload;
-      if (from === currentUser.id) return;
+      if (from === currentUser?.id) return;
 
       if (type === 'NEW_PEER_JOINED') {
         const pc = createPeerConnection(from, rtcChannel);
         pcsRef.current[from] = pc;
-        const ls = streamsRef.current[currentUser.id];
+        const ls = streamsRef.current[currentUser?.id];
         if (ls) ls.getTracks().forEach(t => pc.addTrack(t, ls));
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'OFFER', from: currentUser.id, to: from, sdp: { type: offer.type, sdp: offer.sdp } } });
-      } else if (type === 'OFFER' && to === currentUser.id) {
+        rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'OFFER', from: currentUser?.id, to: from, sdp: { type: offer.type, sdp: offer.sdp } } });
+      } else if (type === 'OFFER' && to === currentUser?.id) {
         let pc = pcsRef.current[from];
-        if (!pc) { pc = createPeerConnection(from, rtcChannel); pcsRef.current[from] = pc; const ls = streamsRef.current[currentUser.id]; if (ls) ls.getTracks().forEach(t => pc.addTrack(t, ls)); }
+        if (!pc) { pc = createPeerConnection(from, rtcChannel); pcsRef.current[from] = pc; const ls = streamsRef.current[currentUser?.id]; if (ls) ls.getTracks().forEach(t => pc.addTrack(t, ls)); }
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'ANSWER', from: currentUser.id, to: from, sdp: { type: answer.type, sdp: answer.sdp } } });
-      } else if (type === 'ANSWER' && to === currentUser.id) {
+        rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'ANSWER', from: currentUser?.id, to: from, sdp: { type: answer.type, sdp: answer.sdp } } });
+      } else if (type === 'ANSWER' && to === currentUser?.id) {
         const pc = pcsRef.current[from]; if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-      } else if (type === 'ICE' && to === currentUser.id) {
+      } else if (type === 'ICE' && to === currentUser?.id) {
         const pc = pcsRef.current[from]; if (pc && candidate) { try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e){} }
       } else if (type === 'SCREEN_SHARE_STARTED') {
         pcsRef.current[`screenId-${from}`] = streamId; setStreamTrigger(t => t + 1);
@@ -1915,7 +1919,7 @@ export default function AppContainer() {
         setTimeout(() => setFloatingReactions(prev => prev.filter(r => r.id !== rid)), 3500);
       }
     }).subscribe(() => {
-      rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'NEW_PEER_JOINED', from: currentUser.id } });
+      rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'NEW_PEER_JOINED', from: currentUser?.id } });
     });
   };
 
@@ -2265,8 +2269,8 @@ export default function AppContainer() {
       type: callType,
       scope: activeChat,
       organization_id: activeOrg.id,
-      callerId: currentUser.id,
-      callerName: currentUser.full_name,
+      callerId: currentUser?.id,
+      callerName: currentUser?.full_name,
       targetId: activeChat === 'dm' ? activeDmUser.id : null,
       targetName: activeChat === 'dm' ? activeDmUser.full_name : 'Team General',
       title: activeChat === 'group' ? 'Team General' : activeDmUser.full_name
@@ -2315,7 +2319,7 @@ export default function AppContainer() {
       { urls: 'stun:stun4.l.google.com:19302' }
     ] });
     pc.onicecandidate = (e) => {
-      if (e.candidate) rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'ICE', from: currentUser.id, to: peerId, candidate: e.candidate.toJSON() } });
+      if (e.candidate) rtcChannel.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'ICE', from: currentUser?.id, to: peerId, candidate: e.candidate.toJSON() } });
     };
     // NOTE: onnegotiationneeded is intentionally NOT set here.
     // We use manual signaling (NEW_PEER_JOINED -> OFFER -> ANSWER) which is already
@@ -2339,10 +2343,10 @@ export default function AppContainer() {
   const handleStartScreenShare = async () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      streamsRef.current[`screen-${currentUser.id}`] = stream;
+      streamsRef.current[`screen-${currentUser?.id}`] = stream;
       setScreenStream(stream);
       setIsScreenSharing(true);
-      if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'SCREEN_SHARE_STARTED', from: currentUser.id, streamId: stream.id } });
+      if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'SCREEN_SHARE_STARTED', from: currentUser?.id, streamId: stream.id } });
       Object.entries(pcsRef.current).forEach(([k, pc]) => {
         if (!k.startsWith('screenId')) { stream.getTracks().forEach(t => pc.addTrack(t, stream)); }
       });
@@ -2396,17 +2400,17 @@ export default function AppContainer() {
   };
 
   const handleStopScreenShare = async () => {
-    const s = streamsRef.current[`screen-${currentUser.id}`];
+    const s = streamsRef.current[`screen-${currentUser?.id}`];
     if (s) s.getTracks().forEach(t => t.stop());
-    delete streamsRef.current[`screen-${currentUser.id}`];
+    delete streamsRef.current[`screen-${currentUser?.id}`];
     setScreenStream(null); setIsScreenSharing(false);
-    if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'SCREEN_SHARE_STOPPED', from: currentUser.id } });
+    if (channelRef.current) channelRef.current.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'SCREEN_SHARE_STOPPED', from: currentUser?.id } });
     setStreamTrigger(t => t + 1);
     addNotification('Screen sharing stopped.', 'info');
     if (currentMeetingSession) {
       const mState = meetingStates[currentMeetingSession.id];
       if (mState) {
-        const nextParticipants = mState.participants.map(p => p.id === currentUser.id ? { ...p, isScreenSharing: false } : p);
+        const nextParticipants = mState.participants.map(p => p.id === currentUser?.id ? { ...p, isScreenSharing: false } : p);
         await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
         setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } }));
       }
@@ -2425,7 +2429,7 @@ export default function AppContainer() {
 
   const handleEndMeeting = async (forceEndForAll = true) => {
     cleanupWebRTC();
-    const isHost = forceEndForAll && (currentUser.id === currentMeetingSession?.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role));
+    const isHost = forceEndForAll && (currentUser?.id === currentMeetingSession?.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role));
     if (isHost) {
       await supabase.from('meetings').update({ is_active: false }).eq('id', currentMeetingSession.id);
       await supabase.from('meeting_states').delete().eq('meeting_id', currentMeetingSession.id);
@@ -2437,7 +2441,7 @@ export default function AppContainer() {
     } else {
       const mState = meetingStates[currentMeetingSession.id];
       if (mState) {
-        const nextParticipants = mState.participants.filter(p => p.id !== currentUser.id);
+        const nextParticipants = mState.participants.filter(p => p.id !== currentUser?.id);
         await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
         setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } }));
       }
@@ -2469,15 +2473,15 @@ export default function AppContainer() {
       });
       
       if (selectedInvitees.includes('__all__')) {
-        const inviteMsg = { id: genId('msg'), from_id: currentUser.id, from_name: currentUser.full_name, organization_id: activeOrg.id,
+        const inviteMsg = { id: genId('msg'), from_id: currentUser?.id, from_name: currentUser?.full_name, organization_id: activeOrg.id,
           text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
           msg_time: now() };
         await supabase.from('group_messages').insert(inviteMsg);
       } else {
         const dmMessages = selectedInvitees.map(inviteeId => {
-          const key = [currentUser.id, inviteeId].sort().join('_');
+          const key = [currentUser?.id, inviteeId].sort().join('_');
           return {
-             id: genId('msg'), thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
+             id: genId('msg'), thread_key: key, from_id: currentUser?.id, from_name: currentUser?.full_name,
              text: `📹 Meeting Invite: "${meetingInviteModal.title}" | ID: ${meetingInviteModal.meeting_id} | Code: ${meetingInviteModal.passcode} | [MEET_ID:${meetingInviteModal.id}]`,
              msg_time: now()
           };
@@ -2527,8 +2531,8 @@ export default function AppContainer() {
   const handleSendLiveChat = async (e) => {
     e.preventDefault();
     if (!newChatMessage.trim()) return;
-    if (isChatLocked && currentUser.id !== currentMeetingSession.host_id && currentUser.role !== 'admin') { setCustomAlert('Chat is locked by host.'); return; }
-    const newMsg = { id: Date.now(), sender: currentUser.full_name, text: newChatMessage, time: now() };
+    if (isChatLocked && currentUser?.id !== currentMeetingSession.host_id && currentUser.role !== 'admin') { setCustomAlert('Chat is locked by host.'); return; }
+    const newMsg = { id: Date.now(), sender: currentUser?.full_name, text: newChatMessage, time: now() };
     const mState = meetingStates[currentMeetingSession.id];
     if (!mState) return;
     setIsSendingLiveChat(true);
@@ -2734,11 +2738,11 @@ export default function AppContainer() {
     }
     setIsSendingChat(false); return; }
     
-    if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+    if (activeChat === 'group') await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser?.id, from_name: currentUser?.full_name, text: '', msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
     else if (activeChat === 'dm' && activeDmUser) {
       const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
-      await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null });
-      broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: '', time: msgTime, type: 'chat', audioUrl, attachmentUrl: null, reactions: {} });
+      await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser?.id, from_name: currentUser?.full_name, text: '', msg_time: msgTime, audio_url: audioUrl, attachment_url: null });
+      broadcastDmMessage(key, { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: '', time: msgTime, type: 'chat', audioUrl, attachmentUrl: null, reactions: {} });
     }
     if (activeChat === 'group' && kickoutChannelRef.current) {
       kickoutChannelRef.current.send({
@@ -2813,7 +2817,7 @@ export default function AppContainer() {
 
           // Insert message to DB (only use existing columns)
           const msgText = i === 0 && currentChatInput ? currentChatInput : '';
-          const msgData = { id: msgId, from_id: currentUser.id, from_name: currentUser.full_name, text: msgText, msg_time: msgTime, audio_url: null, attachment_url: realUrl };
+          const msgData = { id: msgId, from_id: currentUser?.id, from_name: currentUser?.full_name, text: msgText, msg_time: msgTime, audio_url: null, attachment_url: realUrl };
           if (activeChat === 'group') {
             const groupPayload = { ...msgData, organization_id: activeOrg.id, type: 'chat' };
             const { error: insertErr } = await supabase.from('group_messages').insert(groupPayload);
@@ -2822,7 +2826,7 @@ export default function AppContainer() {
               kickoutChannelRef.current.send({
                 type: 'broadcast',
                 event: 'new-group-message',
-                payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: msgTime, type: 'chat', attachmentUrl: realUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size }
+                payload: { id: msgId, organization_id: activeOrg.id, from: currentUser?.id, fromName: currentUser?.full_name, text: msgText, time: msgTime, type: 'chat', attachmentUrl: realUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size }
               });
             }
           }
@@ -2840,7 +2844,7 @@ export default function AppContainer() {
                 isPending: false
               } : m)
             }));
-            broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: inserted?.msg_time || msgTime, type: 'chat', attachmentUrl: inserted?.attachment_url || realUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size, isPending: false });
+            broadcastDmMessage(key, { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: msgText, time: inserted?.msg_time || msgTime, type: 'chat', attachmentUrl: inserted?.attachment_url || realUrl, audioUrl: null, reactions: {}, fileName: file.name, fileSize: file.size, isPending: false });
           }
         }
       } else {
@@ -2861,20 +2865,20 @@ export default function AppContainer() {
         }
 
         if (activeChat === 'group') {
-          const { error: insertErr } = await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
+          const { error: insertErr } = await supabase.from('group_messages').insert({ id: msgId, organization_id: activeOrg.id, from_id: currentUser?.id, from_name: currentUser?.full_name, text: currentChatInput, msg_time: msgTime, type: 'chat', audio_url: audioUrl, attachment_url: null });
           if (insertErr) throw insertErr;
           if (kickoutChannelRef.current) {
             kickoutChannelRef.current.send({
               type: 'broadcast',
               event: 'new-group-message',
-              payload: { id: msgId, organization_id: activeOrg.id, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl, reactions: {} }
+              payload: { id: msgId, organization_id: activeOrg.id, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl, reactions: {} }
             });
           }
         }
         else if (activeChat === 'dm' && activeDmUser) {
           const key = [currentUser?.id, activeDmUser?.id].sort().join('_');
-          await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null });
-          broadcastDmMessage(key, { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl, reactions: {} });
+          await supabase.from('dm_messages').insert({ id: msgId, thread_key: key, from_id: currentUser?.id, from_name: currentUser?.full_name, text: currentChatInput, msg_time: msgTime, audio_url: audioUrl, attachment_url: null });
+          broadcastDmMessage(key, { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: currentChatInput, time: msgTime, type: 'chat', attachmentUrl: null, audioUrl, reactions: {} });
         }
       }
     } catch(err) {
@@ -2980,7 +2984,7 @@ export default function AppContainer() {
       
       // OPTIMISTIC UPDATE
       const removeFromList = (list) => list.filter(m => m.id !== msg.id);
-      const markDeletedForMe = (list) => list.map(m => m.id === msg.id ? { ...m, deletedFor: [...(m.deletedFor || []), currentUser.id] } : m);
+      const markDeletedForMe = (list) => list.map(m => m.id === msg.id ? { ...m, deletedFor: [...(m.deletedFor || []), currentUser?.id] } : m);
       
       if (action === 'everyone') {
         const canManageOrgGroup = table === 'group_messages'
@@ -2989,16 +2993,16 @@ export default function AppContainer() {
             || (currentUser.role === 'admin' && msg.organization_id === currentUser.organization_id)
           );
 
-        if (msg.from === currentUser.id || canManageOrgGroup) {
+        if (msg.from === currentUser?.id || canManageOrgGroup) {
           if (activeChat === 'group') setGroupMessages(prev => removeFromList(prev));
           else if (activeChat === 'dm' && activeDmUser) {
-            const key = [currentUser.id, activeDmUser.id].sort().join('_');
+            const key = [currentUser?.id, activeDmUser.id].sort().join('_');
             setDmThreads(prev => ({ ...prev, [key]: removeFromList(prev[key] || []) }));
           }
           const { error } = await supabase.from(table).delete().eq('id', msg.id);
           if (error) throw error;
           if (kickoutChannelRef.current) {
-            const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser.id, activeDmUser.id].sort().join('_') : null;
+            const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser?.id, activeDmUser.id].sort().join('_') : null;
             kickoutChannelRef.current.send({
               type: 'broadcast',
               event: table === 'group_messages' ? 'group-message-deleted' : 'dm-message-deleted',
@@ -3010,17 +3014,17 @@ export default function AppContainer() {
         }
       } else if (action === 'me') {
         const currentDeletedFor = msg.deletedFor || [];
-        if (!currentDeletedFor.includes(currentUser.id)) {
+        if (!currentDeletedFor.includes(currentUser?.id)) {
           if (activeChat === 'group') setGroupMessages(prev => markDeletedForMe(prev));
           else if (activeChat === 'dm' && activeDmUser) {
-            const key = [currentUser.id, activeDmUser.id].sort().join('_');
+            const key = [currentUser?.id, activeDmUser.id].sort().join('_');
             setDmThreads(prev => ({ ...prev, [key]: markDeletedForMe(prev[key] || []) }));
           }
-          const newDeletedFor = [...currentDeletedFor, currentUser.id];
+          const newDeletedFor = [...currentDeletedFor, currentUser?.id];
           const { error } = await supabase.from(table).update({ deleted_for: newDeletedFor }).eq('id', msg.id);
           if (error) throw error;
           if (kickoutChannelRef.current) {
-            const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser.id, activeDmUser.id].sort().join('_') : null;
+            const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser?.id, activeDmUser.id].sort().join('_') : null;
             kickoutChannelRef.current.send({
               type: 'broadcast',
               event: table === 'group_messages' ? 'group-message-updated' : 'dm-message-updated',
@@ -3044,26 +3048,26 @@ export default function AppContainer() {
       const currentReactions = JSON.parse(JSON.stringify(msg.reactions || {}));
       
       // Toggle logic
-      if (currentReactions[emoji] && currentReactions[emoji].includes(currentUser.id)) {
-        currentReactions[emoji] = currentReactions[emoji].filter(id => id !== currentUser.id);
+      if (currentReactions[emoji] && currentReactions[emoji].includes(currentUser?.id)) {
+        currentReactions[emoji] = currentReactions[emoji].filter(id => id !== currentUser?.id);
         if (currentReactions[emoji].length === 0) delete currentReactions[emoji];
       } else {
         if (!currentReactions[emoji]) currentReactions[emoji] = [];
-        currentReactions[emoji].push(currentUser.id);
+        currentReactions[emoji].push(currentUser?.id);
       }
       
       // Optimistic update
       if (activeChat === 'group') {
         setGroupMessages(prev => prev.map(m => m.id === msg.id ? { ...m, reactions: currentReactions } : m));
       } else if (activeChat === 'dm' && activeDmUser) {
-        const key = [currentUser.id, activeDmUser.id].sort().join('_');
+        const key = [currentUser?.id, activeDmUser.id].sort().join('_');
         setDmThreads(prev => ({ ...prev, [key]: (prev[key] || []).map(m => m.id === msg.id ? { ...m, reactions: currentReactions } : m) }));
       }
       
       const { error } = await supabase.from(table).update({ reactions: currentReactions }).eq('id', msg.id);
       if (error) throw error;
       if (kickoutChannelRef.current) {
-        const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser.id, activeDmUser.id].sort().join('_') : msg.thread_key;
+        const threadKey = activeChat === 'dm' && activeDmUser ? [currentUser?.id, activeDmUser.id].sort().join('_') : msg.thread_key;
         kickoutChannelRef.current.send({
           type: 'broadcast',
           event: table === 'group_messages' ? 'group-message-updated' : 'dm-message-updated',
@@ -3101,7 +3105,7 @@ export default function AppContainer() {
 
       const updated = { ...currentUser, category, domain, skills: skillsArray };
       setCurrentUser(updated);
-      setProfiles(prev => prev.map(u => u.id === currentUser.id ? updated : u));
+      setProfiles(prev => prev.map(u => u.id === currentUser?.id ? updated : u));
       setOnboardLoading(false);
       addNotification(`AI Profile Set: ${domain} | Category ${category}`, 'success');
     }, 1200);
@@ -3121,7 +3125,7 @@ export default function AppContainer() {
       const updated = { category: editCategory, domain: editDomain, role: editRole };
       await supabase.from('profiles').update(updated).eq('id', editingUser.id);
       setProfiles(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updated } : u));
-      if (currentUser.id === editingUser.id) setCurrentUser(prev => ({ ...prev, ...updated }));
+      if (currentUser?.id === editingUser.id) setCurrentUser(prev => ({ ...prev, ...updated }));
       setEditingUser(null);
       addNotification(`User "${editingUser.full_name}" profile updated.`, 'success');
     } finally {
@@ -3500,7 +3504,7 @@ export default function AppContainer() {
 
   const handleClockIn = () => {
     const timeNow = now();
-    setAttendanceLogs(prev => [{ id: genId('att'), name: currentUser.full_name, date: today(), time: timeNow, status: 'On Time' }, ...prev]);
+    setAttendanceLogs(prev => [{ id: genId('att'), name: currentUser?.full_name, date: today(), time: timeNow, status: 'On Time' }, ...prev]);
     addNotification(`Attendance clocked at ${timeNow}`, 'success');
   };
 
@@ -3898,9 +3902,9 @@ export default function AppContainer() {
             const newSkills = [...(currentUser?.skills || [])];
             if (!newSkills.includes('assessment_completed')) newSkills.push('assessment_completed');
             
-            await supabase.from('profiles').update({ category: newCategory, domain: newDomain, skills: newSkills }).eq('id', currentUser.id);
+            await supabase.from('profiles').update({ category: newCategory, domain: newDomain, skills: newSkills }).eq('id', currentUser?.id);
             setCurrentUser(prev => ({ ...prev, category: newCategory, domain: newDomain, skills: newSkills }));
-            setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, category: newCategory, domain: newDomain, skills: newSkills } : p));
+            setProfiles(prev => prev.map(p => p.id === currentUser?.id ? { ...p, category: newCategory, domain: newDomain, skills: newSkills } : p));
             setQuizFailed(false);
         } else {
             // FAIL
@@ -4077,7 +4081,7 @@ export default function AppContainer() {
                 <span className="text-xs font-bold text-white">Allow Everyone in Organization</span>
               </label>
 
-              {orgUsers.filter(u => u.id !== currentUser.id).map(user => (
+              {orgUsers.filter(u => u.id !== currentUser?.id).map(user => (
                 <label key={user.id} className="flex items-center gap-3 p-2.5 bg-[#0f0b18] border border-purple-500/10 rounded-xl cursor-pointer hover:border-purple-500/30 transition-all">
                   <input type="checkbox"
                     checked={selectedInvitees.includes(user.id) || selectedInvitees.includes('__all__')}
@@ -4140,7 +4144,7 @@ export default function AppContainer() {
                         <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-black ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-gray-500'}`} />
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-white">{u.full_name} {u.id === currentUser.id && '(You)'}</div>
+                        <div className="text-xs font-bold text-white">{u.full_name} {u.id === currentUser?.id && '(You)'}</div>
                         <div className="text-[10px] text-purple-400">{u.role}</div>
                       </div>
                     </div>
@@ -4465,7 +4469,7 @@ export default function AppContainer() {
             <Maximize2 size={14} />
           </button>
           <button onClick={() => {
-            if (currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) setShowEndMeetingModal(true);
+            if (currentUser?.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) setShowEndMeetingModal(true);
             else handleEndMeeting(false);
           }} className="p-2 rounded-full bg-red-600 text-white hover:bg-red-500" title="End or leave meeting">
             <PhoneOff size={14} />
@@ -4489,21 +4493,21 @@ export default function AppContainer() {
                 className="px-3 py-2 bg-white/10 hover:bg-white/15 border border-white/10 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5">
                 <Minimize2 size={12} /> Minimize
               </button>
-              {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
+              {(currentUser?.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                 <button onClick={() => { setMeetingInviteModal(currentMeetingSession); setSelectedInvitees([]); }}
                   className="px-3 py-2 bg-purple-900/50 hover:bg-purple-800/60 border border-purple-500/30 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5">
                   <Send size={12} /> Invite Members
                 </button>
               )}
               <button onClick={() => {
-                if (currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) {
+                if (currentUser?.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) {
                   setShowEndMeetingModal(true);
                 } else {
                   handleEndMeeting(false);
                 }
               }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-all">
-                {currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) ? 'End Meeting' : 'Leave'}
+                {currentUser?.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) ? 'End Meeting' : 'Leave'}
               </button>
             </div>
           </header>
@@ -4526,7 +4530,7 @@ export default function AppContainer() {
                       </div>
                     );
                   } else {
-                    const activeSpeaker = pinnedUserId ? meetingParticipants.find(p => p.id === pinnedUserId) : (meetingParticipants.find(p => !p.isMuted && p.id !== currentUser.id) || meetingParticipants.find(p => p.id === currentMeetingSession?.host_id) || meetingParticipants[0]);
+                    const activeSpeaker = pinnedUserId ? meetingParticipants.find(p => p.id === pinnedUserId) : (meetingParticipants.find(p => !p.isMuted && p.id !== currentUser?.id) || meetingParticipants.find(p => p.id === currentMeetingSession?.host_id) || meetingParticipants[0]);
                     if (!activeSpeaker) return null;
                     return (
                       <div key={`main-${activeSpeaker.id}`} className="w-full h-full">
@@ -4534,7 +4538,7 @@ export default function AppContainer() {
                           part={activeSpeaker}
                           stream={streamsRef.current[activeSpeaker.id]}
                           isHost={activeSpeaker.id === currentMeetingSession?.host_id}
-                          isMe={activeSpeaker.id === currentUser.id}
+                          isMe={activeSpeaker.id === currentUser?.id}
                           isMain={true}
                           pinned={pinnedUserId === activeSpeaker.id}
                           onPin={() => setPinnedUserId(pinnedUserId === activeSpeaker.id ? null : activeSpeaker.id)}
@@ -4570,7 +4574,7 @@ export default function AppContainer() {
                       part={part}
                       stream={streamsRef.current[part.id]}
                       isHost={part.id === currentMeetingSession?.host_id}
-                      isMe={part.id === currentUser.id}
+                      isMe={part.id === currentUser?.id}
                       isMain={false}
                       pinned={pinnedUserId === part.id}
                       onPin={() => setPinnedUserId(pinnedUserId === part.id ? null : part.id)}
@@ -4630,7 +4634,7 @@ export default function AppContainer() {
                           <div className="flex flex-col">
                             <span className="text-xs font-bold text-white flex items-center gap-1.5">
                               {part.name}
-                              {part.id === currentUser.id && <span className="text-[9px] text-purple-400 font-normal">(You)</span>}
+                              {part.id === currentUser?.id && <span className="text-[9px] text-purple-400 font-normal">(You)</span>}
                             </span>
                             {part.id === currentMeetingSession.host_id && <span className="text-[9px] text-yellow-400 tracking-wider">HOST</span>}
                           </div>
@@ -4641,7 +4645,7 @@ export default function AppContainer() {
                         </div>
                       </div>
                       {/* Host controls for individual participants */}
-                      {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && part.id !== currentUser.id && (
+                      {(currentUser?.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && part.id !== currentUser?.id && (
                         <div className="hidden group-hover:flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-purple-500/10 justify-end">
                            <button onClick={() => handleHostMuteParticipant(part.id)} className="text-[9px] px-2 py-1 bg-purple-950/40 text-purple-300 rounded font-bold hover:bg-purple-900/50">Force Mute</button>
                            <button onClick={() => {
@@ -4664,7 +4668,7 @@ export default function AppContainer() {
             )}
 
             {/* Host Tools Sidebar */}
-            {showHostTools && (currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
+            {showHostTools && (currentUser?.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
               <div className="w-72 flex flex-col bg-[#0b0713] border-l border-purple-500/15 shrink-0 shadow-2xl relative z-10 animate-in slide-in-from-right-8 duration-200">
                 <div className="px-4 py-3 border-b border-purple-500/10 flex items-center justify-between shrink-0">
                   <span className="text-xs font-bold text-yellow-400 uppercase tracking-wider flex items-center gap-1.5"><Shield size={12}/> Host Tools</span>
@@ -4756,7 +4760,7 @@ export default function AppContainer() {
                   active: isMuted, 
                   label: isMuted ? 'Unmute' : 'Mute',
                   action: () => { 
-                    const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
+                    const myInfo = meetingParticipants.find(p => p.id === currentUser?.id);
                     if (myInfo?.hostMuted) {
                       setCustomAlert('Host has not allowed you to unmute your mic.');
                       return;
@@ -4764,12 +4768,12 @@ export default function AppContainer() {
                     const nextVal = !isMuted;
                     setIsMuted(nextVal);
                     // Mute/unmute actual audio track
-                    const ls = streamsRef.current[currentUser.id];
+                    const ls = streamsRef.current[currentUser?.id];
                     if (ls) ls.getAudioTracks().forEach(t => { t.enabled = !nextVal; });
                     setMeetingStates(prev => {
                       const mState = prev[currentMeetingSession.id];
                       if (!mState) return prev;
-                      const nextParticipants = mState.participants.map(p => p.id === currentUser.id ? { ...p, isMuted: nextVal } : p);
+                      const nextParticipants = mState.participants.map(p => p.id === currentUser?.id ? { ...p, isMuted: nextVal } : p);
                       const next = { ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
                       supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' }).then();
                       return next;
@@ -4781,14 +4785,14 @@ export default function AppContainer() {
                   active: isVideoOff, 
                   label: isVideoOff ? 'Start Video' : 'Stop Video',
                   action: async () => { 
-                    const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
+                    const myInfo = meetingParticipants.find(p => p.id === currentUser?.id);
                     if (myInfo?.hostVideoOff) {
                       setCustomAlert('Host has not allowed you to turn on your camera.');
                       return;
                     }
                     const nextVal = !isVideoOff;
                     setIsVideoOff(nextVal);
-                    const ls = streamsRef.current[currentUser.id];
+                    const ls = streamsRef.current[currentUser?.id];
                     if (nextVal) {
                       // True stop to turn off hardware light
                       if (ls) ls.getVideoTracks().forEach(t => t.stop());
@@ -4802,7 +4806,7 @@ export default function AppContainer() {
                           ls.getVideoTracks().forEach(t => { t.stop(); ls.removeTrack(t); });
                           ls.addTrack(newVideoTrack);
                         } else {
-                          streamsRef.current[currentUser.id] = newStream;
+                          streamsRef.current[currentUser?.id] = newStream;
                         }
                         // Replace track in peer connections (renegotiation triggered via onnegotiationneeded)
                         Object.values(pcsRef.current).forEach(pc => {
@@ -4819,7 +4823,7 @@ export default function AppContainer() {
                     setMeetingStates(prev => {
                       const mState = prev[currentMeetingSession.id];
                       if (!mState) return prev;
-                      const nextParticipants = mState.participants.map(p => p.id === currentUser.id ? { ...p, isVideoOff: nextVal } : p);
+                      const nextParticipants = mState.participants.map(p => p.id === currentUser?.id ? { ...p, isVideoOff: nextVal } : p);
                       const next = { ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } };
                       supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' }).then();
                       return next;
@@ -4853,7 +4857,7 @@ export default function AppContainer() {
                 <div className="text-[10px] uppercase font-bold text-purple-400 mb-3 tracking-widest">Reactions</div>
                 {/* Raise Hand — top prominent */}
                 {(() => {
-                  const myInfo = meetingParticipants.find(p => p.id === currentUser.id);
+                  const myInfo = meetingParticipants.find(p => p.id === currentUser?.id);
                   const isRaised = myInfo?.isHandRaised;
                   return (
                     <button
@@ -4861,7 +4865,7 @@ export default function AppContainer() {
                         const nextVal = !isRaised;
                         const mState = meetingStates[currentMeetingSession.id];
                         if (mState) {
-                          const nextParticipants = mState.participants.map(p => p.id === currentUser.id ? { ...p, isHandRaised: nextVal } : p);
+                          const nextParticipants = mState.participants.map(p => p.id === currentUser?.id ? { ...p, isHandRaised: nextVal } : p);
                           setMeetingStates(prev => ({ ...prev, [currentMeetingSession.id]: { ...mState, participants: nextParticipants } }));
                           await supabase.from('meeting_states').upsert({ meeting_id: currentMeetingSession.id, participants: nextParticipants, chat: mState.chat, is_chat_locked: mState.isChatLocked, are_all_muted: mState.areAllMuted }, { onConflict: 'meeting_id' });
                         }
@@ -4886,14 +4890,14 @@ export default function AppContainer() {
                       onClick={async () => {
                         // Show floating reaction on all clients via meeting chat broadcast
                         const reactionId = `react-${Date.now()}-${Math.random()}`;
-                        const reaction = { id: reactionId, emoji, userId: currentUser.id, name: currentUser.full_name };
+                        const reaction = { id: reactionId, emoji, userId: currentUser?.id, name: currentUser?.full_name };
                         setFloatingReactions(prev => [...prev, reaction]);
                         // Auto-remove after 3.5s
                         setTimeout(() => setFloatingReactions(prev => prev.filter(r => r.id !== reactionId)), 3500);
                         // Broadcast via meeting chat so others see it too
                         const mState = meetingStates[currentMeetingSession.id];
                         if (mState && channelRef.current) {
-                          channelRef.current.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'REACTION', from: currentUser.id, name: currentUser.full_name, emoji, reactionId } });
+                          channelRef.current.send({ type: 'broadcast', event: 'webrtc', payload: { type: 'REACTION', from: currentUser?.id, name: currentUser?.full_name, emoji, reactionId } });
                         }
                         setShowReactionsPanel(false);
                       }}
@@ -4918,14 +4922,14 @@ export default function AppContainer() {
                 <MessageSquare size={16} />
                 <span className="text-[9px] font-bold">Chat</span>
               </button>
-              {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
+              {(currentUser?.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                 <button onClick={() => isRecording ? handleStopRecording() : handleStartRecording()}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${isRecording ? 'text-red-400 bg-red-950/60 animate-pulse' : 'text-purple-400 hover:bg-purple-900/20 hover:text-purple-200'}`}>
                   {isRecording ? <Square size={16} fill="currentColor" /> : <Disc size={16} />}
                   <span className="text-[9px] font-bold">{isRecording ? 'Recording...' : 'Record'}</span>
                 </button>
               )}
-              {(currentUser.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
+              {(currentUser?.id === currentMeetingSession.host_id || ['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role)) && (
                 <button onClick={() => { setShowHostTools(!showHostTools); setShowMeetingChat(false); setShowMeetingParticipants(false); }}
                   className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-all ${showHostTools ? 'text-yellow-400 bg-yellow-900/20' : 'text-yellow-600 hover:bg-yellow-900/10 hover:text-yellow-500'}`}>
                   <Shield size={16} />
@@ -4970,7 +4974,7 @@ export default function AppContainer() {
             ].filter(item => {
               if (item.superAdminOnly && currentUser.role !== 'super_admin') return false;
               if (item.adminOnly && !['admin', 'super_admin', 'sub_admin', 'manager'].includes(currentUser.role)) return false;
-              if (item.hideForClient && currentUser.role === 'client') return false;
+              if (item.hideForClient && currentUser?.role === 'client') return false;
               if (item.clientOnly && currentUser.role !== 'client') return false;
               return true;
             }).map(item => (
@@ -5012,10 +5016,10 @@ export default function AppContainer() {
           )}
           <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-full flex items-center gap-2.5 hover:bg-purple-900/20 p-2 rounded-xl transition-colors">
             <div className="w-9 h-9 rounded-full bg-purple-700/50 flex items-center justify-center text-sm font-bold border border-purple-500/30 text-white shrink-0">
-              {currentUser.full_name[0].toUpperCase()}
+              {currentUser?.full_name[0].toUpperCase()}
             </div>
             <div className="min-w-0 flex-1 text-left">
-              <div className="text-xs font-semibold text-white truncate">{currentUser.full_name}</div>
+              <div className="text-xs font-semibold text-white truncate">{currentUser?.full_name}</div>
               <div className="text-[9px] text-purple-400 uppercase font-bold mt-0.5">{currentUser.role} {currentUser.category ? `· Cat. ${currentUser.category}` : ''}</div>
             </div>
           </button>
@@ -5078,7 +5082,7 @@ export default function AppContainer() {
           ))}
 
           {/* Active org meetings (for host to see) */}
-          {orgMeetings.filter(m => m.host_id === currentUser.id).map(meet => (
+          {orgMeetings.filter(m => m.host_id === currentUser?.id).map(meet => (
             <div key={meet.id} className="glass-panel border border-emerald-500/20 p-4 rounded-2xl flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
@@ -5500,7 +5504,7 @@ export default function AppContainer() {
                                   </button>
                                 );
                               })()}
-                              {user.id !== currentUser.id && (
+                              {user.id !== currentUser?.id && (
                                 <div className="flex gap-1">
                                   <button onClick={() => handleSuspendUser(user.id)} title="Delete / Suspend"
                                     className="p-1.5 bg-yellow-950/30 border border-yellow-500/20 rounded-lg text-yellow-400 hover:text-white hover:border-yellow-500/50 transition-all">
@@ -5727,7 +5731,7 @@ export default function AppContainer() {
                 ) : (
                   <div className="p-4 space-y-3">
                     {orgMeetings.map(meet => {
-                      const isMine = meet.host_id === currentUser.id;
+                      const isMine = meet.host_id === currentUser?.id;
                       const invited = isInvitedToMeeting(meet);
                       return (
                         <div key={meet.id} className="p-4 bg-[#0f0b18] border border-purple-500/10 rounded-2xl flex items-center justify-between gap-4">
@@ -5920,9 +5924,9 @@ export default function AppContainer() {
                             )}
                           </div>
                         </div>
-                        {activeMeetings.some(m => m.host_id === currentUser.id) && (
+                        {activeMeetings.some(m => m.host_id === currentUser?.id) && (
                           <button onClick={() => {
-                            const myMeet = activeMeetings.find(m => m.host_id === currentUser.id);
+                            const myMeet = activeMeetings.find(m => m.host_id === currentUser?.id);
                             if (myMeet) {
                               const key = getDmKey(activeDmUser.id);
                               const msgText = `📹 Join my meeting: "${myMeet.title}" | ID: ${myMeet.meeting_id} | Code: ${myMeet.passcode} | [MEET_ID:${myMeet.id}]`;
@@ -5930,11 +5934,11 @@ export default function AppContainer() {
                               const msgTime = now();
                               // Save to DB
                               supabase.from('dm_messages').insert({
-                                id: msgId, thread_key: key, from_id: currentUser.id, from_name: currentUser.full_name,
+                                id: msgId, thread_key: key, from_id: currentUser?.id, from_name: currentUser?.full_name,
                                 text: msgText, msg_time: msgTime
                               }).then(() => {});
                               // Update local state immediately
-                              const dmMessage = { id: msgId, from: currentUser.id, fromName: currentUser.full_name, text: msgText, time: msgTime };
+                              const dmMessage = { id: msgId, from: currentUser?.id, fromName: currentUser?.full_name, text: msgText, time: msgTime };
                               setDmThreads(prev => mergeThreadMessage(prev, key, dmMessage));
                               broadcastDmMessage(key, dmMessage);
                               // Also save invite record
@@ -6004,8 +6008,8 @@ export default function AppContainer() {
                           <p className="text-xs text-purple-500">No messages yet. Say hello!</p>
                         </div>
                       );
-                      return msgs.filter(m => !(m.deletedFor && m.deletedFor.includes(currentUser.id))).map(msg => {
-                        const isMine = msg.from === currentUser.id;
+                      return msgs.filter(m => !(m.deletedFor && m.deletedFor.includes(currentUser?.id))).map(msg => {
+                        const isMine = msg.from === currentUser?.id;
                         const canDeleteEveryone = isMine || (
                           activeChat === 'group'
                           && (
@@ -6149,7 +6153,7 @@ export default function AppContainer() {
                                     <button key={emoji} onClick={(e) => {
                                       const rect = e.currentTarget.getBoundingClientRect();
                                       setReactionModalData({ msgId: msg.id, reactions: msg.reactions || {}, x: rect.left + rect.width / 2, y: rect.bottom });
-                                    }} title="View Reactions" className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
+                                    }} title="View Reactions" className={`text-[10px] px-1.5 py-0.5 rounded-full border ${userIds.includes(currentUser?.id) ? 'bg-purple-900/60 border-purple-500' : 'bg-[#150e25] border-purple-500/30'} hover:bg-purple-800 transition-colors`}>
                                       {emoji} {userIds.length > 1 && <span className="text-purple-300 ml-0.5">{userIds.length}</span>}
                                     </button>
                                   ))}
@@ -6480,27 +6484,206 @@ export default function AppContainer() {
               )}
 
               {/* CLIENT VIEW IN DASHBOARD */}
-              {currentUser.role === 'client' && (
+              {currentUser?.role === 'client' && (
                 <div className="space-y-5">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="glass-panel p-5 rounded-2xl border border-yellow-500/20">
                       <div className="flex items-center gap-2 mb-2"><Activity size={16} className="text-yellow-400" /><h3 className="font-bold text-white text-sm">Project Radar</h3></div>
-                      <div className="text-3xl font-bold text-yellow-400 mt-2">{clientProjects.find(p => p.client_id === currentUser.id)?.status?.replace('_', ' ')?.toUpperCase() || 'NO PROJECT'}</div>
+                      <div className="text-3xl font-bold text-yellow-400 mt-2">{clientProjects.find(p => p.client_id === currentUser?.id)?.status?.replace('_', ' ')?.toUpperCase() || 'NO PROJECT'}</div>
                       <p className="text-xs text-yellow-200/50 mt-1">Real-time status.</p>
                     </div>
                     <div className="glass-panel p-5 rounded-2xl border border-purple-500/20">
                       <div className="flex items-center gap-2 mb-2"><Globe size={16} className="text-purple-400" /><h3 className="font-bold text-white text-sm">Overall Progress</h3></div>
-                      <div className="text-3xl font-bold text-purple-400 mt-2">{clientProjects.find(p => p.client_id === currentUser.id)?.overall_progress || 0}%</div>
+                      <div className="text-3xl font-bold text-purple-400 mt-2">{clientProjects.find(p => p.client_id === currentUser?.id)?.overall_progress || 0}%</div>
                       <p className="text-xs text-purple-200/50 mt-1">Development completion.</p>
                     </div>
                     <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20">
                       <div className="flex items-center gap-2 mb-2"><CheckCircle size={16} className="text-emerald-400" /><h3 className="font-bold text-white text-sm">Milestones</h3></div>
-                      <div className="text-3xl font-bold text-emerald-400 mt-2">{clientMilestones.filter(m => m.project_id === clientProjects.find(p => p.client_id === currentUser.id)?.id && m.status === 'approved').length}</div>
+                      <div className="text-3xl font-bold text-emerald-400 mt-2">{clientMilestones.filter(m => m.project_id === clientProjects.find(p => p.client_id === currentUser?.id)?.id && m.status === 'approved').length}</div>
                       <p className="text-xs text-emerald-200/50 mt-1">Approved by you.</p>
                     </div>
                   </div>
                 </div>
               )}
+
+
+              {/* FACTORY MANAGER VIEW */}
+                {currentUser?.role === 'manager' && (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="glass-panel p-5 rounded-2xl border border-purple-500/20">
+                        <div className="flex items-center gap-2 mb-2"><Factory size={16} className="text-purple-400" 
+/><h3 className="font-bold text-white text-sm">Active Lines</h3></div>
+                        <div className="text-3xl font-bold text-purple-400 mt-2">4 / 5</div>
+                        <p className="text-xs text-purple-200/50 mt-1">Production lines operational.</p>
+                      </div>
+                      <div className="glass-panel p-5 rounded-2xl border border-emerald-500/20">
+                        <div className="flex items-center gap-2 mb-2"><Users size={16} className="text-emerald-400" 
+/><h3 className="font-bold text-white text-sm">Shift Workers</h3></div>
+                        <div className="text-3xl font-bold text-emerald-400 mt-2">{orgUsers.filter(u => 
+onlineUsers.includes(u.id)).length}</div>
+                        <p className="text-xs text-emerald-200/50 mt-1">Workers clocked in today.</p>
+                      </div>
+                      <div className="glass-panel p-5 rounded-2xl border border-blue-500/20">
+                        <div className="flex items-center gap-2 mb-2"><TrendingUp size={16} className="text-blue-400" 
+/><h3 className="font-bold text-white text-sm">Daily Output</h3></div>
+                        <div className="text-3xl font-bold text-blue-400 mt-2">92%</div>
+                        <p className="text-xs text-blue-200/50 mt-1">Efficiency target reached.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+  
+                {/* WORKER VIEW */}
+                {currentUser?.role === 'worker' && (
+                  <div className="space-y-5">
+                    {!currentUser?.category ? (
+                      <div className="glass-panel-glow p-6 rounded-2xl border border-[#9333ea]/30">
+                        <div className="flex items-center gap-2 mb-3">
+                          <UserCheck className="text-purple-400" size={18} />
+                          <h3 className="text-sm font-bold text-white">AI-Powered Profile Setup</h3>
+                        </div>
+                        <p className="text-xs text-purple-200 mb-4">Enter your skills and bio. AuraSuite AI will 
+classify you into Tier A, B, or C and assign your domain automatically.</p>
+                        <form onSubmit={handleOnboarding} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="md:col-span-1">
+                            <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">Skills 
+(comma separated)</label>
+                            <input type="text" value={onboardSkills} onChange={e => setOnboardSkills(e.target.value)}
+                              className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2 text-xs 
+text-white focus:outline-none" required />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="text-[10px] uppercase font-bold text-purple-300 block mb-1">Bio / 
+Description</label>
+                            <input type="text" value={onboardBio} onChange={e => setOnboardBio(e.target.value)}
+                              className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2 text-xs 
+text-white focus:outline-none" required />
+                          </div>
+                          <div className="md:col-span-3 flex justify-end">
+                            <button type="submit" disabled={onboardLoading}
+                              className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
+                              {onboardLoading ? 'AI Analyzing...' : 'Analyze & Tag Profile'}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    ) : (
+                      <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Award size={16} className="text-purple-400" />
+                          <h3 className="text-sm font-bold text-white">Your AI Profile</h3>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="p-3 bg-[#0f0b18] rounded-xl border border-purple-500/10">
+                            <span className="text-[9px] text-purple-400 uppercase font-bold block mb-1">AI 
+Category</span>
+                            <div className="text-xl font-bold text-white">Tier {currentUser?.category}</div>
+                          </div>
+                          <div className="p-3 bg-[#0f0b18] rounded-xl border border-purple-500/10">
+                            <span className="text-[9px] text-purple-400 uppercase font-bold block mb-1">Domain</span>
+                            <div className="text-sm font-bold text-purple-200">{currentUser.domain}</div>
+                          </div>
+                          <div className="p-3 bg-[#0f0b18] rounded-xl border border-purple-500/10">
+                            <span className="text-[9px] text-purple-400 uppercase font-bold block mb-1">Skills</span>
+                            <div className="flex flex-wrap gap-1">
+                              {(currentUser.skills || []).slice(0, 3).map(sk => (
+                                <span key={sk} className="px-1.5 py-0.5 bg-purple-950/50 border border-purple-500/10 
+text-[9px] text-purple-300 rounded">{sk}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+  
+                    {/* Kanban */}
+                    {activeOrg.type === 'software_house' && (
+                      <div className="glass-panel p-5 rounded-2xl border border-purple-500/10 space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h3 className="text-sm font-bold text-white">Task Kanban Board</h3>
+                          <button onClick={() => {
+                            const title = prompt('Task title:');
+                            if (title) setTasks(prev => [...prev, {
+                              id: genId('task'), project_id: 'proj-1', title, description: 'Custom task.',
+                              status: 'todo', complexity: 'medium', hours_spent: 4,
+                              suggested_payout: 0, final_payout: 0, payout_approved: false
+                            }]);
+                          }} className="px-2.5 py-1 bg-purple-900/40 hover:bg-purple-800/40 border 
+border-purple-500/20 text-[10px] text-purple-300 font-bold rounded-lg">
+                            + Add Task
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {[
+                            { key: 'todo', label: 'Backlog', next: 'in_progress', nextLabel: 'Start ÔåÆ', color: 
+'text-purple-400' },
+                            { key: 'in_progress', label: 'In Progress', next: 'done', nextLabel: 'Complete ÔåÆ', 
+color: 'text-blue-400' },
+                            { key: 'done', label: 'Completed', next: null, nextLabel: null, color: 'text-emerald-400' 
+},
+                          ].map(col => (
+                            <div key={col.key} className="bg-[#0f0a1b] p-4 rounded-2xl border border-purple-500/5 
+space-y-3">
+                              <div className="border-b border-purple-500/10 pb-2 flex justify-between items-center">
+                                <span className={`text-[10px] uppercase font-bold ${col.color}`}>{col.label}</span>
+                                <span className="text-xs text-purple-300 font-bold">{tasks.filter(t => t.status === 
+col.key).length}</span>
+                              </div>
+                              <div className="space-y-2">
+                                {tasks.filter(t => t.status === col.key).map(t => (
+                                  <div key={t.id} className={`p-3 rounded-xl border ${col.key === 'done' ? 
+'bg-[#161122] border-emerald-500/20' : 'bg-[#161122] border-purple-500/10'}`}>
+                                    <div className="text-xs font-bold text-white flex items-center justify-between">
+                                      {t.title}
+                                      {col.key === 'done' && <CheckCircle size={12} className="text-emerald-400" />}
+                                    </div>
+                                    <p className="text-[9px] text-purple-400 mt-1 truncate">{t.description}</p>
+                                    {t.payout_approved && <span className="text-[9px] text-emerald-400 font-bold block 
+mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
+                                    {col.next && (
+                                      <button onClick={() => handleMoveTask(t.id, col.next)}
+                                        className="text-[9px] text-purple-400 hover:text-white mt-2 block font-bold">
+                                        {col.nextLabel}
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+  
+                {/* CLIENT VIEW */}
+                {currentUser?.role === 'client' && (
+                  <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
+                    <h3 className="text-sm font-bold text-white mb-4">Project Progress</h3>
+                    <div className="space-y-4">
+                      {[
+                        { name: 'SaaS Layout Framework', pct: 80 },
+                        { name: 'Agora SDK Integration', pct: 100 },
+                        { name: 'AI Profiling Engine', pct: 65 },
+                      ].map(p => (
+                        <div key={p.name}>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-white">{p.name}</span>
+                            <span className={`font-bold ${p.pct === 100 ? 'text-emerald-400' : 
+'text-purple-400'}`}>{p.pct}%</span>
+                          </div>
+                          <div className="w-full bg-[#120a1f] h-2 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${p.pct === 100 ? 'bg-emerald-500' : 
+'accent-gradient'}`} style={{ width: `${p.pct}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
               </div>)} {/* ═══════ SCHEDULES TAB ═══════ */}
           {activeTab === 'schedules' && (
             <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
