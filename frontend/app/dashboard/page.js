@@ -27,6 +27,12 @@ import JSZip from 'jszip';
 const genId = (prefix = 'id') => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
 const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const today = () => new Date().toISOString().split('T')[0];
+const normalizeExternalUrl = (url) => {
+  const clean = (url || '').trim();
+  if (!clean) return '';
+  if (/^https?:\/\//i.test(clean)) return clean;
+  return `https://${clean}`;
+};
 
 function checkIsEffectivelyLocked(user, org) {
   if (!user || user.role !== 'worker') return false;
@@ -802,6 +808,10 @@ export default function AppContainer() {
           supabase.from('meeting_states').select('*'),
           supabase.from('financials').select('*'),
           supabase.from('banned_emails').select('*'),
+          supabase.from('client_projects').select('*'),
+          supabase.from('client_milestones').select('*'),
+          supabase.from('client_deliverables').select('*'),
+          supabase.from('client_invoices').select('*'),
         ]);
         if (orgs.data) setOrganizations(orgs.data);
         if (profs.data) setProfiles(profs.data);
@@ -2596,6 +2606,24 @@ export default function AppContainer() {
 
   // ─────────────────── Chat ───────────────────
   const orgMembers = rankUsersByAuthority((profiles || []).filter(p => p.organization_id === activeOrg?.id && p.id !== currentUser?.id), currentUser?.id);
+  const clientAdminContact = orgMembers.find(user => ['admin', 'super_admin', 'sub_admin'].includes(user.role));
+
+  useEffect(() => {
+    if (currentUser?.role !== 'client') return;
+    if (!clientAdminContact) {
+      if (activeChat === 'group') setActiveChat('dm');
+      setActiveDmUser(null);
+      setIsChatClosed(false);
+      localStorage.setItem('aura_chat_state', JSON.stringify({ type: 'client_dm' }));
+      return;
+    }
+    if (activeChat === 'group' || isChatClosed || !activeDmUser || !['admin', 'super_admin', 'sub_admin'].includes(activeDmUser.role)) {
+      setActiveChat('dm');
+      setActiveDmUser(clientAdminContact);
+      setIsChatClosed(false);
+      localStorage.setItem('aura_chat_state', JSON.stringify({ type: 'dm', user: clientAdminContact }));
+    }
+  }, [currentUser?.role, clientAdminContact?.id, activeChat, activeDmUser?.id, activeDmUser?.role, isChatClosed]);
 
   const renderTextWithLinks = (text) => {
     if (!text) return text;
@@ -6975,31 +7003,38 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
                   </div>
                 )}
   
-                {/* CLIENT VIEW */}
-                {currentUser?.role === 'client' && (
-                  <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
-                    <h3 className="text-sm font-bold text-white mb-4">Project Progress</h3>
-                    <div className="space-y-4">
-                      {[
-                        { name: 'SaaS Layout Framework', pct: 80 },
-                        { name: 'Agora SDK Integration', pct: 100 },
-                        { name: 'AI Profiling Engine', pct: 65 },
-                      ].map(p => (
-                        <div key={p.name}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-white">{p.name}</span>
-                            <span className={`font-bold ${p.pct === 100 ? 'text-emerald-400' : 
-'text-purple-400'}`}>{p.pct}%</span>
-                          </div>
-                          <div className="w-full bg-[#120a1f] h-2 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${p.pct === 100 ? 'bg-emerald-500' : 
-'accent-gradient'}`} style={{ width: `${p.pct}%` }} />
-                          </div>
+              {/* CLIENT VIEW */}
+              {currentUser?.role === 'client' && (
+                (() => {
+                  const clientProject = clientProjects.find(p => p.client_id === currentUser?.id);
+                  const projectMilestones = clientProject ? clientMilestones.filter(m => m.project_id === clientProject.id) : [];
+                  return (
+                    <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
+                      <h3 className="text-sm font-bold text-white mb-4">Project Progress</h3>
+                      {projectMilestones.length === 0 ? (
+                        <p className="text-xs text-purple-500">No project progress has been published yet.</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {projectMilestones.map(milestone => {
+                            const pct = Number.isFinite(Number(milestone.progress)) ? Number(milestone.progress) : (milestone.status === 'approved' ? 100 : 0);
+                            return (
+                              <div key={milestone.id}>
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span className="text-white">{milestone.title}</span>
+                                  <span className={`font-bold ${pct >= 100 ? 'text-emerald-400' : 'text-purple-400'}`}>{pct}%</span>
+                                </div>
+                                <div className="w-full bg-[#120a1f] h-2 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${pct >= 100 ? 'bg-emerald-500' : 'accent-gradient'}`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()
+              )}
 
               </div>)} {/* ═══════ SCHEDULES TAB ═══════ */}
           {activeTab === 'schedules' && (
@@ -7133,14 +7168,17 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
             {/* ═══════ PROJECT PREVIEW TAB ═══════ */}
             {activeTab === 'project_preview' && (
               <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden w-full" style={{ height: 'calc(100vh - 160px)' }}>
-                {clientProjects.find(p => p.client_id === currentUser?.id)?.preview_url ? (
-                  <iframe src={clientProjects.find(p => p.client_id === currentUser?.id).preview_url} className="w-full h-full border-none" title="Project Preview" sandbox="allow-scripts allow-same-origin allow-forms" />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-purple-500/50">
-                    <Globe size={48} className="mb-4 opacity-50" />
-                    <p>No preview link provided by the admin yet.</p>
-                  </div>
-                )}
+                {(() => {
+                  const previewUrl = normalizeExternalUrl(clientProjects.find(p => p.client_id === currentUser?.id)?.preview_url);
+                  return previewUrl ? (
+                    <iframe src={previewUrl} className="w-full h-full border-none bg-white" title="Project Preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-purple-500/50">
+                      <Globe size={48} className="mb-4 opacity-50" />
+                      <p>No preview link provided by the admin yet.</p>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -7222,7 +7260,11 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
                         </tr>
                       </thead>
                       <tbody>
-                        {clientInvoices.filter(i => i.project_id === clientProjects.find(p => p.client_id === currentUser?.id)?.id).map(inv => (
+                        {clientInvoices.filter(i => i.project_id === clientProjects.find(p => p.client_id === currentUser?.id)?.id).length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-4 py-8 text-center text-purple-500">No invoices have been created yet.</td>
+                          </tr>
+                        ) : clientInvoices.filter(i => i.project_id === clientProjects.find(p => p.client_id === currentUser?.id)?.id).map(inv => (
                           <tr key={inv.id} className="border-b border-purple-500/10">
                             <td className="px-4 py-3 text-white font-mono">{inv.id.slice(-6).toUpperCase()}</td>
                             <td className="px-4 py-3 text-purple-200">{new Date(inv.due_date).toLocaleDateString()}</td>
@@ -7247,7 +7289,11 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
               <div className="space-y-5">
                 <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
                   <h3 className="text-sm font-bold text-white mb-4">Client Projects Overview</h3>
-                  {orgUsers.filter(u => u.role === 'client').map(client => {
+                  {orgUsers.filter(u => u.role === 'client').length === 0 ? (
+                    <div className="py-12 text-center text-purple-500 text-sm border border-purple-500/10 rounded-2xl bg-[#0f081c]">
+                      No clients have been added to this organization yet.
+                    </div>
+                  ) : orgUsers.filter(u => u.role === 'client').map(client => {
                     const proj = clientProjects.find(p => p.client_id === client.id) || { status: 'none', overall_progress: 0 };
                     return (
                       <div key={client.id} className="mb-4 p-4 bg-[#150d24] border border-purple-500/20 rounded-xl">
@@ -7259,6 +7305,7 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
                           <div className="flex gap-2 items-center">
                             <select value={proj.status} onChange={(e) => {
                                 if (proj.status === 'none') {
+                                    if (e.target.value === 'none') return;
                                     const newProj = { id: genId('proj'), client_id: client.id, organization_id: activeOrg.id, status: e.target.value, overall_progress: 0 };
                                     supabase.from('client_projects').insert(newProj).then(() => setClientProjects([...clientProjects, newProj]));
                                 } else {
@@ -7279,7 +7326,8 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
                                 <label className="text-xs text-purple-300">Preview URL (Iframe Sandbox)</label>
                                 <div className="flex gap-2 mt-1">
                                     <input type="text" defaultValue={proj.preview_url || ''} onBlur={(e) => {
-                                        supabase.from('client_projects').update({ preview_url: e.target.value }).eq('id', proj.id).then(() => setClientProjects(prev => prev.map(p => p.id === proj.id ? { ...p, preview_url: e.target.value } : p)));
+                                        const previewUrl = normalizeExternalUrl(e.target.value);
+                                        supabase.from('client_projects').update({ preview_url: previewUrl }).eq('id', proj.id).then(() => setClientProjects(prev => prev.map(p => p.id === proj.id ? { ...p, preview_url: previewUrl } : p)));
                                     }} className="flex-1 bg-[#0f081c] border border-purple-500/20 p-2 rounded-lg text-xs text-white" placeholder="https://..." />
                                 </div>
                             </div>
