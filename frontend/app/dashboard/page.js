@@ -7162,11 +7162,7 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
             </div>
           )}
 
-        </div>
-  
-      
-            {/* ═══════ PROJECT PREVIEW TAB ═══════ */}
-            {activeTab === 'project_preview' && (
+          {activeTab === 'project_preview' && (
               <div className="glass-panel rounded-2xl border border-purple-500/10 overflow-hidden w-full" style={{ height: 'calc(100vh - 160px)' }}>
                 {(() => {
                   const previewUrl = normalizeExternalUrl(clientProjects.find(p => p.client_id === currentUser?.id)?.preview_url);
@@ -7182,8 +7178,7 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
               </div>
             )}
 
-            {/* ═══════ DELIVERABLES TAB ═══════ */}
-            {activeTab === 'deliverables' && (
+          {activeTab === 'deliverables' && (
               <div className="space-y-5">
                 <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
                   <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2"><CheckCircle size={16} className="text-purple-400" /> Review & Milestone Approvals</h3>
@@ -7238,8 +7233,7 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
               </div>
             )}
 
-            {/* ═══════ INVOICES TAB ═══════ */}
-            {activeTab === 'client_invoices' && (
+          {activeTab === 'client_invoices' && (
               <div className="space-y-5">
                 <div className="glass-panel p-5 rounded-2xl border border-red-500/10">
                   <div className="flex justify-between items-center mb-6">
@@ -7284,8 +7278,7 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
               </div>
             )}
 
-            {/* ═══════ CLIENT MANAGEMENT (ADMIN) ═══════ */}
-            {activeTab === 'client_mgmt' && (
+          {activeTab === 'client_mgmt' && (
               <div className="space-y-5">
                 <div className="glass-panel p-5 rounded-2xl border border-purple-500/10">
                   <h3 className="text-sm font-bold text-white mb-4">Client Projects Overview</h3>
@@ -7370,7 +7363,26 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
               </div>
             )}
 
-{/* Org View Details Popup */}
+
+        
+  
+      
+            {/* ═══════ PROJECT PREVIEW TAB ═══════ */}
+            
+
+            {/* ═══════ DELIVERABLES TAB ═══════ */}
+            
+
+            {/* ═══════ INVOICES TAB ═══════ */}
+            
+
+            {/* ═══════ CLIENT MANAGEMENT (ADMIN) ═══════ */}
+            
+
+
+        </div>
+
+  {/* Org View Details Popup */}
       {viewOrgDetails && (
         <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-[#11081c] border border-purple-500/30 rounded-2xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
