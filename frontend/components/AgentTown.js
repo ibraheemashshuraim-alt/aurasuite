@@ -17,90 +17,69 @@ export default function AgentTown({ currentUser }) {
           <button className="text-purple-400 hover:text-white ml-auto"><X size={14} /></button>
         </div>
         
-        {/* PROPER 2D OFFICE ENVIRONMENT */}
-        <div className="flex-1 bg-[#202231] relative overflow-hidden h-[400px] w-full" style={{ backgroundImage: 'radial-gradient(#ffffff0a 1px, transparent 1px)', backgroundSize: '16px 16px' }}>
+        {/* PROPER 2D OFFICE ENVIRONMENT USING CLEANED IMAGE */}
+        <div className="flex-1 bg-[#1a1b26] relative overflow-hidden h-[400px] w-full group">
           
-          {/* --- ROOM STRUCTURE --- */}
-          {/* Center Wall dividing Top and Bottom partitions */}
-          <div className="absolute top-[200px] left-0 w-[400px] h-[8px] bg-[#12131c] shadow-[0_4px_10px_rgba(0,0,0,0.5)]"></div>
-          <div className="absolute top-[200px] left-[480px] right-0 h-[8px] bg-[#12131c] shadow-[0_4px_10px_rgba(0,0,0,0.5)]"></div>
-          
-          {/* Vertical Partition Wall in Bottom Room */}
-          <div className="absolute top-[208px] left-[300px] w-[8px] bottom-0 bg-[#12131c] shadow-[4px_0_10px_rgba(0,0,0,0.5)]"></div>
-          
-          {/* The Animated Door */}
-          <div className="absolute top-[198px] left-[400px] w-[80px] h-[12px] bg-[#d97736] border-2 border-[#944d1f] origin-left animate-[doorOpen_15s_infinite]"></div>
-
-          {/* --- FURNITURE --- */}
-          {/* Top Partition Desks */}
-          <div className="absolute top-[60px] left-[100px] w-[120px] h-[60px] bg-[#2a2d42] border border-[#3f435e] rounded shadow-lg flex items-center justify-around px-4">
-              <div className="w-[20px] h-[15px] bg-[#1a1c29] border-t-2 border-[#54f3ff] rounded-sm relative"><div className="absolute top-[4px] left-[2px] w-[16px] h-[2px] bg-green-500 animate-pulse"></div></div>
-              <div className="w-[20px] h-[15px] bg-[#1a1c29] border-t-2 border-[#a855f7] rounded-sm"></div>
+          {/* Cleaned Pixel Art Map Background (NO frozen characters) */}
+          <div className="absolute inset-0 bg-[#1a1b26]">
+              <img src="/agent-town-map-clean.png" alt="Agent Town Map" className="w-full h-full object-cover opacity-90 mix-blend-lighten pointer-events-none" />
           </div>
           
-          <div className="absolute top-[60px] left-[450px] w-[80px] h-[60px] bg-[#2a2d42] border border-[#3f435e] rounded shadow-lg flex items-center justify-center">
-              <div className="w-[24px] h-[18px] bg-[#1a1c29] border-t-2 border-[#ff3b8f] rounded-sm relative"><div className="absolute top-[4px] left-[2px] w-[20px] h-[2px] bg-yellow-500 animate-pulse" style={{animationDelay: '1s'}}></div></div>
-          </div>
-
-          {/* Bottom Left Partition Desks */}
-          <div className="absolute top-[280px] left-[60px] w-[60px] h-[80px] bg-[#2a2d42] border border-[#3f435e] rounded shadow-lg flex flex-col items-center justify-center gap-2">
-              <div className="w-[20px] h-[15px] bg-[#1a1c29] border-t-2 border-[#3b82f6] rounded-sm rotate-90"></div>
-          </div>
-
-          {/* Bottom Right Partition (Lounge/Pantry) */}
-          <div className="absolute top-[240px] left-[500px] w-[60px] h-[40px] bg-[#4a362f] rounded shadow-lg"></div> {/* Coffee table */}
-          <div className="absolute top-[230px] right-[40px] w-[30px] h-[30px] bg-green-800 rounded-full border-4 border-green-600 shadow-lg"></div> {/* Plant */}
-          <div className="absolute bottom-[30px] right-[80px] w-[40px] h-[40px] bg-blue-300 rounded-sm border-2 border-blue-400 opacity-80"></div> {/* Water cooler */}
-
-          {/* Chairs */}
-          <div className="absolute top-[130px] left-[125px] w-[20px] h-[20px] bg-[#4a4f73] rounded-full shadow-lg"></div> {/* Desk 1 left */}
-          <div className="absolute top-[130px] left-[175px] w-[20px] h-[20px] bg-[#4a4f73] rounded-full shadow-lg"></div> {/* Desk 1 right */}
-          <div className="absolute top-[130px] left-[480px] w-[20px] h-[20px] bg-[#4a4f73] rounded-full shadow-lg"></div> {/* Desk 2 */}
-          <div className="absolute top-[310px] left-[130px] w-[20px] h-[20px] bg-[#4a4f73] rounded-full shadow-lg"></div> {/* Bottom Desk */}
+          {/* Scanning / Radar Effect Overlay */}
+          <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(139,92,246,0.1)_1px,transparent_1px)]" style={{ backgroundSize: '100% 4px', animation: 'scanline 8s linear infinite' }}></div>
 
 
-          {/* --- ANIMATED AGENTS --- */}
+          {/* --- ANIMATED CSS PIXEL AGENTS --- */}
           
-          {/* Agent 1: Walk from bottom room, open door, go to top right desk, sit, work, leave */}
-          <div className="absolute animate-[pathSaima_15s_infinite] z-20">
-            <div className="relative flex flex-col items-center w-[20px] h-[30px]">
+          {/* Agent 1 (Saima): Walk from bottom right, through the door, up to the top right desk, sit, work, leave */}
+          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'saimaWalk 15s infinite linear' }}>
+            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.5]">
                 {/* Speech Bubble */}
-                <div className="absolute -top-[30px] bg-white text-black text-[8px] px-2 py-0.5 rounded shadow whitespace-nowrap animate-[fadeTalk_15s_infinite]">Analyzing data...</div>
+                <div className="absolute -top-[25px] bg-white text-black text-[7px] px-2 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300" style={{ animation: 'fadeTalk 15s infinite' }}>Analyzing data...</div>
                 
-                {/* Body */}
-                <div className="w-[14px] h-[14px] bg-[#f5d0b5] rounded-full border border-black/30 shadow-md z-10"></div>
-                <div className="w-[18px] h-[14px] bg-orange-500 rounded-sm border border-black/30 -mt-1 z-0 relative">
-                   <div className="absolute top-1 -left-1 w-[4px] h-[10px] bg-orange-400 rounded-full animate-[armSwing_0.5s_infinite]"></div>
-                   <div className="absolute top-1 -right-1 w-[4px] h-[10px] bg-orange-400 rounded-full animate-[armSwing_0.5s_infinite_0.25s]"></div>
-                </div>
+                {/* Pixel Character Body */}
+                <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f5d0b5] rounded-sm border border-black/20 shadow-sm"></div>
+                <div className="absolute -top-0.5 left-0 w-5 h-2 bg-amber-800 rounded-t-sm"></div>
+                <div className="absolute top-4 left-0.5 w-4 h-4 bg-purple-500 rounded-sm border border-black/20"></div>
+                <div className="absolute top-8 left-1 w-1.5 h-3 bg-blue-900 rounded-sm origin-top animate-[legSwing_0.5s_infinite_linear]"></div>
+                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-blue-900 rounded-sm origin-top animate-[legSwing_0.5s_infinite_linear] [animation-delay:0.25s]"></div>
+                <div className="absolute top-10 -left-1 w-7 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
             </div>
           </div>
 
-          {/* Agent 2: Already sitting at top left desk, working */}
-          <div className="absolute top-[115px] left-[125px] z-20">
-            <div className="relative flex flex-col items-center w-[20px] h-[30px]">
-                <div className="absolute -top-[25px] bg-white text-black text-[8px] px-2 py-0.5 rounded shadow whitespace-nowrap">Deploying!</div>
-                <div className="w-[14px] h-[14px] bg-[#f5d0b5] rounded-full border border-black/30 shadow-md z-10"></div>
-                <div className="w-[18px] h-[14px] bg-blue-500 rounded-sm border border-black/30 -mt-1 z-0 relative"></div>
+          {/* Agent 2 (Dani): Already sitting at top left desk, working permanently */}
+          <div className="absolute top-[30%] left-[25%] z-20 pointer-events-none">
+            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.5]">
+                <div className="absolute -top-[20px] bg-white text-black text-[6px] px-1 py-0.5 rounded shadow whitespace-nowrap font-bold">Deploying!</div>
+                <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f5d0b5] rounded-sm border border-black/20 shadow-sm"></div>
+                <div className="absolute -top-0.5 left-0 w-5 h-2 bg-slate-800 rounded-t-sm"></div>
+                <div className="absolute top-4 left-0.5 w-4 h-4 bg-blue-500 rounded-sm border border-black/20"></div>
+                <div className="absolute top-8 left-1 w-1.5 h-3 bg-slate-900 rounded-sm"></div>
+                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-slate-900 rounded-sm"></div>
             </div>
           </div>
 
-          {/* Agent 3: Walking around bottom left partition */}
-          <div className="absolute animate-[pathDani_20s_infinite] z-20">
-            <div className="relative flex flex-col items-center w-[20px] h-[30px]">
-                <div className="w-[14px] h-[14px] bg-[#dcb193] rounded-full border border-black/30 shadow-md z-10">
-                   <div className="absolute top-0 right-1 w-[8px] h-[4px] bg-black rounded-full"></div> {/* Hair */}
-                </div>
-                <div className="w-[18px] h-[14px] bg-red-500 rounded-sm border border-black/30 -mt-1 z-0 relative"></div>
+          {/* Agent 3 (Mianzi): Walking around bottom left partition */}
+          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'mianziWalk 20s infinite linear' }}>
+            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.5]">
+                <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#dcb193] rounded-sm border border-black/20 shadow-sm"></div>
+                <div className="absolute -top-0.5 left-0 w-5 h-2 bg-black rounded-t-sm"></div>
+                <div className="absolute top-4 left-0.5 w-4 h-4 bg-red-500 rounded-sm border border-black/20"></div>
+                <div className="absolute top-8 left-1 w-1.5 h-3 bg-gray-800 rounded-sm origin-top animate-[legSwing_0.6s_infinite_linear]"></div>
+                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-gray-800 rounded-sm origin-top animate-[legSwing_0.6s_infinite_linear] [animation-delay:0.3s]"></div>
+                <div className="absolute top-10 -left-1 w-7 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
             </div>
           </div>
 
-          {/* Agent 4: Getting water in bottom right, then walking to lounge */}
-          <div className="absolute animate-[pathZohaib_18s_infinite] z-20">
-            <div className="relative flex flex-col items-center w-[20px] h-[30px]">
-                <div className="absolute -top-[25px] left-[10px] bg-white text-black text-[8px] px-2 py-0.5 rounded shadow whitespace-nowrap animate-[fadeTalk2_18s_infinite]">Need coffee...</div>
-                <div className="w-[14px] h-[14px] bg-[#ffdecc] rounded-full border border-black/30 shadow-md z-10"></div>
-                <div className="w-[18px] h-[14px] bg-cyan-500 rounded-sm border border-black/30 -mt-1 z-0 relative"></div>
+          {/* Agent 4 (Zohaib): Walking to the bottom right door */}
+          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'zohaibWalk 18s infinite linear', animationDelay: '2s' }}>
+            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.5]">
+                <div className="absolute -top-[20px] left-[10px] bg-white text-black text-[7px] px-2 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300" style={{ animation: 'fadeTalk2 18s infinite' }}>Need coffee...</div>
+                <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#ffdecc] rounded-sm border border-black/20 shadow-sm"></div>
+                <div className="absolute top-4 left-0.5 w-4 h-4 bg-cyan-500 rounded-sm border border-black/20"></div>
+                <div className="absolute top-8 left-1 w-1.5 h-3 bg-indigo-900 rounded-sm origin-top animate-[legSwing_0.7s_infinite_linear]"></div>
+                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-indigo-900 rounded-sm origin-top animate-[legSwing_0.7s_infinite_linear] [animation-delay:0.35s]"></div>
+                <div className="absolute top-10 -left-1 w-7 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
             </div>
           </div>
 
