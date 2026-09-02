@@ -12,9 +12,9 @@ export default function AgentTown({ currentUser }) {
       <div className="lg:col-span-2 glass-panel rounded-2xl border border-purple-500/20 flex flex-col overflow-hidden relative">
         {/* Header */}
         <div className="flex justify-between items-center p-3 border-b border-purple-500/10 bg-[#0f081c]/80 backdrop-blur z-10">
-          <h3 className="font-bold text-white text-sm">Agent Town</h3>
-          <div className="text-[10px] text-purple-400">Agent Town · agents · visual hub · gesture</div>
-          <button className="text-purple-400 hover:text-white"><X size={14} /></button>
+          <h3 className="font-bold text-white text-sm whitespace-nowrap">Agent Town</h3>
+          <div className="text-[10px] text-purple-400 hidden sm:block truncate ml-2">Agent Town · agents · visual hub · gesture</div>
+          <button className="text-purple-400 hover:text-white ml-auto"><X size={14} /></button>
         </div>
         
         {/* Map Area */}
@@ -67,22 +67,22 @@ export default function AgentTown({ currentUser }) {
           </div>
 
           {/* UI Overlay Controls (Avatars at top) */}
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 backdrop-blur-sm p-1.5 rounded-full border border-white/10 z-10">
-              <div className="flex items-center gap-1 bg-orange-900/50 pr-2 rounded-full border border-orange-500/30">
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-2 bg-black/50 backdrop-blur-sm p-1.5 rounded-full border border-white/10 z-10">
+              <div className="flex items-center gap-1 bg-orange-900/50 pr-0 sm:pr-2 rounded-full border border-orange-500/30">
                   <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-[10px] border border-white/20">S</div>
-                  <span className="text-[9px] text-orange-200">Saima</span>
+                  <span className="text-[9px] text-orange-200 hidden sm:inline">Saima</span>
               </div>
-              <div className="flex items-center gap-1 bg-blue-900/50 pr-2 rounded-full border border-blue-500/30">
+              <div className="flex items-center gap-1 bg-blue-900/50 pr-0 sm:pr-2 rounded-full border border-blue-500/30">
                   <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-[10px] border border-white/20">D</div>
-                  <span className="text-[9px] text-blue-200">Dani</span>
+                  <span className="text-[9px] text-blue-200 hidden sm:inline">Dani</span>
               </div>
-              <div className="flex items-center gap-1 bg-red-900/50 pr-2 rounded-full border border-red-500/30">
+              <div className="flex items-center gap-1 bg-red-900/50 pr-0 sm:pr-2 rounded-full border border-red-500/30">
                   <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center text-[10px] border border-white/20">M</div>
-                  <span className="text-[9px] text-red-200">Mianzi</span>
+                  <span className="text-[9px] text-red-200 hidden sm:inline">Mianzi</span>
               </div>
-              <div className="flex items-center gap-1 bg-cyan-900/50 pr-2 rounded-full border border-cyan-500/30">
+              <div className="flex items-center gap-1 bg-cyan-900/50 pr-0 sm:pr-2 rounded-full border border-cyan-500/30">
                   <div className="w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center text-[10px] border border-white/20">Z</div>
-                  <span className="text-[9px] text-cyan-200">Zohaib</span>
+                  <span className="text-[9px] text-cyan-200 hidden sm:inline">Zohaib</span>
               </div>
           </div>
 
