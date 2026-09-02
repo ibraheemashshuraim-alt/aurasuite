@@ -146,3 +146,63 @@ body {
   75% { transform: rotate(-30deg); }
   100% { transform: rotate(0deg); }
 }
+
+@keyframes doorOpen {
+  0% { transform: rotate(0deg); }
+  10% { transform: rotate(-90deg); }
+  40% { transform: rotate(-90deg); }
+  50% { transform: rotate(0deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes armSwing {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(30deg); }
+  50% { transform: rotate(0deg); }
+  75% { transform: rotate(-30deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes pathSaima {
+  0% { transform: translate(430px, 350px); opacity: 0; }
+  5% { opacity: 1; }
+  15% { transform: translate(430px, 180px); } /* Walk through door */
+  30% { transform: translate(480px, 180px); } /* Walk right to desk */
+  35% { transform: translate(480px, 110px); } /* Go up to chair */
+  40% { transform: translate(480px, 110px); opacity: 1; } /* Sit and work */
+  60% { transform: translate(480px, 110px); opacity: 1; } /* Sit and work */
+  65% { transform: translate(480px, 180px); } /* Get up */
+  80% { transform: translate(430px, 180px); } /* Back to door */
+  95% { transform: translate(430px, 350px); opacity: 1; }
+  100% { transform: translate(430px, 350px); opacity: 0; }
+}
+
+@keyframes fadeTalk {
+  0%, 40% { opacity: 0; }
+  45%, 55% { opacity: 1; }
+  60%, 100% { opacity: 0; }
+}
+
+@keyframes pathDani {
+  0% { transform: translate(80px, 350px); }
+  20% { transform: translate(80px, 250px); }
+  40% { transform: translate(250px, 250px); }
+  60% { transform: translate(250px, 350px); }
+  100% { transform: translate(80px, 350px); }
+}
+
+@keyframes pathZohaib {
+  0% { transform: translate(500px, 350px); }
+  20% { transform: translate(500px, 280px); }
+  30% { transform: translate(550px, 280px); } /* Wait at coffee */
+  50% { transform: translate(550px, 280px); }
+  60% { transform: translate(500px, 280px); }
+  80% { transform: translate(500px, 350px); }
+  100% { transform: translate(500px, 350px); }
+}
+
+@keyframes fadeTalk2 {
+  0%, 30% { opacity: 0; }
+  35%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
