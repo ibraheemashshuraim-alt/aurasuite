@@ -6525,54 +6525,21 @@ export default function AppContainer() {
                       
                       {/* Map Area */}
                       <div className="flex-1 bg-[#1a1b26] relative overflow-hidden h-[400px]">
-                        {/* Floor Grid */}
-                        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
-                        
-                        {/* Static Environment elements (Desks, Plants, Walls) */}
-                        <div className="absolute top-1/4 left-0 w-full h-2 bg-[#0f081c] border-y border-purple-500/30"></div>
-                        <div className="absolute top-1/4 left-2/3 w-2 h-full bg-[#0f081c] border-x border-purple-500/30"></div>
-                        
-                        {/* Desk 1 */}
-                        <div className="absolute top-12 left-10 w-28 h-16 bg-[#2a2b36] border border-gray-600 rounded shadow-2xl flex flex-wrap gap-2 p-2">
-                            <div className="w-6 h-6 bg-blue-500/20 border border-blue-400 rounded-sm"></div>
-                            <div className="w-6 h-6 bg-cyan-500/20 border border-cyan-400 rounded-sm"></div>
-                        </div>
-
-                        {/* Desk 2 */}
-                        <div className="absolute top-12 left-40 w-28 h-16 bg-[#2a2b36] border border-gray-600 rounded shadow-2xl flex flex-wrap gap-2 p-2">
-                            <div className="w-6 h-6 bg-pink-500/20 border border-pink-400 rounded-sm"></div>
-                        </div>
-
-                        {/* Desk 3 (Bottom left) */}
-                        <div className="absolute bottom-20 left-20 w-40 h-20 bg-[#2a2b36] border border-gray-600 rounded shadow-2xl flex items-center justify-center gap-4">
-                            <div className="w-8 h-8 bg-purple-500/20 border border-purple-400 rounded-sm"></div>
-                            <div className="w-8 h-8 bg-green-500/20 border border-green-400 rounded-sm"></div>
+                        {/* Actual Pixel Art Map Background */}
+                        <div className="absolute inset-0 bg-[#1a1b26]">
+                            <img src="/agent-town-map.png" alt="Agent Town Map" className="w-full h-full object-cover opacity-90 mix-blend-lighten" />
                         </div>
                         
-                        {/* Desk 4 (Bottom right corner) */}
-                        <div className="absolute bottom-10 right-10 w-24 h-16 bg-[#2a2b36] border border-gray-600 rounded shadow-2xl flex items-center justify-center">
-                            <div className="w-6 h-6 bg-yellow-500/20 border border-yellow-400 rounded-sm"></div>
+                        {/* Scanning / Radar Effect Overlay to make it feel alive */}
+                        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(139,92,246,0.1)_1px,transparent_1px)]" style={{ backgroundSize: '100% 4px', animation: 'scanline 8s linear infinite' }}></div>
+                        
+                        {/* We will leave a few animated elements on top to give it a 'live' UI feel */}
+                        <div className="absolute bottom-28 left-40 animate-bounce" style={{ animationDelay: '0.5s' }}>
+                            <div className="bg-white text-black text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap font-bold relative">
+                                Staying hydrated!
+                                <div className="absolute -bottom-1 left-4 w-2 h-2 bg-white rotate-45"></div>
+                            </div>
                         </div>
-
-                        {/* Animated Agents (Avatars) */}
-                        {/* Agent 1 - Bouncing */}
-                        <div className="absolute top-14 left-8" style={{animation: "walkAround 12s infinite linear"}}><div className="w-6 h-6 bg-pink-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👩‍💻</div></div>
-                        
-                        {/* Agent 2 - Bouncing */}
-                        <div className="absolute top-16 left-44" style={{ animationDelay: '0.3s' }}><div className="w-6 h-6 bg-blue-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👨‍💻</div></div>
-                        
-                        {/* Agent 3 - Pulse / Working */}
-                        <div className="absolute bottom-24 left-24 animate-pulse"><div className="w-6 h-6 bg-purple-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👨‍🎨</div></div>
-                        
-                        {/* Agent 4 - Speaking Bubble */}
-                        <div className="absolute bottom-28 left-40 animate-bounce" style={{ animationDelay: '0.5s' }}><div className="w-6 h-6 bg-yellow-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px] relative">
-                            👨‍🔧
-                            <div className="absolute -top-8 -left-12 bg-white text-black text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap font-bold">Staying hydrated!</div>
-                            <div className="absolute -top-3 left-2 w-2 h-2 bg-white rotate-45"></div>
-                        </div></div>
-                        
-                        {/* Agent 5 - Bouncing bottom right */}
-                        <div className="absolute bottom-12 right-14" style={{animation: "walkToDoor 15s infinite linear"}} style={{ animationDelay: '0.2s' }}><div className="w-6 h-6 bg-emerald-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👩‍💼</div></div>
 
                         {/* UI Overlay Controls (Avatars at top) */}
                         <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 backdrop-blur-sm p-1.5 rounded-full border border-white/10 z-10">
