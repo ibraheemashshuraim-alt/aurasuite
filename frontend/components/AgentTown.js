@@ -20,69 +20,76 @@ export default function AgentTown({ currentUser }) {
         {/* PROPER 2D OFFICE ENVIRONMENT USING CLEANED IMAGE */}
         <div className="flex-1 bg-[#1a1b26] relative overflow-hidden h-[400px] w-full group">
           
-          {/* Cleaned Pixel Art Map Background (NO frozen characters) */}
+          {/* Cleaned Pixel Art Map Background */}
           <div className="absolute inset-0 bg-[#1a1b26]">
               <img src="/agent-town-map-clean.png" alt="Agent Town Map" className="w-full h-full object-cover opacity-90 mix-blend-lighten pointer-events-none" />
+          </div>
+          
+          {/* Fake Doors to cover the painted ones and animate opening */}
+          {/* Left Door */}
+          <div className="absolute w-[4.5%] h-[8%] bg-[#2d3142] z-10" style={{ left: '33.8%', top: '42%' }}>
+             <div className="w-full h-full bg-[#d97736] border-2 border-[#944d1f] origin-left animate-[doorOpenLeft_20s_infinite]"></div>
+          </div>
+          {/* Right Door */}
+          <div className="absolute w-[4.5%] h-[8%] bg-[#2d3142] z-10" style={{ left: '74.5%', top: '42%' }}>
+             <div className="w-full h-full bg-[#d97736] border-2 border-[#944d1f] origin-left animate-[doorOpenRight_20s_infinite]"></div>
           </div>
           
           {/* Scanning / Radar Effect Overlay */}
           <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(139,92,246,0.1)_1px,transparent_1px)]" style={{ backgroundSize: '100% 4px', animation: 'scanline 8s linear infinite' }}></div>
 
 
-          {/* --- ANIMATED CSS PIXEL AGENTS --- */}
+          {/* --- CHOREOGRAPHED ANIMATED CSS PIXEL AGENTS --- */}
           
-          {/* Agent 1 (Saima): Walk from bottom right, through the door, up to the top right desk, sit, work, leave */}
-          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'saimaWalk 15s infinite linear' }}>
-            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.5]">
-                {/* Speech Bubble */}
-                <div className="absolute -top-[25px] bg-white text-black text-[7px] px-2 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300" style={{ animation: 'fadeTalk 15s infinite' }}>Analyzing data...</div>
+          {/* Agent 1 (Saima) - Left Side Choreography */}
+          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent1Path 20s infinite linear' }}>
+            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.3]">
+                <div className="absolute -top-[25px] bg-white text-black text-[7px] px-2 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300" style={{ animation: 'talk1 20s infinite' }}>Analyzing...</div>
                 
-                {/* Pixel Character Body */}
                 <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f5d0b5] rounded-sm border border-black/20 shadow-sm"></div>
                 <div className="absolute -top-0.5 left-0 w-5 h-2 bg-amber-800 rounded-t-sm"></div>
-                <div className="absolute top-4 left-0.5 w-4 h-4 bg-purple-500 rounded-sm border border-black/20"></div>
+                <div className="absolute top-4 left-0.5 w-4 h-4 bg-orange-500 rounded-sm border border-black/20"></div>
                 <div className="absolute top-8 left-1 w-1.5 h-3 bg-blue-900 rounded-sm origin-top animate-[legSwing_0.5s_infinite_linear]"></div>
                 <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-blue-900 rounded-sm origin-top animate-[legSwing_0.5s_infinite_linear] [animation-delay:0.25s]"></div>
-                <div className="absolute top-10 -left-1 w-7 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
             </div>
           </div>
 
-          {/* Agent 2 (Dani): Already sitting at top left desk, working permanently */}
-          <div className="absolute top-[30%] left-[25%] z-20 pointer-events-none">
-            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.5]">
-                <div className="absolute -top-[20px] bg-white text-black text-[6px] px-1 py-0.5 rounded shadow whitespace-nowrap font-bold">Deploying!</div>
+          {/* Agent 2 (Dani) - Right Side Choreography */}
+          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent2Path 20s infinite linear' }}>
+            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.3]">
+                <div className="absolute -top-[25px] bg-white text-black text-[7px] px-2 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300" style={{ animation: 'talk2 20s infinite' }}>Fixing bugs</div>
+                
                 <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f5d0b5] rounded-sm border border-black/20 shadow-sm"></div>
                 <div className="absolute -top-0.5 left-0 w-5 h-2 bg-slate-800 rounded-t-sm"></div>
                 <div className="absolute top-4 left-0.5 w-4 h-4 bg-blue-500 rounded-sm border border-black/20"></div>
-                <div className="absolute top-8 left-1 w-1.5 h-3 bg-slate-900 rounded-sm"></div>
-                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-slate-900 rounded-sm"></div>
+                <div className="absolute top-8 left-1 w-1.5 h-3 bg-slate-900 rounded-sm origin-top animate-[legSwing_0.6s_infinite_linear]"></div>
+                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-slate-900 rounded-sm origin-top animate-[legSwing_0.6s_infinite_linear] [animation-delay:0.3s]"></div>
             </div>
           </div>
 
-          {/* Agent 3 (Mianzi): Walking around bottom left partition */}
-          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'mianziWalk 20s infinite linear' }}>
-            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.5]">
+          {/* Agent 3 (Mianzi) - Left/Center Choreography */}
+          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent3Path 20s infinite linear' }}>
+            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.3]">
+                <div className="absolute -top-[25px] bg-white text-black text-[7px] px-2 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300" style={{ animation: 'talk3 20s infinite' }}>Printing...</div>
+                
                 <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#dcb193] rounded-sm border border-black/20 shadow-sm"></div>
                 <div className="absolute -top-0.5 left-0 w-5 h-2 bg-black rounded-t-sm"></div>
                 <div className="absolute top-4 left-0.5 w-4 h-4 bg-red-500 rounded-sm border border-black/20"></div>
-                <div className="absolute top-8 left-1 w-1.5 h-3 bg-gray-800 rounded-sm origin-top animate-[legSwing_0.6s_infinite_linear]"></div>
-                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-gray-800 rounded-sm origin-top animate-[legSwing_0.6s_infinite_linear] [animation-delay:0.3s]"></div>
-                <div className="absolute top-10 -left-1 w-7 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
+                <div className="absolute top-8 left-1 w-1.5 h-3 bg-gray-800 rounded-sm origin-top animate-[legSwing_0.7s_infinite_linear]"></div>
+                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-gray-800 rounded-sm origin-top animate-[legSwing_0.7s_infinite_linear] [animation-delay:0.35s]"></div>
             </div>
           </div>
 
-          {/* Agent 4 (Zohaib): Walking to the bottom right door */}
-          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'zohaibWalk 18s infinite linear', animationDelay: '2s' }}>
-            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.5]">
-                <div className="absolute -top-[20px] left-[10px] bg-white text-black text-[7px] px-2 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300" style={{ animation: 'fadeTalk2 18s infinite' }}>Need coffee...</div>
+          {/* Agent 4 (Zohaib) - Right Side Lounge Choreography */}
+          <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent4Path 20s infinite linear' }}>
+            <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.3]">
+                <div className="absolute -top-[25px] bg-white text-black text-[7px] px-2 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300" style={{ animation: 'talk4 20s infinite' }}>Need coffee...</div>
                 <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#ffdecc] rounded-sm border border-black/20 shadow-sm"></div>
                 <div className="absolute top-4 left-0.5 w-4 h-4 bg-cyan-500 rounded-sm border border-black/20"></div>
-                <div className="absolute top-8 left-1 w-1.5 h-3 bg-indigo-900 rounded-sm origin-top animate-[legSwing_0.7s_infinite_linear]"></div>
-                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-indigo-900 rounded-sm origin-top animate-[legSwing_0.7s_infinite_linear] [animation-delay:0.35s]"></div>
-                <div className="absolute top-10 -left-1 w-7 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
+                <div className="absolute top-8 left-1 w-1.5 h-3 bg-indigo-900 rounded-sm origin-top animate-[legSwing_0.8s_infinite_linear]"></div>
+                <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-indigo-900 rounded-sm origin-top animate-[legSwing_0.8s_infinite_linear] [animation-delay:0.4s]"></div>
             </div>
           </div>
-
 
           {/* UI Overlay Controls (Avatars at top) */}
           <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-2 bg-black/50 backdrop-blur-sm p-1.5 rounded-full border border-white/10 z-30">
@@ -142,7 +149,7 @@ export default function AgentTown({ currentUser }) {
               Appka personal AI assistant. Bataye main kaise madad kar sakta hoon?
           </p>
 
-          {/* Audio visualizer (Sound wave) */}
+          {/* Audio visualizer */}
           <div className="flex items-center justify-center gap-1 h-12 w-full px-8">
               <div className="w-2 h-3 bg-gradient-to-t from-pink-500 to-purple-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(236,72,153,0.8)]"></div>
               <div className="w-2 h-6 bg-gradient-to-t from-purple-500 to-indigo-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(139,92,246,0.8)]" style={{ animationDelay: '0.1s' }}></div>
