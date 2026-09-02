@@ -6556,10 +6556,10 @@ export default function AppContainer() {
 
                         {/* Animated Agents (Avatars) */}
                         {/* Agent 1 - Bouncing */}
-                        <div className="absolute top-14 left-8 animate-bounce"><div className="w-6 h-6 bg-pink-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👩‍💻</div></div>
+                        <div className="absolute top-14 left-8" style={{animation: "walkAround 12s infinite linear"}}><div className="w-6 h-6 bg-pink-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👩‍💻</div></div>
                         
                         {/* Agent 2 - Bouncing */}
-                        <div className="absolute top-16 left-44 animate-bounce" style={{ animationDelay: '0.3s' }}><div className="w-6 h-6 bg-blue-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👨‍💻</div></div>
+                        <div className="absolute top-16 left-44" style={{ animationDelay: '0.3s' }}><div className="w-6 h-6 bg-blue-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👨‍💻</div></div>
                         
                         {/* Agent 3 - Pulse / Working */}
                         <div className="absolute bottom-24 left-24 animate-pulse"><div className="w-6 h-6 bg-purple-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👨‍🎨</div></div>
@@ -6572,7 +6572,7 @@ export default function AppContainer() {
                         </div></div>
                         
                         {/* Agent 5 - Bouncing bottom right */}
-                        <div className="absolute bottom-12 right-14 animate-bounce" style={{ animationDelay: '0.2s' }}><div className="w-6 h-6 bg-emerald-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👩‍💼</div></div>
+                        <div className="absolute bottom-12 right-14" style={{animation: "walkToDoor 15s infinite linear"}} style={{ animationDelay: '0.2s' }}><div className="w-6 h-6 bg-emerald-400 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[10px]">👩‍💼</div></div>
 
                         {/* UI Overlay Controls (Avatars at top) */}
                         <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 backdrop-blur-sm p-1.5 rounded-full border border-white/10 z-10">
