@@ -13,6 +13,7 @@ import {
   BrainCircuit, UserMinus, UserX, Briefcase, ShieldAlert, Hand, Pin, Disc, Square, Loader2, Timer, Camera, FileText, Image as ImageIcon, PlayCircle, XCircle, Server, MoreVertical, Palette, Minimize2, Maximize2
 , Type, Keyboard, Share2, MessageCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import AgentTown from '../../components/AgentTown';
 
 import { createClient } from '@supabase/supabase-js';
 const anonSupabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
@@ -6824,162 +6825,10 @@ export default function AppContainer() {
                       <div className="text-[10px] text-purple-600 mt-0.5">{s.sub}</div>
                     </div>
                   ))}
-                </div>
-              )}
-
-
-                {/* AGENT TOWN & VOICE ASSISTANT */}
-                {['admin', 'super_admin', 'sub_admin'].includes(currentUser?.role) && (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
-                    {/* Agent Town Panel */}
-                    <div className="lg:col-span-2 glass-panel rounded-2xl border border-purple-500/20 flex flex-col overflow-hidden relative">
-                      {/* Header */}
-                      <div className="flex justify-between items-center p-3 border-b border-purple-500/10 bg-[#0f081c]/80 backdrop-blur z-10">
-                        <h3 className="font-bold text-white text-sm">Agent Town</h3>
-                        <div className="text-[10px] text-purple-400">Agent Town · agents · visual hub · gesture</div>
-                        <button className="text-purple-400 hover:text-white"><X size={14} /></button>
-                      </div>
-                      
-                      {/* Map Area */}
-                      <div className="flex-1 bg-[#1a1b26] relative overflow-hidden h-[400px]">
-                        {/* Actual Pixel Art Map Background */}
-                        <div className="absolute inset-0 bg-[#1a1b26]">
-                            <img src="/agent-town-map.png" alt="Agent Town Map" className="w-full h-full object-cover opacity-90 mix-blend-lighten" />
-                        </div>
-                        
-                        {/* Scanning / Radar Effect Overlay to make it feel alive */}
-                        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(139,92,246,0.1)_1px,transparent_1px)]" style={{ backgroundSize: '100% 4px', animation: 'scanline 8s linear infinite' }}></div>
-                        
-                        {/* CSS Animated Characters */}
-                        <div className="absolute top-0 left-0 w-full h-full pointer-events-none z-10">
-                            {/* Character 1 (Walks from door to desk) */}
-                            <div className="absolute top-0 left-0" style={{ animation: 'walkPath1 15s linear infinite' }}>
-                                <div className="relative w-5 h-8 scale-[1.5]">
-                                    <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f5d0b5] rounded-sm border border-black/20 shadow-sm"></div>
-                                    <div className="absolute -top-0.5 left-0 w-5 h-2 bg-amber-800 rounded-t-sm"></div>
-                                    <div className="absolute top-4 left-0.5 w-4 h-4 bg-purple-500 rounded-sm border border-black/20"></div>
-                                    <div className="absolute top-8 left-1 w-1.5 h-3 bg-blue-900 rounded-sm origin-top animate-[legSwing_0.5s_infinite_linear]"></div>
-                                    <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-blue-900 rounded-sm origin-top animate-[legSwing_0.5s_infinite_linear] [animation-delay:0.25s]"></div>
-                                    <div className="absolute top-10 -left-1 w-7 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
-                                </div>
-                            </div>
-                            
-                            {/* Character 2 (Walks around) */}
-                            <div className="absolute top-0 left-0" style={{ animation: 'walkPath2 20s linear infinite', animationDelay: '2s' }}>
-                                <div className="relative w-5 h-8 scale-[1.5]">
-                                    <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f5d0b5] rounded-sm border border-black/20 shadow-sm"></div>
-                                    <div className="absolute -top-0.5 left-0 w-5 h-2 bg-slate-800 rounded-t-sm"></div>
-                                    <div className="absolute top-4 left-0.5 w-4 h-4 bg-cyan-500 rounded-sm border border-black/20"></div>
-                                    <div className="absolute top-8 left-1 w-1.5 h-3 bg-slate-900 rounded-sm origin-top animate-[legSwing_0.6s_infinite_linear]"></div>
-                                    <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-slate-900 rounded-sm origin-top animate-[legSwing_0.6s_infinite_linear] [animation-delay:0.3s]"></div>
-                                    <div className="absolute top-10 -left-1 w-7 h-1.5 bg-black/40 rounded-full blur-[1px]"></div>
-                                    
-                                    <div className="absolute -top-10 -left-10 bg-white text-black text-[7px] px-2 py-1 rounded shadow-lg whitespace-nowrap font-bold border border-gray-200">
-                                        Heading to the meeting!
-                                        <div className="absolute -bottom-1 left-4 w-2 h-2 bg-white rotate-45 border-r border-b border-gray-200"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* UI Overlay Controls (Avatars at top) */}
-                        <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-black/50 backdrop-blur-sm p-1.5 rounded-full border border-white/10 z-10">
-                            <div className="flex items-center gap-1 bg-orange-900/50 pr-2 rounded-full border border-orange-500/30">
-                                <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-[10px] border border-white/20">S</div>
-                                <span className="text-[9px] text-orange-200">Saima</span>
-                            </div>
-                            <div className="flex items-center gap-1 bg-blue-900/50 pr-2 rounded-full border border-blue-500/30">
-                                <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-[10px] border border-white/20">D</div>
-                                <span className="text-[9px] text-blue-200">Dani</span>
-                            </div>
-                            <div className="flex items-center gap-1 bg-red-900/50 pr-2 rounded-full border border-red-500/30">
-                                <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center text-[10px] border border-white/20">M</div>
-                                <span className="text-[9px] text-red-200">Mianzi</span>
-                            </div>
-                            <div className="flex items-center gap-1 bg-cyan-900/50 pr-2 rounded-full border border-cyan-500/30">
-                                <div className="w-6 h-6 rounded-full bg-cyan-500 flex items-center justify-center text-[10px] border border-white/20">Z</div>
-                                <span className="text-[9px] text-cyan-200">Zohaib</span>
-                            </div>
-                        </div>
-
-                        {/* Right side tools */}
-                        <div className="absolute top-3 right-3 flex gap-1 z-10">
-                            <button className="w-7 h-7 bg-[#8b5cf6]/20 border border-[#8b5cf6]/40 rounded-lg flex items-center justify-center text-[#8b5cf6] hover:bg-[#8b5cf6]/40"><Share2 size={12}/></button>
-                            <button className="w-7 h-7 bg-[#8b5cf6]/20 border border-[#8b5cf6]/40 rounded-lg flex items-center justify-center text-[#8b5cf6] hover:bg-[#8b5cf6]/40"><Users size={12}/></button>
-                            <button className="w-7 h-7 bg-[#8b5cf6]/20 border border-[#8b5cf6]/40 rounded-lg flex items-center justify-center text-[#8b5cf6] hover:bg-[#8b5cf6]/40"><Settings size={12}/></button>
-                        </div>
-                        
-                        {/* Press C overlay */}
-                        <div className="absolute bottom-28 left-52 text-yellow-500 text-[10px] font-bold animate-pulse">
-                            Press C
-                        </div>
-                      </div>
-
-                      {/* Footer */}
-                      <div className="p-3 bg-[#0a0514] border-t border-purple-500/10 text-center">
-                        <div className="text-xs text-purple-300 font-bold mb-1">--- Agent Town Controls ---</div>
-                        <div className="text-[10px] text-purple-500">View Map | Manage Agents | Assign Tasks</div>
-                      </div>
-                    </div>
-
-                    {/* Voice Assistant Terminal */}
-                    <div className="lg:col-span-1 glass-panel rounded-2xl border border-purple-500/20 flex flex-col overflow-hidden relative bg-[#0a0514]">
-                      {/* Header */}
-                      <div className="flex justify-between items-center p-3 border-b border-purple-500/10 z-10 relative">
-                        <h3 className="font-bold text-white text-sm">Voice Assistant Terminal</h3>
-                        <button className="text-purple-400 hover:text-white"><X size={14} /></button>
-                      </div>
-
-                      <div className="flex-1 flex flex-col items-center justify-center p-6 relative">
-                        {/* Glowing Orb */}
-                        <div className="relative w-40 h-40 mb-8 flex items-center justify-center">
-                            {/* Outer Glow Ring */}
-                            <div className="absolute inset-0 bg-gradient-to-tr from-pink-500 via-purple-500 to-cyan-500 rounded-full animate-spin opacity-50 blur-md" style={{ animationDuration: '4s' }}></div>
-                            
-                            {/* Inner glowing circle */}
-                            <div className="absolute inset-1 bg-gradient-to-tr from-[#1a0f2e] to-[#0a0514] rounded-full overflow-hidden border-2 border-white/10 shadow-[0_0_30px_rgba(139,92,246,0.6)]">
-                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(236,72,153,0.3),transparent)]"></div>
-                                {/* Neural net lines effect inside orb */}
-                                <svg className="w-full h-full opacity-60" viewBox="0 0 100 100">
-                                    <path d="M10,50 Q40,10 90,40" fill="none" stroke="cyan" strokeWidth="0.5" className="animate-pulse" />
-                                    <path d="M20,20 Q60,80 80,20" fill="none" stroke="magenta" strokeWidth="0.5" className="animate-pulse" style={{animationDelay: '0.5s'}} />
-                                    <path d="M30,90 Q50,30 90,80" fill="none" stroke="yellow" strokeWidth="0.5" className="animate-pulse" style={{animationDelay: '1s'}} />
-                                    
-                                    <circle cx="10" cy="50" r="1.5" fill="cyan" className="animate-ping" />
-                                    <circle cx="90" cy="40" r="1.5" fill="cyan" className="animate-ping" style={{animationDelay: '0.5s'}} />
-                                    <circle cx="20" cy="20" r="1.5" fill="magenta" className="animate-ping" style={{animationDelay: '1s'}} />
-                                    <circle cx="80" cy="20" r="1.5" fill="magenta" className="animate-ping" style={{animationDelay: '1.5s'}} />
-                                </svg>
-                            </div>
-                        </div>
-
-                        <p className="text-xs text-center text-gray-300 mb-8 px-4 font-medium leading-relaxed">
-                            Appka personal AI assistant. Bataye main kaise madad kar sakta hoon?
-                        </p>
-
-                        {/* Audio visualizer (Sound wave) */}
-                        <div className="flex items-center justify-center gap-1 h-12 w-full px-8">
-                            <div className="w-2 h-3 bg-gradient-to-t from-pink-500 to-purple-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(236,72,153,0.8)]"></div>
-                            <div className="w-2 h-6 bg-gradient-to-t from-purple-500 to-indigo-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(139,92,246,0.8)]" style={{ animationDelay: '0.1s' }}></div>
-                            <div className="w-2 h-10 bg-gradient-to-t from-indigo-500 to-cyan-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(99,102,241,0.8)]" style={{ animationDelay: '0.2s' }}></div>
-                            <div className="w-2 h-12 bg-gradient-to-t from-cyan-500 to-blue-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(6,182,212,0.8)]" style={{ animationDelay: '0.3s' }}></div>
-                            <div className="w-2 h-9 bg-gradient-to-t from-blue-500 to-indigo-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.8)]" style={{ animationDelay: '0.4s' }}></div>
-                            <div className="w-2 h-5 bg-gradient-to-t from-indigo-500 to-purple-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(99,102,241,0.8)]" style={{ animationDelay: '0.5s' }}></div>
-                            <div className="w-2 h-2 bg-gradient-to-t from-purple-500 to-pink-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(168,85,247,0.8)]" style={{ animationDelay: '0.6s' }}></div>
-                        </div>
-                      </div>
-
-                      {/* Input Footer */}
-                      <div className="p-3 border-t border-purple-500/10 w-full z-10 relative">
-                        <div className="flex items-center gap-2 bg-[#1a1129] border border-purple-500/20 rounded-xl p-2 shadow-inner">
-                            <input type="text" placeholder="Type to Assistant..." className="bg-transparent border-none outline-none text-xs text-white flex-1 px-2 placeholder-purple-500" />
-                            <button className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20"><Keyboard size={14} /></button>
-                            <button className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20"><Mic size={14} /></button>
-                            <button className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20"><Plus size={14} /></button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+      {/* AGENT TOWN & VOICE ASSISTANT */}
+                <AgentTown currentUser={currentUser} />
+                
+                           </div>
                 )}
 
               {/* CLIENT VIEW IN DASHBOARD */}
