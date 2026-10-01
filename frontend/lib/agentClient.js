@@ -131,3 +131,35 @@ export async function getProviderConfigs(orgId) {
   }
   return await res.json();
 }
+// Phase 2A - Agents & Tasks Engine
+export async function getEngineAgents(orgId) {
+  const res = await fetch('/api/agents/management?organization_id=' + encodeURIComponent(orgId));
+  if (!res.ok) return { agents: [] };
+  return await res.json();
+}
+
+export async function createEngineAgent(data) {
+  const res = await fetch('/api/agents/management', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
+
+export async function getEngineTasks(orgId) {
+  const res = await fetch('/api/tasks?organization_id=' + encodeURIComponent(orgId));
+  if (!res.ok) return { tasks: [] };
+  return await res.json();
+}
+
+export async function createEngineTask(data) {
+  const res = await fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
