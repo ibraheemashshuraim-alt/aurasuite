@@ -87,28 +87,34 @@ export default function AgentTown({ currentUser }) {
     };
   }, [currentUser?.organization_id]);
 
-  // Handle voice assistant prompt submission
+  // Handle voice assistant prompt submission or direct Dispatch Task click
   const handleAssistantSubmit = async (e) => {
     e?.preventDefault();
-    if (!voiceInput.trim() || isDispatching) return;
+    if (isDispatching) return;
 
-    const promptText = voiceInput.trim();
+    // If input is empty, dispatch an intelligent default research task
+    const promptText = voiceInput.trim() || 'Analyze market trends and draft initial growth strategy';
     setVoiceInput('');
     setIsDispatching(true);
-    setActiveTaskBanner('Dispatching task to AuraSuite Orchestrator...');
+    setActiveTaskBanner(`Dispatching: "${promptText.slice(0, 42)}..." to Orchestrator...`);
+
+    const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
+    const userName = currentUser?.full_name || 'Admin';
 
     try {
       await dispatchAgentTask({
-        orgId: currentUser.organization_id,
+        orgId,
         agentCodeName: 'researcher',
         title: promptText,
         inputPayload: {
           prompt: promptText,
-          initiated_by: currentUser.full_name,
+          initiated_by: userName,
         },
       });
+      setActiveTaskBanner('Task dispatched! Saima is analyzing directives...');
     } catch (err) {
       console.error('Failed to dispatch agent task:', err);
+      setActiveTaskBanner(`Dispatch notice: ${err.message}`);
     } finally {
       setIsDispatching(false);
     }
