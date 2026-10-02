@@ -47,63 +47,16 @@ export default function AgentTown({ currentUser }) {
     if (res.tasks) setEngineTasks(res.tasks);
   };
 
-  // ─── Realtime Supabase Subscription for Live Agent Execution ─────
+
+
+  // Phase 2C Realtime Supabase Subscription for Engine Tasks
   useEffect(() => {
     if (!currentUser?.organization_id) return;
 
-    const fetchInitialStates = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('agent_executions')
-          .select('character_name, state, current_thought, started_at')
-          .eq('organization_id', currentUser.organization_id)
-          .order('started_at', { ascending: false })
-          .limit(10);
+    loadTasks(); // Initial load
 
-        if (!error && data && data.length > 0) {
-          const updated = {};
-          data.forEach(item => {
-            if (item.character_name && !updated[item.character_name]) {
-              updated[item.character_name] = {
-                state: item.state,
-                thought: item.current_thought || item.state,
-              };
-            }
-          });
-          setAgentStates(prev => ({ ...prev, ...updated }));
-        }
-      } catch (err) {
-        console.warn('Realtime fetch fallback:', err.message);
-      }
-    };
-
-    fetchInitialStates();
-
-    // Subscribe to both visual executions and Phase 2A tasks
     const channel = supabase
       .channel(`agent_town_sync_${currentUser.organization_id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'agent_executions',
-          filter: `organization_id=eq.${currentUser.organization_id}`,
-        },
-        (payload) => {
-          const row = payload.new;
-          if (row && row.character_name) {
-            setAgentStates(prev => ({
-              ...prev,
-              [row.character_name]: {
-                state: row.state,
-                thought: row.current_thought || row.state,
-              },
-            }));
-            setActiveTaskBanner(`${row.character_name}: ${row.state.toUpperCase()} - ${row.current_thought || ''}`);
-          }
-        }
-      )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'engine_tasks', filter: `organization_id=eq.${currentUser.organization_id}` },
@@ -117,6 +70,48 @@ export default function AgentTown({ currentUser }) {
       supabase.removeChannel(channel);
     };
   }, [currentUser?.organization_id]);
+
+
+
+  // Phase 2C: Derive visual agent states from the real AI task engine
+  useEffect(() => {
+    const newStates = {
+      Saima: { state: 'idle', thought: 'Analyzing...' },
+      Dani: { state: 'idle', thought: 'Fixing bugs' },
+      Mianzi: { state: 'idle', thought: 'Printing...' },
+      Zohaib: { state: 'idle', thought: 'Need coffee...' },
+    };
+
+    // Process from oldest to newest, so the newest state overrides
+    const sorted = [...engineTasks].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    
+    sorted.forEach(task => {
+      const charName = task.agents?.character_name;
+      if (!charName) return;
+
+      const statusMap = {
+        'PENDING': 'idle',
+        'RUNNING': 'thinking',
+        'VERIFYING': 'researching',
+        'VERIFIED': 'completed',
+        'FAILED': 'failed',
+        'COMPLETED': 'completed'
+      };
+      
+      const st = statusMap[task.status] || 'idle';
+      
+      if (['PENDING', 'RUNNING', 'VERIFYING'].includes(task.status)) {
+        newStates[charName] = { state: st, thought: task.status === 'VERIFYING' ? 'Verifying output...' : 'Task: ' + task.title };
+      } else {
+        // If it's a finished task, keep them idle unless we want a specific message
+        if (task.status === 'FAILED') newStates[charName] = { state: 'error', thought: 'Failed: ' + (task.error ? task.error.slice(0, 15) : 'Error') };
+        else if (task.status === 'VERIFIED') newStates[charName] = { state: 'idle', thought: 'Ready for work' };
+      }
+    });
+
+    setAgentStates(newStates);
+  }, [engineTasks]);
+
 
   // Handle voice assistant prompt submission or direct Dispatch Task click
   const handleAssistantSubmit = async (e) => {
@@ -334,10 +329,12 @@ export default function AgentTown({ currentUser }) {
               {engineTasks.length === 0 ? (
                 <div className="text-xs text-purple-300/50 text-center mt-10">No tasks in history. Dispatch one!</div>
               ) : (
+
+
                 engineTasks.map(task => (
-                  <div key={task.id} className="bg-black/40 border border-purple-500/20 rounded-lg p-3">
+                  <div key={task.id} className="bg-black/40 border border-purple-500/20 rounded-lg p-3 group">
                     <div className="flex justify-between items-start mb-1">
-                      <div className="text-xs font-bold text-purple-200 line-clamp-1">{task.title}</div>
+                      <div className="text-xs font-bold text-purple-200">{task.title}</div>
                       <div className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${getStatusColor(task.status)} ${task.status==='PENDING'?'text-black':'text-white'}`}>
                         {task.status}
                       </div>
@@ -346,8 +343,29 @@ export default function AgentTown({ currentUser }) {
                       <span>{task.agents?.name || 'Unassigned'}</span>
                       <span>{new Date(task.created_at).toLocaleTimeString()}</span>
                     </div>
+                    
+                    {/* Phase 2C Details - Expandable on hover or always visible concisely */}
+                    <div className="mt-2 pt-2 border-t border-purple-500/20 text-[9px] text-purple-300 space-y-1">
+                      {task.started_at && <div><span className="opacity-50">Started:</span> {new Date(task.started_at).toLocaleTimeString()}</div>}
+                      {task.completed_at && <div><span className="opacity-50">Completed:</span> {new Date(task.completed_at).toLocaleTimeString()}</div>}
+                      {task.error && <div className="text-red-400 mt-1"><span className="opacity-50 text-purple-300">Error:</span> {task.error}</div>}
+                      {task.result && (
+                        <div className="mt-1 bg-[#1a1129] p-1.5 rounded border border-purple-500/10 max-h-24 overflow-y-auto custom-scrollbar">
+                          <span className="opacity-50 block mb-0.5">Result:</span>
+                          <div className="whitespace-pre-wrap">{task.result}</div>
+                        </div>
+                      )}
+                      <div className="flex justify-end mt-2">
+                         <a href={`/api/engine/logs?taskId=${task.id}`} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-white underline opacity-70 hover:opacity-100 flex items-center gap-1">
+                           View Execution Logs
+                         </a>
+                      </div>
+                    </div>
                   </div>
                 ))
+
+
+
               )}
             </div>
           </div>

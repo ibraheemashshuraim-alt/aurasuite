@@ -1,41 +1,32 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { generateAI } from '../providers/index.js';
 import { resolveProviderCredentials } from '../orchestrator/orchestrator.js';
+import { logExecutionEvent } from './logger.js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-/**
- * Executes a Phase 2A/2B engine_task using real AI, with Context & Memory
- */
 export async function executeEngineTask(taskId) {
-  const { data: task, error: tErr } = await supabase
-    .from('engine_tasks')
-    .select('*, agents(*)')
-    .eq('id', taskId)
-    .single();
-
+  const { data: task, error: tErr } = await supabase.from('engine_tasks').select('*, agents(*)').eq('id', taskId).single();
   if (tErr || !task) throw new Error('Task not found: ' + (tErr?.message || ''));
 
   const agent = task.agents;
   if (!agent) {
-    await markFailed(taskId, 'Task has no assigned agent.');
+    await markFailed(taskId, null, null, 'Missing assigned agent.');
     throw new Error('No assigned agent');
   }
 
+  const { organization_id: orgId } = task;
+
+  await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'task_started', message: 'Task execution started.' });
   await supabase.from('engine_tasks').update({ status: 'RUNNING', started_at: new Date().toISOString() }).eq('id', taskId);
 
+  let resultText = '';
   try {
-    const { data: memories, error: memErr } = await supabase
-      .from('agent_memories')
-      .select('*')
-      .eq('agent_id', agent.id)
-      .eq('organization_id', task.organization_id)
-      .order('created_at', { ascending: false })
-      .limit(10);
+    const { data: memories, error: memErr } = await supabase.from('agent_memories').select('*')
+      .eq('agent_id', agent.id).eq('organization_id', orgId).order('created_at', { ascending: false }).limit(10);
       
-    // Fix PowerShell template literal bug here using string concat
     const memoryStrings = (!memErr && memories) ? memories.map(m => '[Memory - ' + m.memory_type + ']: ' + m.content) : [];
 
     const systemPrompt = [
@@ -57,7 +48,9 @@ export async function executeEngineTask(taskId) {
       task.prompt
     ].join('\n');
 
-    const { providerName, apiKey, model } = await resolveProviderCredentials(task.organization_id, agent.default_provider, agent.default_model);
+    await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'ai_execution_started', message: 'Generating AI response...' });
+
+    const { providerName, apiKey, model } = await resolveProviderCredentials(orgId, agent.default_provider, agent.default_model);
 
     const result = await generateAI(providerName, {
       apiKey,
@@ -68,34 +61,66 @@ export async function executeEngineTask(taskId) {
       allowSynthetic: false
     });
 
+    resultText = result.text;
+    await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'ai_execution_completed', message: 'AI response generated successfully.' });
+    
+    // Transition to VERIFYING
+    await supabase.from('engine_tasks').update({ status: 'VERIFYING', result: resultText }).eq('id', taskId);
+    await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'verification_started', message: 'Starting task verification...' });
+
+    // VERIFICATION LAYER
+    const isVerified = verifyTaskOutput(resultText, task.prompt);
+    
+    if (!isVerified) {
+      await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'verification_failed', message: 'Output failed brand/quality verification rules.' });
+      await markFailed(taskId, agent.id, orgId, 'Verification Failed: The generated output did not meet the required structural or content rules.');
+      return { success: false, error: 'Verification Failed', taskId };
+    }
+
+    await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'verification_completed', message: 'Task verified successfully.' });
+    
+    // Complete Task
     await supabase.from('engine_tasks').update({
-      status: 'COMPLETED',
-      result: result.text,
+      status: 'VERIFIED',
       completed_at: new Date().toISOString()
     }).eq('id', taskId);
+    await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'task_completed', message: 'Task finished successfully.' });
 
-    const memoryContent = 'Completed task "' + task.title + '". Result summary: ' + result.text.slice(0, 150) + '...';
-    const { error: insertMemErr } = await supabase.from('agent_memories').insert({
-      organization_id: task.organization_id,
+    // Store Memory ONLY on VERIFIED success
+    const memoryContent = 'Completed task "' + task.title + '". Result summary: ' + resultText.slice(0, 150) + '...';
+    await supabase.from('agent_memories').insert({
+      organization_id: orgId,
       agent_id: agent.id,
       memory_type: 'general',
       content: memoryContent,
       source_task_id: taskId
     });
-    if (insertMemErr) console.warn('Could not save memory (Migration 003 missing):', insertMemErr.message);
 
-    return { success: true, result: result.text, taskId };
+    return { success: true, result: resultText, taskId };
   } catch (error) {
     console.error('Task Execution Error:', error);
-    await markFailed(taskId, error.message);
+    await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'ai_execution_failed', message: 'Execution error: ' + error.message });
+    await markFailed(taskId, agent.id, orgId, error.message);
     return { success: false, error: error.message, taskId };
   }
 }
 
-async function markFailed(taskId, errorMessage) {
+// Basic modular verification foundation
+function verifyTaskOutput(resultText, prompt) {
+  if (!resultText || resultText.trim().length < 5) return false;
+  // A simple heuristic: ensure it's not returning error stubs masquerading as success.
+  if (resultText.toLowerCase().includes('i am an ai language model and cannot')) return false;
+  return true;
+}
+
+async function markFailed(taskId, agentId, orgId, errorMessage) {
   await supabase.from('engine_tasks').update({
     status: 'FAILED',
     error: errorMessage,
     completed_at: new Date().toISOString()
   }).eq('id', taskId);
+  
+  if (agentId && orgId) {
+     await logExecutionEvent({ taskId, agentId, orgId, event: 'task_completed', message: 'Task finished with failure state.' });
+  }
 }
