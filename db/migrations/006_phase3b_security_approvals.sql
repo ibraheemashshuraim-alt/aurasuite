@@ -16,7 +16,7 @@ CREATE POLICY "org_isolated_action_plans_select"
 ON public.engine_action_plans FOR SELECT 
 USING (
   organization_id IN (
-    SELECT organization_id FROM public.profiles WHERE id = auth.uid()
+    SELECT organization_id FROM public.profiles WHERE id = auth.uid()::text
   )
 );
 
@@ -24,7 +24,7 @@ CREATE POLICY "org_isolated_action_plans_insert"
 ON public.engine_action_plans FOR INSERT 
 WITH CHECK (
   organization_id IN (
-    SELECT organization_id FROM public.profiles WHERE id = auth.uid()
+    SELECT organization_id FROM public.profiles WHERE id = auth.uid()::text
   )
 );
 
@@ -32,7 +32,7 @@ CREATE POLICY "org_isolated_action_plans_update"
 ON public.engine_action_plans FOR UPDATE 
 USING (
   organization_id IN (
-    SELECT organization_id FROM public.profiles WHERE id = auth.uid()
+    SELECT organization_id FROM public.profiles WHERE id = auth.uid()::text
   )
 );
 
@@ -49,7 +49,7 @@ CREATE POLICY "org_isolated_execution_logs_select"
 ON public.engine_execution_logs FOR SELECT 
 USING (
   organization_id IN (
-    SELECT organization_id FROM public.profiles WHERE id = auth.uid()
+    SELECT organization_id FROM public.profiles WHERE id = auth.uid()::text
   )
 );
 
@@ -57,7 +57,7 @@ CREATE POLICY "org_isolated_execution_logs_insert"
 ON public.engine_execution_logs FOR INSERT 
 WITH CHECK (
   organization_id IN (
-    SELECT organization_id FROM public.profiles WHERE id = auth.uid()
+    SELECT organization_id FROM public.profiles WHERE id = auth.uid()::text
   )
 );
 
