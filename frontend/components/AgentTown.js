@@ -92,6 +92,8 @@ export default function AgentTown({ currentUser }) {
       const statusMap = {
         'PENDING': 'idle',
         'RUNNING': 'thinking',
+        'ACTION_REQUIRED': 'thinking',
+        'EXECUTING': 'working',
         'VERIFYING': 'researching',
         'VERIFIED': 'completed',
         'FAILED': 'failed',
@@ -100,8 +102,8 @@ export default function AgentTown({ currentUser }) {
       
       const st = statusMap[task.status] || 'idle';
       
-      if (['PENDING', 'RUNNING', 'VERIFYING'].includes(task.status)) {
-        newStates[charName] = { state: st, thought: task.status === 'VERIFYING' ? 'Verifying output...' : 'Task: ' + task.title };
+      if (['PENDING', 'RUNNING', 'ACTION_REQUIRED', 'EXECUTING', 'VERIFYING'].includes(task.status)) {
+        newStates[charName] = { state: st, thought: task.status === 'VERIFYING' ? 'Verifying output...' : task.status === 'ACTION_REQUIRED' ? 'Action Required!' : task.status === 'EXECUTING' ? 'Executing Actions...' : 'Task: ' + task.title };
       } else {
         // If it's a finished task, keep them idle unless we want a specific message
         if (task.status === 'FAILED') newStates[charName] = { state: 'error', thought: 'Failed: ' + (task.error ? task.error.slice(0, 15) : 'Error') };

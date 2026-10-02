@@ -61,11 +61,49 @@ export async function executeEngineTask(taskId) {
       allowSynthetic: false
     });
 
+
+
     resultText = result.text;
     await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'ai_execution_completed', message: 'AI response generated successfully.' });
     
+    // --- PHASE 3A: Action Plan Detection & Execution ---
+    let actionPlanResult = null;
+    let isActionPlan = false;
+    try {
+      const parsed = JSON.parse(resultText);
+      if (parsed && Array.isArray(parsed.actions)) {
+        isActionPlan = true;
+      }
+    } catch (e) {
+      // Not JSON, continue as normal AI task
+    }
+
+    if (isActionPlan) {
+      await supabase.from('engine_tasks').update({ status: 'ACTION_REQUIRED' }).eq('id', taskId);
+      
+      const { executeActionPlan } = await import('../actions/executor.js');
+      actionPlanResult = await executeActionPlan(taskId, agent.id, orgId, resultText);
+      
+      if (actionPlanResult.status === 'APPROVAL_REQUIRED') {
+         await supabase.from('engine_tasks').update({ status: 'ACTION_REQUIRED', error: actionPlanResult.error }).eq('id', taskId);
+         return { success: false, error: 'User Approval Required', taskId };
+      }
+      
+      if (actionPlanResult.status !== 'SUCCESS') {
+         await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'verification_failed', message: 'Action Plan Execution Failed' });
+         await markFailed(taskId, agent.id, orgId, 'Action Execution Failed: ' + actionPlanResult.error);
+         return { success: false, error: actionPlanResult.error, taskId };
+      }
+      
+      // Override resultText to be a summary of the successful actions
+      resultText = "Action Plan Completed Successfully:\n" + actionPlanResult.results.map(r => `- ${r.action.type}: ${r.result.result}`).join('\n');
+    }
+    // ----------------------------------------------------
+
     // Transition to VERIFYING
     await supabase.from('engine_tasks').update({ status: 'VERIFYING', result: resultText }).eq('id', taskId);
+
+
     await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'verification_started', message: 'Starting task verification...' });
 
     // VERIFICATION LAYER
