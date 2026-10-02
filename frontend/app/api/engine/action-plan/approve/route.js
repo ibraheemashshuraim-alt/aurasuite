@@ -21,7 +21,7 @@ export async function POST(req) {
     }
 
     // Verify user belongs to orgId
-    const { data: userOrg } = await supabase.from('users').select('organization_id').eq('id', user.id).single();
+    const { data: userOrg } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
     if (!userOrg || userOrg.organization_id !== orgId) {
        return new Response(JSON.stringify({ error: 'Unauthorized for this organization' }), { status: 403 });
     }
