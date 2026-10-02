@@ -11,7 +11,7 @@ export async function GET(request) {
   if (!orgId) return NextResponse.json({ error: 'Missing organization_id' }, { status: 400 });
 
   const { data, error } = await supabase
-    .from('tasks')
+    .from('engine_tasks')
     .select(`*, agents ( name )`) // join to get agent name easily
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false });
@@ -29,7 +29,7 @@ export async function POST(request) {
     }
 
     const { data, error } = await supabase
-      .from('tasks')
+      .from('engine_tasks')
       .insert({
         organization_id,
         title,
@@ -63,7 +63,7 @@ export async function PUT(request) {
     if (completed_at) updateData.completed_at = completed_at;
 
     const { data, error } = await supabase
-      .from('tasks')
+      .from('engine_tasks')
       .update(updateData)
       .eq('id', id)
       .select()
