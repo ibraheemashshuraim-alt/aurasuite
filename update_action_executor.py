@@ -1,4 +1,6 @@
-/**
+﻿import sys
+
+content = """/**
  * Phase 3A/3B: Action Execution Layer
  */
 import { createClient } from '@supabase/supabase-js';
@@ -102,3 +104,8 @@ export async function executeActionPlan(taskId, agentId, orgId, rawPlanText, byp
     return { status: 'FAILED', error: globalErr.message };
   }
 }
+"""
+
+with open('frontend/lib/ai/actions/executor.js', 'w', encoding='utf-8') as f:
+    f.write(content)
+print("Updated executor with session and registry!")
