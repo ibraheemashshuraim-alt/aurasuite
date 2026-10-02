@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Keyboard, Mic, Plus, Share2, Users, Settings, Activity, Sparkles, List } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { dispatchAgentTask, createEngineTask, getEngineAgents, getEngineTasks } from '../lib/agentClient';
+import { dispatchAgentTask, createEngineTask, getEngineAgents, getEngineTasks, executeEngineTaskClient } from '../lib/agentClient';
 
 export default function AgentTown({ currentUser }) {
   if (!currentUser || !['admin', 'super_admin', 'sub_admin'].includes(currentUser.role)) {
@@ -106,7 +106,7 @@ export default function AgentTown({ currentUser }) {
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks', filter: `organization_id=eq.${currentUser.organization_id}` },
+        { event: '*', schema: 'public', table: 'engine_tasks', filter: `organization_id=eq.${currentUser.organization_id}` },
         () => {
           loadTasks(); // reload tasks on any change
         }
@@ -133,7 +133,7 @@ export default function AgentTown({ currentUser }) {
 
     try {
       // Phase 2A: Create Task in Task Engine
-      await createEngineTask({
+      const tRes = await createEngineTask({
         organization_id: orgId,
         title: promptText.slice(0, 50),
         prompt: promptText,
@@ -142,6 +142,11 @@ export default function AgentTown({ currentUser }) {
         created_by: currentUser?.id
       });
       setActiveTaskBanner('Task dispatched to Phase 2A Engine! Status: PENDING');
+      
+      // Phase 2B: Trigger Real AI Execution (Async, does not block UI)
+      if (tRes && tRes.task && tRes.task.id) {
+         executeEngineTaskClient(tRes.task.id).catch(e => console.error("Real AI Execution failed", e));
+      }
       
       // Phase 1 Legacy pipeline trigger (keeps UI animating!)
       await dispatchAgentTask({

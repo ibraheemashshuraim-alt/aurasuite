@@ -231,7 +231,7 @@ export async function executeOrchestratedTask({
 /**
  * Resolve provider credentials, decrypting BYOK key in-memory
  */
-async function resolveProviderCredentials(orgId, defaultProvider, defaultModel) {
+export async function resolveProviderCredentials(orgId, defaultProvider, defaultModel) {
   try {
     const { data: configs } = await supabase
       .from('ai_provider_configs')

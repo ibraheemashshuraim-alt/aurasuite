@@ -163,3 +163,12 @@ export async function createEngineTask(data) {
   if (!res.ok) throw new Error(await res.text());
   return await res.json();
 }
+export async function executeEngineTaskClient(taskId) {
+  const res = await fetch('/api/engine/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taskId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
+}

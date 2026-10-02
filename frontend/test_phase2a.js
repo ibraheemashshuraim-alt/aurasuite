@@ -1,10 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
+﻿import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing Supabase credentials");
+  console.error("Missing Supabase credentials in .env.local");
   process.exit(1);
 }
 
@@ -17,10 +17,16 @@ async function runFullVerification() {
   const orgId = orgs?.[0]?.id || 'org-aurasuite-superadmin';
   console.log("✓ Organization found:", orgId);
 
-  // 1. Agent Management (Create, Fetch, Update)
+  // 1. Verify old 'tasks' table is untouched
+  console.log("\n--- Testing Old 'tasks' Table ---");
+  const { data: oldTasks, error: oldTasksErr } = await supabase.from('tasks').select('*').limit(1);
+  if (oldTasksErr) throw new Error("Old 'tasks' table check failed: " + oldTasksErr.message);
+  console.log("✓ Old 'tasks' table is accessible and preserved.");
+
+  // 2. Agent Management (Create, Fetch, Update)
   console.log("\n--- Testing Agent CRUD ---");
   const { data: agent, error: aCreateErr } = await supabase.from('agents').insert({
-    organization_id: orgId, name: 'Live Verify Agent', status: 'ACTIVE'
+    organization_id: orgId, name: 'Final Verify Agent', status: 'ACTIVE'
   }).select().single();
   if (aCreateErr) throw new Error("Agent Create failed: " + aCreateErr.message);
   console.log("✓ Create Agent passed. ID:", agent.id);
@@ -33,30 +39,24 @@ async function runFullVerification() {
   if (aUpdateErr || updatedAgent.status !== 'PAUSED') throw new Error("Agent Update failed");
   console.log("✓ Update Agent passed.");
 
-  // 2. Task Engine (Create, Assign, Status Transition, Join)
-  console.log("\n--- Testing Task Engine ---");
+  // 3. Engine Task (Create, Assign, Status Transition, Join)
+  console.log("\n--- Testing Engine Tasks ---");
   const { data: task, error: tCreateErr } = await supabase.from('engine_tasks').insert({
-    organization_id: orgId, assigned_agent_id: agent.id, title: 'Verify Task', prompt: 'Run checks', status: 'PENDING'
+    organization_id: orgId, assigned_agent_id: agent.id, title: 'Final Verify Task', prompt: 'Run checks', status: 'PENDING'
   }).select().single();
-  if (tCreateErr) {
-    if (tCreateErr.code === '42P01') {
-        console.log("Test skipped: Please apply db/migrations/002B_phase2a_engine_tasks_fix.sql in Supabase");
-        process.exit(0);
-    }
-    throw new Error("Task Create failed: " + tCreateErr.message);
-  }
-  console.log("✓ Create Task & Assign Agent passed. ID:", task.id);
+  if (tCreateErr) throw new Error("Engine Task Create failed: " + tCreateErr.message);
+  console.log("✓ Create Engine Task & Assign Agent passed. ID:", task.id);
 
   const { data: runningTask, error: tUpdateErr } = await supabase.from('engine_tasks').update({ status: 'RUNNING' }).eq('id', task.id).select().single();
-  if (tUpdateErr || runningTask.status !== 'RUNNING') throw new Error("Task Status Transition failed");
-  console.log("✓ Task Status Transition (PENDING -> RUNNING) passed.");
+  if (tUpdateErr || runningTask.status !== 'RUNNING') throw new Error("Engine Task Status Transition failed");
+  console.log("✓ Engine Task Status Transition (PENDING -> RUNNING) passed.");
 
-  // 3. Task History (Join Task with Agent)
+  // 4. Task History (Join Task with Agent)
   const { data: history, error: hErr } = await supabase.from('engine_tasks').select('*, agents(name)').eq('id', task.id).single();
-  if (hErr || !history.agents) throw new Error("Task History (Join) failed");
+  if (hErr || !history.agents) throw new Error("Task History (Join) failed: " + hErr?.message);
   console.log("✓ Task History Join passed. Assigned Agent Name:", history.agents.name);
 
-  // 4. Cleanup
+  // 5. Cleanup
   console.log("\n--- Cleanup ---");
   await supabase.from('engine_tasks').delete().eq('id', task.id);
   await supabase.from('agents').delete().eq('id', agent.id);
