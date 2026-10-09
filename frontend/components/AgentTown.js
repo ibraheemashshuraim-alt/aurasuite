@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Keyboard, Mic, Plus, Share2, Users, Settings, Activity, Sparkles, List } from 'lucide-react';
+import { X, Keyboard, Mic, Plus, Share2, Users, Settings, Activity, Sparkles, List, Send, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { dispatchAgentTask, createEngineTask, getEngineAgents, getEngineTasks, executeEngineTaskClient } from '../lib/agentClient';
 
@@ -509,10 +509,10 @@ export default function AgentTown({ currentUser }) {
                 className="bg-transparent border-none outline-none text-xs text-white flex-1 px-2 placeholder-purple-500" 
               />
               <button type="button" className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20"><Keyboard size={14} /></button>
-              <button type="button" className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20"><Mic size={14} /></button>
-              <button type="submit" disabled={isDispatching} className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20 cursor-pointer">
-                <Plus size={14} />
-              </button>
+              <button type="button" onClick={() => alert("Voice assistant module will be integrated in Phase 5!")} className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20 cursor-pointer"><Mic size={14} /></button>
+              <button type="submit" disabled={isDispatching} className="text-purple-100 hover:text-white bg-purple-600 p-1.5 rounded-lg border border-purple-500 cursor-pointer shadow-lg">
+                  <Send size={14} />
+                </button>
           </div>
         </form>
       </div>

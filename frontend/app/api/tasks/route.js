@@ -23,9 +23,27 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { organization_id, title, prompt, assigned_agent_id, priority, created_by } = body;
+    const { organization_id, title, prompt, agent_id, priority, created_by } = body;
     if (!organization_id || !title || !prompt) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    let finalAgentId = agent_id;
+    if (!finalAgentId) {
+      // Auto-provision a default agent if none provided
+      const { data: existing } = await supabase.from('agents').select('id').eq('organization_id', organization_id).limit(1).maybeSingle();
+      if (existing) {
+        finalAgentId = existing.id;
+      } else {
+        const { data: created } = await supabase.from('agents').insert({
+          organization_id: organization_id,
+          name: 'Saima',
+          provider: 'gemini',
+          model: 'gemini-1.5-pro',
+          status: 'ACTIVE'
+        }).select('id').single();
+        if (created) finalAgentId = created.id;
+      }
     }
 
     const { data, error } = await supabase
@@ -34,7 +52,7 @@ export async function POST(request) {
         organization_id,
         title,
         prompt,
-        assigned_agent_id,
+        agent_id: finalAgentId,
         priority: priority || 'MEDIUM',
         status: 'PENDING',
         created_by,
