@@ -156,7 +156,8 @@ export async function executeEngineTask(taskId) {
     // Complete Task
     await supabase.from('engine_tasks').update({
       status: 'VERIFIED',
-      completed_at: new Date().toISOString()
+      completed_at: new Date().toISOString(),
+      output_payload: { result: resultText }
     }).eq('id', taskId);
     await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'task_completed', message: 'Task finished successfully.' });
 
@@ -169,6 +170,25 @@ export async function executeEngineTask(taskId) {
       content: memoryContent,
       source_task_id: taskId
     });
+
+    // --- PHASE 4: MULTI-AGENT CHAINING ---
+    if (task.next_task_id) {
+       await logExecutionEvent({ taskId, agentId: agent.id, orgId, event: 'trigger_next', message: 'Triggering downstream task: ' + task.next_task_id });
+       
+       // Update next task with upstream result and set to PENDING
+       const { data: nextTask } = await supabase.from('engine_tasks').select('prompt').eq('id', task.next_task_id).single();
+       if (nextTask) {
+          const newPrompt = nextTask.prompt + '\n\n--- UPSTREAM RESULT FROM ' + agent.name + ' ---\n' + resultText;
+          await supabase.from('engine_tasks').update({
+             status: 'PENDING',
+             prompt: newPrompt
+          }).eq('id', task.next_task_id);
+          
+          // Optionally trigger it asynchronously (fire and forget)
+          // For now, setting it to PENDING will let the frontend Client loop pick it up and execute it,
+          // creating a visually pleasing cascading effect!
+       }
+    }
 
     return { success: true, result: resultText, taskId };
   } catch (error) {
