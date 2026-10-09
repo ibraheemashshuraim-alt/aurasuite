@@ -75,6 +75,19 @@ export default function AgentTown({ currentUser }) {
 
   // Phase 2C: Derive visual agent states from the real AI task engine
   useEffect(() => {
+    // Process from oldest to newest, so the newest state overrides
+    const sorted = [...engineTasks].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    
+    // Auto-execute PENDING tasks orchestration loop
+    const pendingTask = sorted.find(t => t.status === 'PENDING');
+    if (pendingTask && !window.__isExecutingTask) {
+       window.__isExecutingTask = true;
+       console.log("Client Orchestrator: Auto-executing pending task", pendingTask.id);
+       executeEngineTaskClient(pendingTask.id).finally(() => {
+          window.__isExecutingTask = false;
+       });
+    }
+
     const newStates = {
       Saima: { state: 'idle', thought: 'Analyzing...' },
       Dani: { state: 'idle', thought: 'Fixing bugs' },
@@ -82,9 +95,6 @@ export default function AgentTown({ currentUser }) {
       Zohaib: { state: 'idle', thought: 'Need coffee...' },
     };
 
-    // Process from oldest to newest, so the newest state overrides
-    const sorted = [...engineTasks].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    
     sorted.forEach(task => {
       const charName = task.agents?.character_name;
       if (!charName) return;
