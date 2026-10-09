@@ -354,6 +354,7 @@ export default function AppContainer() {
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const [newPermanentPassword, setNewPermanentPassword] = useState('');
   const [passwordChangeNew, setPasswordChangeNew] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
   const [isInviteFlow, setIsInviteFlow] = useState(false);
   const [authOrgType, setAuthOrgType] = useState('');
   const [authOrgName, setAuthOrgName] = useState('');
@@ -1750,6 +1751,23 @@ export default function AppContainer() {
       setForcePasswordChange(false);
       setTempDigitalCard(null);
       addNotification(`Welcome ${user.full_name}!`, 'success');
+    }
+  };
+
+    const handleSaveGeminiKey = async () => {
+    try {
+      if (!geminiKey) return alert('Enter API key');
+      await saveBYOKKey({
+        orgId: activeOrg.id,
+        providerName: 'gemini',
+        apiKey: geminiKey,
+        defaultModel: 'gemini-1.5-pro',
+        baseUrl: null
+      });
+      addNotification('Gemini API Key saved!', 'success');
+      setGeminiKey('');
+    } catch(err) {
+      addNotification(err.message, 'error');
     }
   };
 
