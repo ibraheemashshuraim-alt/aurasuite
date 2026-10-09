@@ -55,28 +55,28 @@ export async function POST(request) {
         id: crypto.randomUUID(),
         title: `[Campaign] Research Phase`,
         prompt: `Campaign Topic: ${prompt}\n\nAct as the Strategist. Research the topic and provide a comprehensive strategy, target audience, and key messaging points.`,
-        agent_id: agentIds['Saima'],
+        assigned_agent_id: agentIds['Saima'],
         step_order: 1
       },
       {
         id: crypto.randomUUID(),
         title: `[Campaign] Copywriting Phase`,
         prompt: `Campaign Topic: ${prompt}\n\nAct as the Copywriter. Wait for upstream research, then write 3 highly engaging social media posts (Facebook/Instagram/Twitter).`,
-        agent_id: agentIds['Dani'],
+        assigned_agent_id: agentIds['Dani'],
         step_order: 2
       },
       {
         id: crypto.randomUUID(),
         title: `[Campaign] Design Prompt Phase`,
         prompt: `Campaign Topic: ${prompt}\n\nAct as the Visual Art Director. Wait for upstream copy, then create detailed image generation prompts (Midjourney style) for the posts.`,
-        agent_id: agentIds['Mianzi'],
+        assigned_agent_id: agentIds['Mianzi'],
         step_order: 3
       },
       {
         id: crypto.randomUUID(),
         title: `[Campaign] Final Review Phase`,
         prompt: `Campaign Topic: ${prompt}\n\nAct as the Quality Lead. Review the upstream copy and design prompts, ensure they meet brand safety rules, and package them nicely.`,
-        agent_id: agentIds['Zohaib'],
+        assigned_agent_id: agentIds['Zohaib'],
         step_order: 4
       }
     ];

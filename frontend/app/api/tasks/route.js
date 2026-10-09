@@ -52,7 +52,7 @@ export async function POST(request) {
         organization_id,
         title,
         prompt,
-        agent_id: finalAgentId,
+        assigned_agent_id: finalAgentId,
         priority: priority || 'MEDIUM',
         status: 'PENDING',
         created_by,
