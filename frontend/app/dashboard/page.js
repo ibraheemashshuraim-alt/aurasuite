@@ -7170,8 +7170,20 @@ mt-1.5">Rs. {t.final_payout.toLocaleString()}</span>}
                   Save Settings
                 </button>
                 
-                <div className="mt-8 pt-6 border-t border-purple-500/10">
-                  <h4 className="text-sm font-bold text-white mb-4">Security Settings</h4>
+                                  <div className="mt-8 pt-6 border-t border-purple-500/10">
+                    <h4 className="text-sm font-bold text-white mb-4">AI Provider Settings</h4>
+                    <div className="space-y-3">
+                      <label className="text-xs text-purple-300 block mb-1">Gemini API Key (Required for Agent Town)</label>
+                      <input type="password" placeholder="AIzaSy..." value={geminiKey} onChange={e => setGeminiKey(e.target.value)}
+                        className="w-full bg-[#11081c] border border-purple-500/25 rounded-xl p-2 text-xs text-white focus:outline-none" />
+                      <button onClick={handleSaveGeminiKey} className="px-5 py-2 rounded-xl accent-gradient text-xs font-bold text-white glow-btn">
+                        Save API Key
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 pt-6 border-t border-purple-500/10">
+                    <h4 className="text-sm font-bold text-white mb-4">Security Settings</h4>
                   <div className="space-y-3">
                     <label className="text-xs text-purple-300 block mb-1">Update Password</label>
                     <input type="password" placeholder="New Password" value={passwordChangeNew} onChange={e => setPasswordChangeNew(e.target.value)}
