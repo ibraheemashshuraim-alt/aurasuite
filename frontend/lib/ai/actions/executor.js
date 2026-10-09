@@ -55,7 +55,7 @@ export async function executeActionPlan(taskId, agentId, orgId, rawPlanText, byp
     await logExecutionEvent({ taskId, agentId, orgId, event: 'browser_session_created', message: 'Initializing browser session...' });
 
     // In a real environment we can choose MOCK or BROWSER based on env or org config
-    const connectorType = process.env.USE_MOCK_CONNECTOR === 'true' ? 'MOCK' : 'BROWSER';
+    const connectorType = (process.env.USE_MOCK_CONNECTOR === 'true' || process.env.VERCEL === '1') ? 'MOCK' : 'BROWSER';
     connector = ActionConnectorRegistry.getConnector(connectorType);
 
     if (connector.connect) await connector.connect();
