@@ -34,17 +34,17 @@ async function executeAction(action) {
         await page.goto(action.target, { waitUntil: 'networkidle2' });
         return { status: 'SUCCESS', result: `Navigated to ${page.url()}` };
         
-      case 'click':
+      case 'click': {
         console.log(`Jarvis: Clicking on ${action.target}...`);
         let t = action.target; if (t === "input[name='q']") t = "textarea[name='q']"; await page.waitForSelector(t, { visible: true });
-        await page.click(action.target);
-        return { status: 'SUCCESS', result: `Clicked element: ${action.target}` };
+        await page.click(t);
+        return { status: 'SUCCESS', result: `Clicked element: ${action.target}` }; }
         
-      case 'type':
+      case 'type': {
         console.log(`Jarvis: Typing "${action.value}" into ${action.target}...`);
         let t = action.target; if (t === "input[name='q']") t = "textarea[name='q']"; await page.waitForSelector(t, { visible: true });
         await page.type(t, action.value, { delay: 100 });
-        return { status: 'SUCCESS', result: `Typed into element: ${action.target}` };
+        return { status: 'SUCCESS', result: `Typed into element: ${action.target}` }; }
         
       case 'press_key':
         console.log(`Jarvis: Pressing key ${action.value}...`);
