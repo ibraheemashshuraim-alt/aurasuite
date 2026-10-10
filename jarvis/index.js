@@ -36,14 +36,14 @@ async function executeAction(action) {
         
       case 'click':
         console.log(`Jarvis: Clicking on ${action.target}...`);
-        await page.waitForSelector(action.target, { visible: true });
+        let t = action.target; if (t === "input[name='q']") t = "textarea[name='q']"; await page.waitForSelector(t, { visible: true });
         await page.click(action.target);
         return { status: 'SUCCESS', result: `Clicked element: ${action.target}` };
         
       case 'type':
         console.log(`Jarvis: Typing "${action.value}" into ${action.target}...`);
-        await page.waitForSelector(action.target, { visible: true });
-        await page.type(action.target, action.value, { delay: 100 });
+        let t = action.target; if (t === "input[name='q']") t = "textarea[name='q']"; await page.waitForSelector(t, { visible: true });
+        await page.type(t, action.value, { delay: 100 });
         return { status: 'SUCCESS', result: `Typed into element: ${action.target}` };
         
       case 'press_key':
