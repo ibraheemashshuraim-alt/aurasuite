@@ -121,6 +121,15 @@ export async function executeEngineTask(taskId) {
       actionPlanResult = await executeActionPlan(taskId, agent.id, orgId, resultText);
       
       if (actionPlanResult.status === 'APPROVAL_REQUIRED') {
+         if (actionPlanResult.plan) {
+           await supabase.from('engine_action_plans').insert({
+             task_id: taskId,
+             organization_id: orgId,
+             agent_id: agent.id,
+             actions: actionPlanResult.plan.actions,
+             status: 'PENDING_APPROVAL'
+           });
+         }
          await supabase.from('engine_tasks').update({ status: 'ACTION_REQUIRED', error: actionPlanResult.error }).eq('id', taskId);
          return { success: false, error: 'User Approval Required', taskId };
       }
