@@ -1,4 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { executeActionPlan } from '../../../../../lib/ai/actions/executor.js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy_url_for_build.supabase.co';
@@ -40,23 +40,15 @@ export async function POST(req) {
     });
 
     (async () => {
+       // Offload execution to Jarvis
        await supabase.from('engine_tasks').update({ status: 'EXECUTING' }).eq('id', taskId);
-       const result = await executeActionPlan(taskId, agentId, orgId, planText, true); // true = bypassApproval
+       await supabase.from('engine_action_plans').update({ status: 'EXECUTING' }).eq('task_id', taskId);
        
-       if (result.status === 'SUCCESS') {
-           const resultStr = "Action Plan Completed Successfully:\n" + result.results.map(r => `- ${r.action.type}: ${r.result.result}`).join('\n');
-           await supabase.from('engine_tasks').update({ status: 'VERIFYING', result: resultStr }).eq('id', taskId);
-           
-           setTimeout(async () => {
-               await supabase.from('engine_tasks').update({ status: 'COMPLETED' }).eq('id', taskId);
-               await supabase.from('engine_execution_logs').insert({
-                 task_id: taskId, agent_id: agentId, organization_id: orgId, event: 'verification_completed', message: 'Task verified.'
-               });
-           }, 2000);
-           
-       } else {
-           await supabase.from('engine_tasks').update({ status: 'FAILED', error: result.error }).eq('id', taskId);
-       }
+       await supabase.from('engine_execution_logs').insert({
+         task_id: taskId, agent_id: agentId, organization_id: orgId, event: 'jarvis_dispatched', message: 'Task dispatched to local Jarvis daemon for execution.'
+       });
+       
+       // Note: Jarvis daemon will update the task to VERIFYING and then COMPLETED
     })().catch(err => console.error("Async approval exec error:", err));
 
     return new Response(JSON.stringify({ success: true, message: 'Execution started' }), { status: 200 });
