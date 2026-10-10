@@ -1,7 +1,7 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy_url_for_build.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy_key_for_build';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(req) {
@@ -27,8 +27,11 @@ export async function POST(req) {
 
     // We do NOT need to await this to block the response, but doing so prevents edge cases.
     // Actually let's await it so we know it definitely updated!
-    await supabase.from('engine_tasks').update({ status: 'EXECUTING' }).eq('id', taskId);
-    await supabase.from('engine_action_plans').update({ status: 'EXECUTING' }).eq('task_id', taskId);
+    const { error: tErr } = await supabase.from('engine_tasks').update({ status: 'EXECUTING' }).eq('id', taskId);
+    if (tErr) return new Response(JSON.stringify({ error: tErr.message, details: 'engine_tasks update failed' }), { status: 500 });
+    
+    const { error: pErr } = await supabase.from('engine_action_plans').update({ status: 'EXECUTING' }).eq('task_id', taskId);
+    if (pErr) return new Response(JSON.stringify({ error: pErr.message, details: 'engine_action_plans update failed' }), { status: 500 });
     
     await supabase.from('engine_execution_logs').insert({
       task_id: taskId, agent_id: agentId, organization_id: orgId, event: 'jarvis_dispatched', message: 'Task dispatched to local Jarvis daemon for execution.'
