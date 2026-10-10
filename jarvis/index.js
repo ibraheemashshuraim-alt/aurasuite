@@ -113,6 +113,13 @@ async function processTask(taskId, orgId, agentId) {
     console.log("Task Failed.");
     await supabase.from('engine_tasks').update({ status: 'FAILED', error: 'Jarvis encountered an error.' }).eq('id', taskId);
     await supabase.from('engine_action_plans').update({ status: 'FAILED' }).eq('id', planRecord.id);
+    
+    // RESET BROWSER IN CASE USER CLOSED IT OR IT CRASHED
+    if (browser) {
+      try { await browser.close(); } catch(e) {}
+      browser = null;
+      page = null;
+    }
   } else {
     console.log("Task Completed Successfully!");
     const resultStr = "Jarvis Execution Completed:\n" + results.map(r => `- ${r.action.type}: ${r.result.result}`).join('\n');
