@@ -77,14 +77,18 @@ async function processTask(taskId, orgId, agentId) {
   console.log(`Jarvis received task: ${taskId}`);
   
   // 1. Fetch action plan
-  const { data: planRecord } = await supabase
+  const { data: planRecords, error: planErr } = await supabase
     .from('engine_action_plans')
     .select('*')
     .eq('task_id', taskId)
-    .single();
+    .order('created_at', { ascending: false });
+
+  if (planErr) console.error("Jarvis DB Error:", planErr);
+
+  const planRecord = planRecords && planRecords.length > 0 ? planRecords[0] : null;
 
   if (!planRecord || !planRecord.actions) {
-    console.log("No action plan found for task.");
+    console.log("No action plan found for task.", planErr);
     return;
   }
 
