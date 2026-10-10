@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Phase 3A: Action Safety Validation and Permissions
  */
 
@@ -50,13 +50,8 @@ export function validateActionPlan(planJSON, permissionLevel = 'SAFE_ACTIONS') {
     }
 
     // 3. Permission check
-    if (!allowedForRole.includes(action.type)) {
-      if (permissionLevel === 'READ_ONLY') {
-        // If read-only and trying to click/type, mark as APPROVAL_REQUIRED
-        return { valid: false, reason: `Action '${action.type}' requires user approval under current permissions`, status: 'APPROVAL_REQUIRED' };
-      }
-      return { valid: false, reason: `Action '${action.type}' not allowed under permission: ${permissionLevel}`, status: 'BLOCKED' };
-    }
+    // FOR PHASE 5 JARVIS: All actions now require explicit user approval before sending to the local daemon!
+    return { valid: false, reason: `Action '${action.type}' requires user approval before dispatching to Jarvis daemon`, status: 'APPROVAL_REQUIRED' };
 
     // 4. Required targets
     if (action.type === 'open_url' && (!action.target || !action.target.startsWith('http'))) {
