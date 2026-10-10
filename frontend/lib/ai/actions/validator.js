@@ -51,7 +51,7 @@ export function validateActionPlan(planJSON, permissionLevel = 'SAFE_ACTIONS') {
 
     // 3. Permission check
     // FOR PHASE 5 JARVIS: All actions now require explicit user approval before sending to the local daemon!
-    return { valid: false, reason: `Action '${action.type}' requires user approval before dispatching to Jarvis daemon`, status: 'APPROVAL_REQUIRED' };
+    return { valid: false, reason: `Action '${action.type}' requires user approval before dispatching to Jarvis daemon`, status: 'APPROVAL_REQUIRED', plan };
 
     // 4. Required targets
     if (action.type === 'open_url' && (!action.target || !action.target.startsWith('http'))) {
