@@ -125,7 +125,7 @@ async function processTask(taskId, orgId, agentId) {
     const resultStr = "Jarvis Execution Completed:\n" + results.map(r => `- ${r.action.type}: ${r.result.result}`).join('\n');
     await supabase.from('engine_action_plans').update({ status: 'COMPLETED' }).eq('id', planRecord.id);
     
-    console.log("Updating task to VERIFYING...");
+    console.log("Updating task to VERIFYING..."); if (browser) { try { await browser.close(); } catch(e){} browser = null; page = null; }
     await supabase.from('engine_tasks').update({ status: 'VERIFYING', result: resultStr }).eq('id', taskId);
     
     // Simulate verification delay then COMPLETE
