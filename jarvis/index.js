@@ -67,7 +67,11 @@ async function executeAction(action) {
         case 'open_url':
         case 'browser_navigation':
           log(`Jarvis Web: Navigating to ${action.target}...`);
-          await page.goto(action.target, { waitUntil: 'networkidle2' });
+          try {
+            await page.goto(action.target, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          } catch (navErr) {
+            if (!navErr.message.includes('ERR_ABORTED')) throw navErr;
+          }
           return { status: 'SUCCESS', result: `Navigated to ${page.url()}` };
           
         case 'click': {
