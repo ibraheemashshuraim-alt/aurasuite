@@ -5,7 +5,8 @@
 const ALLOWED_ACTION_TYPES = [
   'open_url', 'click', 'type', 'press_key', 
   'scroll', 'wait', 'screenshot', 'read_screen', 
-  'browser_navigation'
+  'browser_navigation',
+  'launch_app', 'open_app', 'write_file', 'read_file', 'open_file', 'run_command', 'type_desktop'
 ];
 
 const PERMISSIONS = {
@@ -44,9 +45,9 @@ export function validateActionPlan(planJSON, permissionLevel = 'SAFE_ACTIONS') {
       return { valid: false, reason: `Unknown or forbidden action type: ${action.type || 'undefined'}`, status: 'BLOCKED' };
     }
 
-    // 2. Reject shell/code execution explicitly (extra safety net)
-    if (['shell', 'execute', 'bash', 'powershell', 'cmd'].includes(action.type)) {
-      return { valid: false, reason: 'Arbitrary command execution is strictly forbidden', status: 'BLOCKED' };
+    // 2. Reject arbitrary destructive shells
+    if (['format', 'rmdir', 'del /s'].includes(action.type)) {
+      return { valid: false, reason: 'Destructive command execution is strictly forbidden', status: 'BLOCKED' };
     }
 
     // 3. Permission check
