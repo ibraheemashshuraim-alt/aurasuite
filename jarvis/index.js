@@ -53,11 +53,19 @@ async function ensureBrowser() {
     browser = await puppeteer.launch({
       headless: false,
       defaultViewport: null,
-      args: ['--start-maximized']
+      args: [
+        '--start-maximized',
+        '--window-position=0,0',
+        '--no-sandbox',
+        '--disable-setuid-sandbox'
+      ]
     });
     const pages = await browser.pages();
     page = pages.length > 0 ? pages[0] : await browser.newPage();
-    try { await page.bringToFront(); } catch(e) {}
+    try { 
+      await page.bringToFront(); 
+      exec('powershell -Command "$w = New-Object -ComObject WScript.Shell; $w.AppActivate(\'Chromium\'); $w.AppActivate(\'Chrome\')"');
+    } catch(e) {}
   }
 }
 
@@ -92,6 +100,10 @@ async function executeAction(action) {
           log(`Jarvis Web: Navigating to ${action.target}...`);
           try {
             await page.goto(action.target, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            try {
+              await page.bringToFront();
+              exec('powershell -Command "$w = New-Object -ComObject WScript.Shell; $w.AppActivate(\'Chromium\'); $w.AppActivate(\'Chrome\')"');
+            } catch(e) {}
           } catch (navErr) {
             if (!navErr.message.includes('ERR_ABORTED')) throw navErr;
           }
@@ -159,13 +171,21 @@ async function executeAction(action) {
           'paint': 'mspaint',
           'mspaint': 'mspaint',
           'chrome': 'chrome',
+          'google': 'https://www.google.com',
           'google chrome': 'chrome',
+          'youtube': 'https://www.youtube.com',
           'edge': 'msedge',
           'word': 'winword',
           'excel': 'excel',
           'powerpoint': 'powerpnt',
           'explorer': 'explorer',
-          'file explorer': 'explorer'
+          'file explorer': 'explorer',
+          'camera': 'microsoft.windows.camera:',
+          'settings': 'ms-settings:',
+          'taskmgr': 'taskmgr',
+          'task manager': 'taskmgr',
+          'weather': 'bingweather:',
+          'photos': 'ms-photos:'
         };
         const resolvedApp = appMap[rawApp.toLowerCase()] || rawApp;
         
@@ -177,9 +197,17 @@ async function executeAction(action) {
         log(`Jarvis OS: Launching application: ${resolvedApp} ${fileArg}...`);
         return new Promise((resolve) => {
           let psCmd = `powershell -Command "Start-Process '${resolvedApp}'"`;
-          if (fileArg) {
+          if (resolvedApp.startsWith('http://') || resolvedApp.startsWith('https://')) {
+            psCmd = `powershell -Command "Start-Process '${resolvedApp}'"`;
+          } else if (fileArg) {
             const rawFile = fileArg.replace(/^"|"$/g, '');
-            psCmd = `powershell -Command "Start-Process '${resolvedApp}' -ArgumentList ('\"' + '${rawFile.replace(/'/g, "''")}' + '\"')"`;
+            const escFile = rawFile.replace(/'/g, "''");
+            if (resolvedApp === 'notepad') {
+              // On Windows without modern Notepad app, fallback to Chrome/WordPad to display the file
+              psCmd = `powershell -Command "try { Start-Process 'notepad' -ArgumentList '${escFile}' -ErrorAction Stop } catch { Start-Process 'chrome' -ArgumentList '${escFile}' }"`;
+            } else {
+              psCmd = `powershell -Command "Start-Process '${resolvedApp}' -ArgumentList '${escFile}'"`;
+            }
           }
           exec(psCmd, () => {
             log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
@@ -196,9 +224,14 @@ async function executeAction(action) {
           'calc': ['CalculatorApp', 'calc', 'calculator'],
           'notepad': ['notepad'],
           'paint': ['mspaint'],
+          'mspaint': ['mspaint'],
           'chrome': ['chrome'],
           'browser': ['chrome', 'msedge'],
-          'edge': ['msedge']
+          'edge': ['msedge'],
+          'camera': ['WindowsCamera'],
+          'task manager': ['Taskmgr'],
+          'taskmgr': ['Taskmgr'],
+          'photos': ['Microsoft.Photos']
         };
         const targetsToKill = processMap[target] || [target];
         const pList = targetsToKill.map(t => `'${t}'`).join(',');
