@@ -47,12 +47,12 @@ function resolveFilePath(targetPath) {
   return path.join(os.homedir(), 'Desktop', targetPath);
 }
 
-const BROWSER_ACTIONS = ['open_url', 'browser_navigation', 'click', 'type', 'press_key', 'scroll', 'read_screen', 'screenshot'];
+const BROWSER_ACTIONS = ['open_url', 'browser_navigation', 'click', 'type', 'press_key', 'scroll', 'read_screen', 'screenshot', 'wait'];
 
 async function executeAction(action) {
   // 1. WEB & BROWSER ACTIONS
   if (BROWSER_ACTIONS.includes(action.type)) {
-    if (!browser) {
+    if (!browser && action.type !== 'wait') {
       log("Launching visible browser (Jarvis Mode)...");
       browser = await puppeteer.launch({
         headless: false,
@@ -125,19 +125,19 @@ async function executeAction(action) {
       case 'launch_app':
       case 'open_app': {
         const app = (action.target || action.value || 'notepad').trim();
-        let fileArg = '';
+        let cmd = `cmd /c start "" "${app}"`;
         if (action.value && action.value !== action.target) {
           const resolved = resolveFilePath(action.value);
-          fileArg = `"${resolved}"`;
+          cmd = `cmd /c start "" "${app}" "${resolved}"`;
         }
-        log(`Jarvis OS: Launching application: ${app} ${fileArg}...`);
+        log(`Jarvis OS: Launching application: ${cmd}...`);
         return new Promise((resolve) => {
-          exec(`start "" ${app} ${fileArg}`, (err) => {
+          exec(cmd, (err) => {
             if (err) {
               log(`Jarvis Error launching app: ${err.message}`);
               resolve({ status: 'FAILED', result: err.message });
             } else {
-              resolve({ status: 'SUCCESS', result: `Successfully launched ${app} ${fileArg}`.trim() });
+              resolve({ status: 'SUCCESS', result: `Successfully launched ${app}` });
             }
           });
         });
