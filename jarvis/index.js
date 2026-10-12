@@ -57,6 +57,7 @@ async function ensureBrowser() {
     });
     const pages = await browser.pages();
     page = pages.length > 0 ? pages[0] : await browser.newPage();
+    try { await page.bringToFront(); } catch(e) {}
   }
 }
 
@@ -175,15 +176,14 @@ async function executeAction(action) {
         
         log(`Jarvis OS: Launching application: ${resolvedApp} ${fileArg}...`);
         return new Promise((resolve) => {
-          const cmd = fileArg ? `start "" "${resolvedApp}" ${fileArg}` : `start "" "${resolvedApp}"`;
-          exec(cmd, (err) => {
-            if (err) {
-              log(`Jarvis Error launching app: ${err.message}`);
-              resolve({ status: 'FAILED', result: err.message });
-            } else {
-              log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
-              resolve({ status: 'SUCCESS', result: `Successfully launched ${resolvedApp}` });
-            }
+          let psCmd = `powershell -Command "Start-Process '${resolvedApp}'"`;
+          if (fileArg) {
+            const rawFile = fileArg.replace(/^"|"$/g, '');
+            psCmd = `powershell -Command "Start-Process '${resolvedApp}' -ArgumentList ('\"' + '${rawFile.replace(/'/g, "''")}' + '\"')"`;
+          }
+          exec(psCmd, () => {
+            log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
+            resolve({ status: 'SUCCESS', result: `Successfully launched ${resolvedApp}` });
           });
         });
       }
