@@ -40,6 +40,7 @@ export async function executeEngineTask(taskId) {
       'Supported actions:',
       '- DESKTOP & OS ACTIONS:',
       '  - { "type": "launch_app", "target": "notepad | calc | mspaint | explorer | <app_name>", "value": "<optional_file_path>" }',
+      '  - { "type": "close_app", "target": "calculator | notepad | chrome | <app_name>" }',
       '  - { "type": "write_file", "target": "Desktop/filename.txt", "value": "full text or article content" }',
       '  - { "type": "open_file", "target": "path/to/file" }',
       '  - { "type": "read_file", "target": "path/to/file" }',

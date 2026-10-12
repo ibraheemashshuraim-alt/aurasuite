@@ -145,6 +145,30 @@ async function executeAction(action) {
         }
       }
 
+      case 'close_app': {
+        const target = (action.target || action.value || '').toLowerCase().trim();
+        log(`Jarvis OS: Closing application: ${target}...`);
+        const processMap = {
+          'calculator': ['CalculatorApp', 'calc', 'calculator'],
+          'calc': ['CalculatorApp', 'calc', 'calculator'],
+          'notepad': ['notepad'],
+          'paint': ['mspaint'],
+          'chrome': ['chrome'],
+          'browser': ['chrome', 'msedge'],
+          'edge': ['msedge']
+        };
+        const targetsToKill = processMap[target] || [target];
+        const pList = targetsToKill.map(t => `'${t}'`).join(',');
+        const psCmd = `powershell -Command "Get-Process -ErrorAction SilentlyContinue | Where-Object { (${pList}) -contains $_.ProcessName } | Stop-Process -Force -ErrorAction SilentlyContinue"`;
+        
+        return new Promise((resolve) => {
+          exec(psCmd, () => {
+            log(`Jarvis OS: Application close command finished for ${target}`);
+            resolve({ status: 'SUCCESS', result: `Closed application: ${target}` });
+          });
+        });
+      }
+
       case 'write_file': {
         const filePath = resolveFilePath(action.target);
         const content = action.value || '';
@@ -187,6 +211,11 @@ async function executeAction(action) {
         return new Promise((resolve) => {
           exec(cmd, { cwd: os.homedir() }, (err, stdout, stderr) => {
             if (err) {
+              if (cmd.toLowerCase().includes('taskkill') && ((stderr || '').includes('not found') || (err.message || '').includes('not found'))) {
+                log(`Jarvis OS: Process was already closed or not found.`);
+                resolve({ status: 'SUCCESS', result: `Process was not running or already closed.` });
+                return;
+              }
               log(`Jarvis Error running command: ${err.message}`);
               resolve({ status: 'FAILED', result: err.message });
             } else {

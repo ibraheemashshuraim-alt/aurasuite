@@ -6,7 +6,7 @@ const ALLOWED_ACTION_TYPES = [
   'open_url', 'click', 'type', 'press_key', 
   'scroll', 'wait', 'screenshot', 'read_screen', 
   'browser_navigation',
-  'launch_app', 'open_app', 'write_file', 'read_file', 'open_file', 'run_command', 'type_desktop'
+  'launch_app', 'open_app', 'close_app', 'write_file', 'read_file', 'open_file', 'run_command', 'type_desktop'
 ];
 
 const PERMISSIONS = {
