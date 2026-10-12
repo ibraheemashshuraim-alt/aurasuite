@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { createClient } = require('@supabase/supabase-js');
 const puppeteer = require('puppeteer');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 
@@ -125,22 +125,20 @@ async function executeAction(action) {
       case 'launch_app':
       case 'open_app': {
         const app = (action.target || action.value || 'notepad').trim();
-        let cmd = `cmd /c start "" "${app}"`;
+        const args = [];
         if (action.value && action.value !== action.target) {
-          const resolved = resolveFilePath(action.value);
-          cmd = `cmd /c start "" "${app}" "${resolved}"`;
+          args.push(resolveFilePath(action.value));
         }
-        log(`Jarvis OS: Launching application: ${cmd}...`);
-        return new Promise((resolve) => {
-          exec(cmd, (err) => {
-            if (err) {
-              log(`Jarvis Error launching app: ${err.message}`);
-              resolve({ status: 'FAILED', result: err.message });
-            } else {
-              resolve({ status: 'SUCCESS', result: `Successfully launched ${app}` });
-            }
-          });
-        });
+        log(`Jarvis OS: Launching application: ${app} ${args.join(' ')}...`);
+        try {
+          const child = spawn(app, args, { detached: true, stdio: 'ignore', shell: true });
+          child.unref();
+          log(`Jarvis OS: Successfully launched application: ${app}`);
+          return { status: 'SUCCESS', result: `Successfully launched ${app}` };
+        } catch (err) {
+          log(`Jarvis Error launching app: ${err.message}`);
+          return { status: 'FAILED', result: err.message };
+        }
       }
 
       case 'write_file': {
