@@ -1,9 +1,9 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { createClient } = require('@supabase/supabase-js');
 const puppeteer = require('puppeteer');
 const { exec } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 const os = require('os');
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -304,8 +304,23 @@ const channel = supabase.channel('jarvis-channel')
       processTask(task.id, task.organization_id, task.assigned_agent_id);
     }
   )
-  .subscribe((status) => {
+  .subscribe(async (status) => {
     if (status === 'SUBSCRIBED') {
       log("Connected to AuraSuite Cloud successfully! Ready.");
+      try {
+        const { data: pendingTasks } = await supabase
+          .from('engine_tasks')
+          .select('id, organization_id, assigned_agent_id')
+          .eq('status', 'EXECUTING')
+          .order('created_at', { ascending: true });
+        if (pendingTasks && pendingTasks.length > 0) {
+          log(`Found ${pendingTasks.length} pending EXECUTING task(s). Executing now...`);
+          for (const t of pendingTasks) {
+            await processTask(t.id, t.organization_id, t.assigned_agent_id);
+          }
+        }
+      } catch (err) {
+        log(`Error fetching pending tasks: ${err.message}`);
+      }
     }
   });
