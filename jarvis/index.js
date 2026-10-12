@@ -2,7 +2,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { createClient } = require('@supabase/supabase-js');
 const puppeteer = require('puppeteer');
-const { exec, spawn } = require('child_process');
+const { exec } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 
@@ -32,6 +32,34 @@ log("Jarvis Full OS & Web Daemon starting up...");
 let browser = null;
 let page = null;
 
+async function ensureBrowser() {
+  if (browser) {
+    try {
+      const pages = await browser.pages();
+      if (pages.length === 0) {
+        browser = null;
+        page = null;
+      } else {
+        page = pages[pages.length - 1];
+      }
+    } catch (e) {
+      browser = null;
+      page = null;
+    }
+  }
+
+  if (!browser) {
+    log("Launching visible browser (Jarvis Mode)...");
+    browser = await puppeteer.launch({
+      headless: false,
+      defaultViewport: null,
+      args: ['--start-maximized']
+    });
+    const pages = await browser.pages();
+    page = pages.length > 0 ? pages[0] : await browser.newPage();
+  }
+}
+
 // Helper to resolve desktop and document paths
 function resolveFilePath(targetPath) {
   if (!targetPath) return path.join(os.homedir(), 'Desktop', `jarvis_file_${Date.now()}.txt`);
@@ -52,14 +80,8 @@ const BROWSER_ACTIONS = ['open_url', 'browser_navigation', 'click', 'type', 'pre
 async function executeAction(action) {
   // 1. WEB & BROWSER ACTIONS
   if (BROWSER_ACTIONS.includes(action.type)) {
-    if (!browser && action.type !== 'wait') {
-      log("Launching visible browser (Jarvis Mode)...");
-      browser = await puppeteer.launch({
-        headless: false,
-        defaultViewport: null,
-        args: ['--start-maximized']
-      });
-      page = await browser.newPage();
+    if (action.type !== 'wait') {
+      await ensureBrowser();
     }
 
     try {
@@ -128,21 +150,42 @@ async function executeAction(action) {
     switch (action.type) {
       case 'launch_app':
       case 'open_app': {
-        const app = (action.target || action.value || 'notepad').trim();
-        const args = [];
-        if (action.value && action.value !== action.target) {
-          args.push(resolveFilePath(action.value));
+        const rawApp = (action.target || action.value || 'notepad').trim();
+        const appMap = {
+          'calculator': 'calc',
+          'calc': 'calc',
+          'notepad': 'notepad',
+          'paint': 'mspaint',
+          'mspaint': 'mspaint',
+          'chrome': 'chrome',
+          'google chrome': 'chrome',
+          'edge': 'msedge',
+          'word': 'winword',
+          'excel': 'excel',
+          'powerpoint': 'powerpnt',
+          'explorer': 'explorer',
+          'file explorer': 'explorer'
+        };
+        const resolvedApp = appMap[rawApp.toLowerCase()] || rawApp;
+        
+        let fileArg = '';
+        if (action.value && action.value !== action.target && action.value !== rawApp) {
+          fileArg = `"${resolveFilePath(action.value)}"`;
         }
-        log(`Jarvis OS: Launching application: ${app} ${args.join(' ')}...`);
-        try {
-          const child = spawn(app, args, { detached: true, stdio: 'ignore', shell: true });
-          child.unref();
-          log(`Jarvis OS: Successfully launched application: ${app}`);
-          return { status: 'SUCCESS', result: `Successfully launched ${app}` };
-        } catch (err) {
-          log(`Jarvis Error launching app: ${err.message}`);
-          return { status: 'FAILED', result: err.message };
-        }
+        
+        log(`Jarvis OS: Launching application: ${resolvedApp} ${fileArg}...`);
+        return new Promise((resolve) => {
+          const cmd = fileArg ? `start "" "${resolvedApp}" ${fileArg}` : `start "" "${resolvedApp}"`;
+          exec(cmd, (err) => {
+            if (err) {
+              log(`Jarvis Error launching app: ${err.message}`);
+              resolve({ status: 'FAILED', result: err.message });
+            } else {
+              log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
+              resolve({ status: 'SUCCESS', result: `Successfully launched ${resolvedApp}` });
+            }
+          });
+        });
       }
 
       case 'close_app': {
@@ -176,7 +219,7 @@ async function executeAction(action) {
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(filePath, content, 'utf8');
-        log(`Jarvis OS: File created successfully on disk.`);
+        log(`Jarvis OS: File created successfully on disk: ${filePath}`);
         return { status: 'SUCCESS', result: `Successfully wrote file: ${filePath}` };
       }
 
@@ -289,24 +332,13 @@ async function processTask(taskId, orgId, agentId) {
     log("Task Failed.");
     await supabase.from('engine_tasks').update({ status: 'FAILED', error: 'Jarvis encountered an error.' }).eq('id', taskId);
     await supabase.from('engine_action_plans').update({ status: 'FAILED' }).eq('id', planRecord.id);
-    
-    // Close browser if it was opened
-    if (browser) {
-      try { await browser.close(); } catch(e) {}
-      browser = null;
-      page = null;
-    }
   } else {
     log("Task Completed Successfully!");
     const resultStr = "Jarvis Execution Completed:\n" + results.map(r => `- ${r.action.type}: ${r.result.result}`).join('\n');
     await supabase.from('engine_action_plans').update({ status: 'COMPLETED' }).eq('id', planRecord.id);
     
-    // Close browser cleanly if web tasks were run
-    if (browser) {
-      try { await browser.close(); } catch(e) {}
-      browser = null;
-      page = null;
-    }
+    // NOTE: Keep the browser OPEN so user can see it! 
+    // Do NOT call browser.close() here!
 
     log("Updating task to VERIFYING...");
     await supabase.from('engine_tasks').update({ status: 'VERIFYING', result: resultStr }).eq('id', taskId);
@@ -318,7 +350,7 @@ async function processTask(taskId, orgId, agentId) {
       await supabase.from('engine_execution_logs').insert({
         task_id: taskId, agent_id: agentId, organization_id: orgId, event: 'jarvis_completed', message: 'Jarvis finished execution.'
       });
-    }, 1500);
+    }, 1200);
   }
 }
 
