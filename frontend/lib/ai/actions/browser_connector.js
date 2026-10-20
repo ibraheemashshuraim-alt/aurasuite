@@ -1,7 +1,6 @@
-﻿/**
+/**
  * Phase 3B: Real Browser Connector using Puppeteer
  */
-import puppeteer from 'puppeteer';
 
 const BLOCKED_DOMAINS = ['localhost', '127.0.0.1', 'internal.network'];
 
@@ -13,6 +12,12 @@ export class BrowserConnector {
   }
 
   async connect() {
+    const pkg = 'puppeteer';
+    const puppeteerModule = await import(/* webpackIgnore: true */ pkg).catch(() => null);
+    if (!puppeteerModule) {
+      throw new Error("Puppeteer is executed via Jarvis local daemon on client machine.");
+    }
+    const puppeteer = puppeteerModule.default || puppeteerModule;
     this.browser = await puppeteer.launch({
       headless: "new",
       args: [

@@ -21,6 +21,9 @@ export default function AgentTown({ currentUser }) {
   const [voiceInput, setVoiceInput] = useState('');
   const [isDispatching, setIsDispatching] = useState(false);
   const [activeTaskBanner, setActiveTaskBanner] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [recognitionInstance, setRecognitionInstance] = useState(null);
   
   // Phase 2A Engine States
   const [engineAgents, setEngineAgents] = useState([]);
@@ -166,6 +169,9 @@ export default function AgentTown({ currentUser }) {
     const userName = currentUser?.full_name || 'Admin';
 
     try {
+      // Speech feedback
+      speakText(`Order received: ${promptText.slice(0, 40)}`);
+
       // Phase 2A: Create Task in Task Engine
       const tRes = await createEngineTask({
         organization_id: orgId,
@@ -195,6 +201,75 @@ export default function AgentTown({ currentUser }) {
       setActiveTaskBanner(`Dispatch notice: ${err.message}`);
     } finally {
       setIsDispatching(false);
+    }
+  };
+
+  // Browser Text-to-Speech (Jarvis Voice)
+  const speakText = (text) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.05;
+      utterance.pitch = 0.95;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn("Speech synthesis error", e);
+    }
+  };
+
+  // Browser Speech-to-Text (Microphone input)
+  const toggleListening = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice recognition is not supported in this browser. Please use Chrome or Edge.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionInstance?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US'; // Supports English / Roman Urdu commands
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setActiveTaskBanner('Listening... Speak now (e.g. Open calculator / Search for AI)');
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          setVoiceInput(transcript);
+          setActiveTaskBanner(`Heard: "${transcript}"`);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+        setActiveTaskBanner(`Voice error: ${event.error}`);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      setRecognitionInstance(recognition);
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to start speech recognition:", err);
+      setIsListening(false);
     }
   };
 
@@ -494,11 +569,21 @@ export default function AgentTown({ currentUser }) {
               </div>
           </div>
 
-          <p className="text-xs text-center text-gray-300 mb-8 px-4 font-medium leading-relaxed">
-              Appka personal AI assistant. Bataye main kaise madad kar sakta hoon?
-          </p>
+          <div className="text-center mb-6 px-4">
+            <p className="text-xs text-gray-300 font-medium leading-relaxed">
+              {isListening 
+                ? "🎙️ سن رہا ہوں... بولیے، میں آپ کی بات سمجھ رہا ہوں۔" 
+                : isSpeaking
+                ? "🔊 جواب دے رہا ہوں..."
+                : "آپ کا پرسنل AI اسسٹنٹ۔ بتائیے میں کیا کروں؟"}
+            </p>
+            <div className="mt-1 flex items-center justify-center gap-1.5 text-[10px] text-purple-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              <span>Jarvis PC Daemon: Online</span>
+            </div>
+          </div>
 
-          <div className="flex items-center justify-center gap-1 h-12 w-full px-8">
+          <div className={`flex items-center justify-center gap-1 h-12 w-full px-8 transition-opacity duration-300 ${isListening || isSpeaking ? 'opacity-100 scale-110' : 'opacity-70'}`}>
               <div className="w-2 h-3 bg-gradient-to-t from-pink-500 to-purple-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(236,72,153,0.8)]"></div>
               <div className="w-2 h-6 bg-gradient-to-t from-purple-500 to-indigo-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(139,92,246,0.8)]" style={{ animationDelay: '0.1s' }}></div>
               <div className="w-2 h-10 bg-gradient-to-t from-indigo-500 to-cyan-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(99,102,241,0.8)]" style={{ animationDelay: '0.2s' }}></div>
@@ -518,11 +603,21 @@ export default function AgentTown({ currentUser }) {
                 placeholder="Type to Assistant... (e.g. Research AI SaaS trends)" 
                 className="bg-transparent border-none outline-none text-xs text-white flex-1 px-2 placeholder-purple-500" 
               />
-              <button type="button" className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20"><Keyboard size={14} /></button>
-              <button type="button" onClick={() => alert("Voice assistant module will be integrated in Phase 5!")} className="text-purple-400 hover:text-white bg-[#0f0a1b] p-1.5 rounded-lg border border-purple-500/20 cursor-pointer"><Mic size={14} /></button>
-              <button type="submit" disabled={isDispatching} className="text-purple-100 hover:text-white bg-purple-600 p-1.5 rounded-lg border border-purple-500 cursor-pointer shadow-lg">
+              <button 
+                type="button" 
+                onClick={toggleListening} 
+                title={isListening ? "Listening... click to stop" : "Click to speak"}
+                className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                  isListening 
+                    ? "bg-red-500/30 text-red-300 border-red-500 animate-pulse shadow-[0_0_12px_rgba(239,68,68,0.5)]" 
+                    : "bg-[#0f0a1b] text-purple-400 hover:text-white border-purple-500/20 hover:border-purple-500/40"
+                }`}
+              >
+                <Mic size={14} className={isListening ? "text-red-400" : ""} />
+              </button>
+              <button type="submit" disabled={isDispatching} className="text-purple-100 hover:text-white bg-purple-600 hover:bg-purple-500 p-1.5 rounded-lg border border-purple-500 cursor-pointer shadow-lg transition-all">
                   <Send size={14} />
-                </button>
+              </button>
           </div>
         </form>
       </div>
