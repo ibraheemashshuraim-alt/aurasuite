@@ -142,11 +142,11 @@ export default function AgentTown({ currentUser }) {
 
 
   // Handle voice assistant prompt submission or direct Dispatch Task click
-  const handleAssistantSubmit = async (e) => {
+  const handleAssistantSubmit = async (e, promptOverride = null) => {
     e?.preventDefault();
     if (isDispatching) return;
 
-    const promptText = voiceInput.trim() || 'Analyze market trends and draft initial growth strategy';
+    const promptText = (typeof promptOverride === 'string' ? promptOverride : voiceInput).trim() || 'Analyze market trends and draft initial growth strategy';
     setVoiceInput('');
     setIsDispatching(true);
     setActiveTaskBanner(`Dispatching: "${promptText.slice(0, 42)}..." to Orchestrator...`);
@@ -221,13 +221,25 @@ export default function AgentTown({ currentUser }) {
   const speakText = (text) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     try {
-      window.speechSynthesis.cancel();
+      window.speechSynthesis.cancel(); // Stop any pending speech
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.05;
-      utterance.pitch = 0.95;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      
+      // Pick best English voice available
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        const preferred = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('David') || v.name.includes('Zira')));
+        if (preferred) utterance.voice = preferred;
+      }
+
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
+      utterance.onerror = (e) => {
+        console.warn("Speech error:", e);
+        setIsSpeaking(false);
+      };
+      
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.warn("Speech synthesis error", e);
@@ -250,14 +262,20 @@ export default function AgentTown({ currentUser }) {
     }
 
     try {
+      // Warm up synthesis on user click so browser audio permission is unlocked
+      if (window.speechSynthesis) {
+        const warmUp = new SpeechSynthesisUtterance('');
+        window.speechSynthesis.speak(warmUp);
+      }
+
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = 'en-US'; // Supports English / Roman Urdu commands
+      recognition.lang = 'en-US';
 
       recognition.onstart = () => {
         setIsListening(true);
-        setActiveTaskBanner('Listening... Speak now (e.g. Open calculator / Search for AI)');
+        setActiveTaskBanner('Listening... Speak now (e.g. Salam Jarvis, open calculator)');
       };
 
       recognition.onresult = (event) => {
@@ -265,6 +283,10 @@ export default function AgentTown({ currentUser }) {
         if (transcript) {
           setVoiceInput(transcript);
           setActiveTaskBanner(`Heard: "${transcript}"`);
+          // Automatically submit and process the prompt so user doesn't have to click Send!
+          setTimeout(() => {
+            handleAssistantSubmit(null, transcript);
+          }, 400);
         }
       };
 
