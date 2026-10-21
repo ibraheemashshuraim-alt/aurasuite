@@ -24,6 +24,7 @@ export default function AgentTown({ currentUser }) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [recognitionInstance, setRecognitionInstance] = useState(null);
+  const [lastAssistantResponse, setLastAssistantResponse] = useState('');
   
   // Phase 2A Engine States
   const [engineAgents, setEngineAgents] = useState([]);
@@ -120,9 +121,21 @@ export default function AgentTown({ currentUser }) {
       } else {
         // If it's a finished task, keep them idle unless we want a specific message
         if (task.status === 'FAILED') newStates[charName] = { state: 'error', thought: 'Failed: ' + (task.error ? task.error.slice(0, 15) : 'Error') };
-        else if (task.status === 'VERIFIED') newStates[charName] = { state: 'idle', thought: 'Ready for work' };
+        else if (task.status === 'VERIFIED' || task.status === 'COMPLETED') {
+          newStates[charName] = { state: 'idle', thought: 'Task Completed' };
+        }
       }
     });
+
+    // Detect newest finished task to answer the user via voice
+    const latestFinished = sorted.filter(t => ['COMPLETED', 'VERIFIED'].includes(t.status) && t.result).pop();
+    if (latestFinished && latestFinished.result && latestFinished.id !== window.__lastSpokenTaskId) {
+      window.__lastSpokenTaskId = latestFinished.id;
+      const cleanAnswer = latestFinished.result.replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '').trim();
+      const speakTextPart = cleanAnswer.slice(0, 150);
+      setLastAssistantResponse(cleanAnswer);
+      speakText(speakTextPart || "Aapka task complete ho gaya hai.");
+    }
 
     setAgentStates(newStates);
   }, [engineTasks]);
@@ -569,12 +582,14 @@ export default function AgentTown({ currentUser }) {
               </div>
           </div>
 
-          <div className="text-center mb-6 px-4">
+          <div className="text-center mb-6 px-4 w-full">
             <p className="text-xs text-gray-300 font-medium leading-relaxed">
               {isListening 
                 ? "🎙️ سن رہا ہوں... بولیے، میں آپ کی بات سمجھ رہا ہوں۔" 
                 : isSpeaking
                 ? "🔊 جواب دے رہا ہوں..."
+                : lastAssistantResponse
+                ? lastAssistantResponse.slice(0, 160)
                 : "آپ کا پرسنل AI اسسٹنٹ۔ بتائیے میں کیا کروں؟"}
             </p>
             <div className="mt-1 flex items-center justify-center gap-1.5 text-[10px] text-purple-400">
