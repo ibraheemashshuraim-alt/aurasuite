@@ -127,12 +127,12 @@ export default function AgentTown({ currentUser }) {
       }
     });
 
-    // Detect newest finished task to answer the user via voice
-    const latestFinished = sorted.filter(t => ['COMPLETED', 'VERIFIED'].includes(t.status) && t.result).pop();
+    // Detect newest finished task to answer the user via voice (supports COMPLETED, VERIFIED and VERIFYING)
+    const latestFinished = sorted.filter(t => ['COMPLETED', 'VERIFIED', 'VERIFYING'].includes(t.status) && t.result).pop();
     if (latestFinished && latestFinished.result && latestFinished.id !== window.__lastSpokenTaskId) {
       window.__lastSpokenTaskId = latestFinished.id;
       const cleanAnswer = latestFinished.result.replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '').trim();
-      const speakTextPart = cleanAnswer.slice(0, 150);
+      const speakTextPart = cleanAnswer.slice(0, 180);
       setLastAssistantResponse(cleanAnswer);
       speakText(speakTextPart || "Aapka task complete ho gaya hai.");
     }
@@ -198,7 +198,13 @@ export default function AgentTown({ currentUser }) {
       
       // Phase 2B: Trigger Real AI Execution (Async, does not block UI)
       if (tRes && tRes.task && tRes.task.id) {
-         executeEngineTaskClient(tRes.task.id).catch(e => console.error("Real AI Execution failed", e));
+         executeEngineTaskClient(tRes.task.id).then(res => {
+            if (res && res.result) {
+              const cleanAnswer = res.result.replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '').trim();
+              setLastAssistantResponse(cleanAnswer);
+              speakText(cleanAnswer.slice(0, 200) || "Task mukammal ho gaya hai.");
+            }
+         }).catch(e => console.error("Real AI Execution failed", e));
       }
       
       // Phase 1 Legacy pipeline trigger (keeps UI animating!)
