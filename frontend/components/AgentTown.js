@@ -223,32 +223,64 @@ export default function AgentTown({ currentUser }) {
     }
   };
 
-  // Browser Text-to-Speech (Jarvis Voice)
-  const speakText = (text) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  // Natural AI Voice for Jarvis (/api/tts) with fallback
+  const speakText = async (text) => {
+    if (typeof window === 'undefined') return;
+    if (!text || typeof text !== 'string') return;
+
     try {
-      window.speechSynthesis.cancel(); // Stop any pending speech
+      setIsSpeaking(true);
+
+      // Call our server-side Natural Neural Voice generator
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        audio.onended = () => {
+          setIsSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
+        };
+        audio.onerror = () => {
+          setIsSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
+        };
+        await audio.play();
+        return;
+      }
+    } catch (err) {
+      console.warn("Natural TTS endpoint fallback to browser speech:", err);
+    }
+
+    // Fallback: browser speech synthesis
+    try {
+      if (!window.speechSynthesis) {
+        setIsSpeaking(false);
+        return;
+      }
+      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
-      
-      // Pick best English voice available
+
       const voices = window.speechSynthesis.getVoices();
       if (voices.length > 0) {
-        const preferred = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('David') || v.name.includes('Zira')));
+        const preferred = voices.find(v => (v.lang.includes('ur') || v.lang.includes('hi')) || (v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('David'))));
         if (preferred) utterance.voice = preferred;
       }
 
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = (e) => {
-        console.warn("Speech error:", e);
-        setIsSpeaking(false);
-      };
-      
+      utterance.onerror = () => setIsSpeaking(false);
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.warn("Speech synthesis error", e);
+      setIsSpeaking(false);
     }
   };
 
