@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request) {
   try {
-    const { text, lang = 'ur' } = await request.json();
+    const { text, lang } = await request.json();
     if (!text || typeof text !== 'string') {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
     }
 
-    // Clean text: remove markdown, actions, emojis
-    const cleanText = text
+    // Clean text: remove code blocks, JSON, actions, markdown symbols
+    let cleanText = text
+      .replace(/\{[\s\S]*?\}/g, ' ') // remove JSON objects
       .replace(/[*_#`~[\]]/g, ' ')
       .replace(/https?:\/\/\S+/g, ' ')
       .replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '')
@@ -19,24 +20,33 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Clean text is empty' }, { status: 400 });
     }
 
-    // Truncate to safe length for natural response
-    const speechChunk = cleanText.slice(0, 200);
+    // Take clean spoken portion (up to 250 chars)
+    const speechChunk = cleanText.slice(0, 250);
 
-    // Detect if text is mostly English or Urdu/Roman Urdu
-    // If it has Urdu characters or Roman Urdu keywords (kya, hai, theek, salam, shukriya, etc.)
+    // Language & Voice detection:
+    // 1. Check Urdu script characters
     const isUrduScript = /[\u0600-\u06FF]/.test(speechChunk);
-    const romanUrduWords = ['salam', 'kya', 'hai', 'hain', 'theek', 'hoon', 'madad', 'aap', 'mera', 'kaise', 'shukriya', 'bilkul'];
+
+    // 2. Common Roman Urdu markers
+    const romanUrduWords = [
+      'salam', 'kya', 'hai', 'hain', 'theek', 'hoon', 'madad', 'aap', 'mera', 
+      'kaise', 'shukriya', 'bilkul', 'bhai', 'acha', 'kar', 'raha', 'rahe', 'bataiye',
+      'waise', 'aur', 'nahi', 'hoga', 'gaya', 'jee', 'shukriya'
+    ];
     const lower = speechChunk.toLowerCase();
-    const hasRomanUrdu = romanUrduWords.some(w => lower.includes(w));
+    const isRomanUrdu = romanUrduWords.some(w => lower.split(/\s+/).includes(w) || lower.includes(' ' + w) || lower.startsWith(w));
 
     let chosenLang = lang;
-    if (isUrduScript) {
-      chosenLang = 'ur';
-    } else if (hasRomanUrdu) {
-      // Indian/Pakistani neural voice engine reads Roman Urdu perfectly in 'hi' or 'ur'
-      chosenLang = 'hi';
-    } else {
-      chosenLang = 'en';
+    if (!chosenLang) {
+      if (isUrduScript) {
+        chosenLang = 'ur';
+      } else if (isRomanUrdu) {
+        // 'ur' for native Urdu pronunciation
+        chosenLang = 'ur';
+      } else {
+        // British English (The iconic Jarvis voice accent)
+        chosenLang = 'en-GB';
+      }
     }
 
     const encoded = encodeURIComponent(speechChunk);

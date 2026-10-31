@@ -127,14 +127,19 @@ export default function AgentTown({ currentUser }) {
       }
     });
 
-    // Detect newest finished task to answer the user via voice (supports COMPLETED, VERIFIED and VERIFYING)
-    const latestFinished = sorted.filter(t => ['COMPLETED', 'VERIFIED', 'VERIFYING'].includes(t.status) && t.result).pop();
-    if (latestFinished && latestFinished.result && latestFinished.id !== window.__lastSpokenTaskId) {
+    // Detect newest finished task to answer the user via voice ONLY if initiated during this session
+    const latestFinished = sorted.filter(t => ['COMPLETED', 'VERIFIED'].includes(t.status) && t.result).pop();
+    if (latestFinished && latestFinished.result && window.__userInitiatedTaskIds?.has(latestFinished.id) && latestFinished.id !== window.__lastSpokenTaskId) {
       window.__lastSpokenTaskId = latestFinished.id;
-      const cleanAnswer = latestFinished.result.replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '').trim();
-      const speakTextPart = cleanAnswer.slice(0, 180);
+      const cleanAnswer = latestFinished.result
+        .replace(/\{[\s\S]*?\}/g, '')
+        .replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '')
+        .trim();
+      const speakTextPart = cleanAnswer.slice(0, 200);
       setLastAssistantResponse(cleanAnswer);
-      speakText(speakTextPart || "Aapka task complete ho gaya hai.");
+      if (speakTextPart) {
+        speakText(speakTextPart);
+      }
     }
 
     setAgentStates(newStates);
@@ -182,9 +187,6 @@ export default function AgentTown({ currentUser }) {
     const userName = currentUser?.full_name || 'Admin';
 
     try {
-      // Speech feedback
-      speakText(`Order received: ${promptText.slice(0, 40)}`);
-
       // Phase 2A: Create Task in Task Engine
       const tRes = await createEngineTask({
         organization_id: orgId,
@@ -194,15 +196,27 @@ export default function AgentTown({ currentUser }) {
         priority: 'MEDIUM',
         created_by: currentUser?.id
       });
-      setActiveTaskBanner('Task dispatched to Phase 2A Engine! Status: PENDING');
+
+      if (tRes && tRes.task && tRes.task.id) {
+         if (!window.__userInitiatedTaskIds) window.__userInitiatedTaskIds = new Set();
+         window.__userInitiatedTaskIds.add(tRes.task.id);
+      }
+
+      setActiveTaskBanner('Processing request...');
       
       // Phase 2B: Trigger Real AI Execution (Async, does not block UI)
       if (tRes && tRes.task && tRes.task.id) {
          executeEngineTaskClient(tRes.task.id).then(res => {
             if (res && res.result) {
-              const cleanAnswer = res.result.replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '').trim();
+              const cleanAnswer = res.result
+                .replace(/\{[\s\S]*?\}/g, '')
+                .replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '')
+                .trim();
               setLastAssistantResponse(cleanAnswer);
-              speakText(cleanAnswer.slice(0, 200) || "Task mukammal ho gaya hai.");
+              if (cleanAnswer && window.__lastSpokenTaskId !== tRes.task.id) {
+                window.__lastSpokenTaskId = tRes.task.id;
+                speakText(cleanAnswer.slice(0, 250));
+              }
             }
          }).catch(e => console.error("Real AI Execution failed", e));
       }
