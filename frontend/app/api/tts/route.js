@@ -20,18 +20,17 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Clean text is empty' }, { status: 400 });
     }
 
-    // Take clean spoken portion (up to 250 chars)
-    const speechChunk = cleanText.slice(0, 250);
+    // Take clean spoken portion (up to 200 chars for instant natural delivery)
+    let speechChunk = cleanText.slice(0, 200);
 
     // Language & Voice detection:
-    // 1. Check Urdu script characters
     const isUrduScript = /[\u0600-\u06FF]/.test(speechChunk);
 
-    // 2. Common Roman Urdu markers
     const romanUrduWords = [
       'salam', 'kya', 'hai', 'hain', 'theek', 'hoon', 'madad', 'aap', 'mera', 
       'kaise', 'shukriya', 'bilkul', 'bhai', 'acha', 'kar', 'raha', 'rahe', 'bataiye',
-      'waise', 'aur', 'nahi', 'hoga', 'gaya', 'jee', 'shukriya'
+      'waise', 'aur', 'nahi', 'hoga', 'gaya', 'jee', 'hum', 'tum', 'sab', 'walekum', 'walaikum',
+      'assalam', 'farmaye', 'kaam', 'shuru', 'karein', 'aaj'
     ];
     const lower = speechChunk.toLowerCase();
     const isRomanUrdu = romanUrduWords.some(w => lower.split(/\s+/).includes(w) || lower.includes(' ' + w) || lower.startsWith(w));
@@ -39,12 +38,57 @@ export async function POST(request) {
     let chosenLang = lang;
     if (!chosenLang) {
       if (isUrduScript) {
+        // Pure Urdu script -> Google Urdu neural engine (sounds completely natural and native)
         chosenLang = 'ur';
       } else if (isRomanUrdu) {
-        // 'ur' for native Urdu pronunciation
+        // For Roman Urdu, convert key conversational words to Urdu script so Google's Urdu engine pronounces them natively!
+        const romanMap = {
+          'walaikum': 'وعلیکم',
+          'walekum': 'وعلیکم',
+          'assalam': 'السلام',
+          'assalamu': 'السلام',
+          'salam': 'سلام',
+          'main': 'میں',
+          'mein': 'میں',
+          'bilkul': 'بالکل',
+          'theek': 'ٹھیک',
+          'hoon': 'ہوں',
+          'hun': 'ہوں',
+          'aap': 'آپ',
+          'ap': 'آپ',
+          'bataiye': 'بتائیے',
+          'batao': 'بتاؤ',
+          'kaise': 'کیسے',
+          'kaisi': 'کیسی',
+          'kaisa': 'کیسا',
+          'hain': 'ہیں',
+          'hai': 'ہے',
+          'aaj': 'آج',
+          'kya': 'کیا',
+          'madad': 'مدد',
+          'kar': 'کر',
+          'sakta': 'سکتا',
+          'sakti': 'سکتی',
+          'shukriya': 'شکریہ',
+          'jee': 'جی',
+          'ji': 'جی',
+          'haan': 'ہاں',
+          'nahin': 'نہیں',
+          'nahi': 'نہیں',
+          'jarvis': 'جاروس',
+          'hukum': 'حکم',
+          'farmaye': 'فرمائیے',
+          'bhai': 'بھائی',
+          'sab': 'سب',
+          'theek-thaak': 'ٹھیک ٹھاک'
+        };
+        speechChunk = speechChunk.split(/\b/).map(word => {
+          const l = word.toLowerCase();
+          return romanMap[l] || word;
+        }).join('');
         chosenLang = 'ur';
       } else {
-        // British English (The iconic Jarvis voice accent)
+        // Pure English commands -> Iconic British Jarvis accent
         chosenLang = 'en-GB';
       }
     }

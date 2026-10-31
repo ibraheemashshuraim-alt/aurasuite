@@ -202,9 +202,9 @@ export default function AgentTown({ currentUser }) {
          window.__userInitiatedTaskIds.add(tRes.task.id);
       }
 
-      setActiveTaskBanner('Processing request...');
+      setActiveTaskBanner('Jarvis processing request...');
       
-      // Phase 2B: Trigger Real AI Execution (Async, does not block UI)
+      // Phase 2B: Trigger Real AI Execution (Non-blocking & Instant)
       if (tRes && tRes.task && tRes.task.id) {
          executeEngineTaskClient(tRes.task.id).then(res => {
             if (res && res.result) {
@@ -221,13 +221,13 @@ export default function AgentTown({ currentUser }) {
          }).catch(e => console.error("Real AI Execution failed", e));
       }
       
-      // Phase 1 Legacy pipeline trigger (keeps UI animating!)
-      await dispatchAgentTask({
+      // Keep UI animating asynchronously without blocking the user
+      dispatchAgentTask({
         orgId,
         agentCodeName: 'researcher', // Visual mapping
         title: promptText,
         inputPayload: { prompt: promptText, initiated_by: userName },
-      });
+      }).catch(err => console.warn('Non-critical agent animation sync:', err));
       
     } catch (err) {
       console.error('Failed to dispatch agent task:', err);

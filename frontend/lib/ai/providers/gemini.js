@@ -1,10 +1,16 @@
 /**
  * Google Gemini Provider Client
  */
-export async function generateGemini({ apiKey, model = 'gemini-1.5-flash', systemPrompt = '', prompt = '', temperature = 0.7, maxTokens, jsonMode = false }) {
+export async function generateGemini({ apiKey, model = 'gemini-flash-lite-latest', systemPrompt = '', prompt = '', temperature = 0.7, maxTokens, jsonMode = false }) {
   if (!apiKey) throw new Error('Missing API key for Gemini');
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  // Ensure supported model name (fallback deprecated 1.5 names to lightning-fast flash-lite)
+  let resolvedModel = model;
+  if (!resolvedModel || resolvedModel.includes('1.5') || resolvedModel.includes('gemini-pro')) {
+    resolvedModel = 'gemini-flash-lite-latest';
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [
