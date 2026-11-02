@@ -134,30 +134,8 @@ export async function POST(request) {
       }
     }
 
-    // Fallback: Google Translate TTS
-    const isUrduScript = /[\u0600-\u06FF]/.test(speechChunk);
-    let chosenLang = lang || (isUrduScript ? 'ur' : 'en-GB');
-    const encoded = encodeURIComponent(speechChunk);
-    const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=${chosenLang}&client=tw-ob`;
-
-    const res = await fetch(googleTtsUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
-    });
-
-    if (res.ok) {
-      const audioBuffer = await res.arrayBuffer();
-      return new Response(audioBuffer, {
-        status: 200,
-        headers: {
-          'Content-Type': 'audio/mpeg',
-          'Cache-Control': 'public, max-age=86400, s-maxage=86400'
-        }
-      });
-    }
-
-    return NextResponse.json({ error: 'Failed to synthesize voice' }, { status: 500 });
+    // Never use deprecated low-quality translate fallback!
+    return NextResponse.json({ error: 'Jarvis neural engine is currently busy. Please retry in a moment.' }, { status: 503 });
   } catch (err) {
     console.error('TTS API error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

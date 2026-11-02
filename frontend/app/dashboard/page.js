@@ -264,7 +264,12 @@ function DigitalCardVisual({ cardData }) {
           <div className="text-[8px] uppercase font-bold text-white/40 mb-0.5">Card Number</div>
           <div className="font-mono text-sm text-white/90 tracking-widest">{card_number}</div>
         </div>
-        <div className="text-[10px] font-bold text-white/30 tracking-widest">VALIDATED</div>
+        <div className="flex flex-col items-end">
+          <div className="text-[8px] uppercase font-bold text-purple-300/80 mb-0.5">AI PIN</div>
+          <div className="bg-black/50 border border-purple-500/40 px-2 py-0.5 rounded text-[11px] font-mono font-bold text-purple-200 tracking-wider">
+            7860
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -3403,9 +3408,9 @@ export default function AppContainer() {
           const data = await res.json();
           if (!data.success || data.message?.includes('skipped')) {
             console.warn('Email skipped or failed:', data);
-            setCustomAlert(`Approval successful, but Email was NOT sent.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}`);
+            setCustomAlert(`Approval successful, but Email was NOT sent.\n\nPlease share these credentials manually:\nLogin: aurasuite-kappa.vercel.app/login\nCard: ${cardNumber}\nUsername: ${username}\nPassword: ${tempPassword}\nAI Security PIN: 7860`);
           } else {
-            addNotification(`Approved successfully and Email sent to ${org.email}!`, 'success');
+            addNotification(`Approved successfully and Email sent to ${org.email}! AI Security PIN: 7860`, 'success');
           }
         } catch (e) {
           console.error("Email might have failed", e);

@@ -141,6 +141,13 @@ export async function POST(request) {
                 <td style="font-size: 17px; font-weight: 900; color: ${theme.cardText};">${username}</td>
                 <td style="font-size: 17px; font-weight: 900; color: ${theme.cardText};">${tempPassword}</td>
               </tr>
+              <tr>
+                <td colspan="2" style="padding-top: 8px;">
+                  <div style="display: inline-block; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 4px 12px; font-size: 11px; font-weight: 800; color: ${theme.cardText};">
+                    ⚡ AI SECURITY PIN: <span style="letter-spacing: 3px; font-size: 13px;">7860</span>
+                  </div>
+                </td>
+              </tr>
             </table>
             <div style="height: 2px; background: ${theme.cardPattern}; margin-top: 24px;"></div>
           </div>
@@ -159,6 +166,10 @@ export async function POST(request) {
             <tr>
               <td style="padding: 8px 0; color: ${theme.accent};">Temp Password:</td>
               <td style="padding: 8px 0; font-weight: bold; color: #facc15;">${tempPassword}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: ${theme.accent};">AI Security PIN:</td>
+              <td style="padding: 8px 0; font-weight: bold; color: #c084fc; letter-spacing: 2px;">7860</td>
             </tr>
           </table>
         </div>
