@@ -187,48 +187,58 @@ export default function AgentTown({ currentUser }) {
     const userName = currentUser?.full_name || 'Admin';
 
     try {
-      // Phase 2A: Create Task in Task Engine
-      const tRes = await createEngineTask({
-        organization_id: orgId,
-        title: promptText.slice(0, 50),
-        prompt: promptText,
-        assigned_agent_id: selectedAgentId || null,
-        priority: 'MEDIUM',
-        created_by: currentUser?.id
+      setActiveTaskBanner('Jarvis processing request...');
+
+      // Fast Assistant Route: Instant sub-second reply & authentic Jarvis speech
+      fetch('/api/assistant/fast-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptText, orgId, userName })
+      }).then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        if (data.text) {
+          const cleanAnswer = data.text
+            .replace(/\{[\s\S]*?\}/g, '')
+            .replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '')
+            .trim();
+          setLastAssistantResponse(cleanAnswer);
+          setActiveTaskBanner(cleanAnswer.slice(0, 60));
+          if (cleanAnswer) {
+            speakText(cleanAnswer.slice(0, 220));
+          }
+        }
+      }).catch(err => {
+        console.warn('Fast chat fallback to standard engine:', err);
+        // Fallback to standard engine if fast chat fails
+        createEngineTask({
+          organization_id: orgId,
+          title: promptText.slice(0, 50),
+          prompt: promptText,
+          assigned_agent_id: selectedAgentId || null,
+          priority: 'MEDIUM',
+          created_by: currentUser?.id
+        }).then(tRes => {
+          if (tRes?.task?.id) {
+            executeEngineTaskClient(tRes.task.id).then(r => {
+              if (r?.result) {
+                const cAns = r.result.replace(/\{[\s\S]*?\}/g, '').trim();
+                setLastAssistantResponse(cAns);
+                speakText(cAns.slice(0, 220));
+              }
+            });
+          }
+        });
       });
 
-      if (tRes && tRes.task && tRes.task.id) {
-         if (!window.__userInitiatedTaskIds) window.__userInitiatedTaskIds = new Set();
-         window.__userInitiatedTaskIds.add(tRes.task.id);
-      }
-
-      setActiveTaskBanner('Jarvis processing request...');
-      
-      // Phase 2B: Trigger Real AI Execution (Non-blocking & Instant)
-      if (tRes && tRes.task && tRes.task.id) {
-         executeEngineTaskClient(tRes.task.id).then(res => {
-            if (res && res.result) {
-              const cleanAnswer = res.result
-                .replace(/\{[\s\S]*?\}/g, '')
-                .replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '')
-                .trim();
-              setLastAssistantResponse(cleanAnswer);
-              if (cleanAnswer && window.__lastSpokenTaskId !== tRes.task.id) {
-                window.__lastSpokenTaskId = tRes.task.id;
-                speakText(cleanAnswer.slice(0, 250));
-              }
-            }
-         }).catch(e => console.error("Real AI Execution failed", e));
-      }
-      
-      // Keep UI animating asynchronously without blocking the user
+      // Keep visual office animation active asynchronously
       dispatchAgentTask({
         orgId,
-        agentCodeName: 'researcher', // Visual mapping
+        agentCodeName: 'researcher',
         title: promptText,
         inputPayload: { prompt: promptText, initiated_by: userName },
-      }).catch(err => console.warn('Non-critical agent animation sync:', err));
-      
+      }).catch(() => null);
+
     } catch (err) {
       console.error('Failed to dispatch agent task:', err);
       setActiveTaskBanner(`Dispatch notice: ${err.message}`);
