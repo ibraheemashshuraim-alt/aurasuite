@@ -59,10 +59,12 @@ function pcmToWav(pcmBase64, sampleRate = 24000, numChannels = 1, bitDepth = 16)
 
 export async function POST(request) {
   try {
-    const { text, lang } = await request.json();
+    const { text, lang, voice, gender } = await request.json();
     if (!text || typeof text !== 'string') {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
     }
+
+    const selectedVoice = voice || (gender === 'female' ? 'Aoede' : 'Charon');
 
     // Clean text: remove code blocks, JSON, actions, markdown symbols
     let cleanText = text
@@ -81,9 +83,7 @@ export async function POST(request) {
     const orgId = 'org-aurasuite-superadmin';
     const apiKey = await getGeminiApiKey(orgId);
 
-    // Primary: Google Gemini Studio Charon Voice (Authentic Jarvis Engine)
-    // We pool multiple models (gemini-3.8-flash-lite-tts, gemini-3.1-flash-tts-preview, gemini-3.8-flash-tts)
-    // so if one hits rate limits, the next one instantly fulfills the authentic Jarvis voice!
+    // Primary: Google Gemini Studio Neural Voice Pool (Charon / Aoede)
     if (apiKey) {
       const ttsModels = [
         'gemini-3.8-flash-lite-tts',
@@ -104,7 +104,7 @@ export async function POST(request) {
                 speechConfig: {
                   voiceConfig: {
                     prebuiltVoiceConfig: {
-                      voiceName: 'Charon' // Iconic British AI assistant voice
+                      voiceName: selectedVoice
                     }
                   }
                 }

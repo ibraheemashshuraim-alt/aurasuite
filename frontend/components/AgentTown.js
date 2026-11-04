@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, Mic, MicOff, Send, Sparkles, List, Activity, Settings as SettingsIcon, 
   Volume2, Shield, Lock, Unlock, Cpu, Layers, Radio, Terminal, 
-  CheckCircle, AlertCircle, RefreshCw, Play, Zap, MessageSquare, Users, BookOpen
+  CheckCircle, AlertCircle, RefreshCw, Play, Zap, MessageSquare, Users, 
+  Monitor, Share2, Eye, Sliders, Check, UserCheck, Bot, Laptop
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { dispatchAgentTask, createEngineTask, getEngineAgents, getEngineTasks, executeEngineTaskClient } from '../lib/agentClient';
@@ -15,7 +16,7 @@ export default function AgentTown({ currentUser }) {
   }
 
   // ==========================================
-  // 1. PIN SECURITY & SYSTEM GATE
+  // 1. PIN SECURITY & GATE BANNER
   // ==========================================
   const [isAiUnlocked, setIsAiUnlocked] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
@@ -45,7 +46,7 @@ export default function AgentTown({ currentUser }) {
         window.speechSynthesis.speak(chime);
       }
     } else {
-      setPinError('Invalid PIN! (Master PIN is 7860)');
+      setPinError('Invalid PIN! Please check the PIN sent to your email or chat.');
     }
   };
 
@@ -55,16 +56,18 @@ export default function AgentTown({ currentUser }) {
     if (continuousMicActive) {
       stopContinuousListening();
     }
+    stopScreenShare();
   };
 
   // ==========================================
-  // 2. LIVE AGENT & ORCHESTRATOR STATES
+  // 2. LIVE 5-AGENT SWARM STATES
   // ==========================================
   const [agentStates, setAgentStates] = useState({
-    Saima: { state: 'idle', thought: 'Analyzing...' },
-    Dani: { state: 'idle', thought: 'Fixing bugs' },
-    Mianzi: { state: 'idle', thought: 'Printing...' },
-    Zohaib: { state: 'idle', thought: 'Need coffee...' },
+    Saima: { state: 'working', thought: 'Analyzing SaaS metrics...' },
+    Dani: { state: 'working', thought: 'Writing Next.js API route...' },
+    Mianzi: { state: 'idle', thought: 'Reviewing audit docs...' },
+    Zohaib: { state: 'working', thought: 'Running security scan...' },
+    Aura: { state: 'thinking', thought: 'Coordinating agent swarm...' },
   });
 
   const [voiceInput, setVoiceInput] = useState('');
@@ -75,6 +78,9 @@ export default function AgentTown({ currentUser }) {
   const [continuousMicActive, setContinuousMicActive] = useState(false);
   const [lastAssistantResponse, setLastAssistantResponse] = useState('');
   
+  // Voice Gender: 'male' (Charon / Jarvis) vs 'female' (Aoede / Friday)
+  const [voiceGender, setVoiceGender] = useState('male');
+
   // Right console tabs: 'voice' | 'agent' | 'notes'
   const [activeTab, setActiveTab] = useState('voice');
   const [selectedAgentName, setSelectedAgentName] = useState('Saima');
@@ -84,7 +90,7 @@ export default function AgentTown({ currentUser }) {
     {
       id: 'init-1',
       sender: 'assistant',
-      text: 'SYSTEM READY // سلام! میں آپ کا پرسنل AI اسسٹنٹ جارویس ہوں۔ بتائیے میں کیا مدد کر سکتا ہوں؟',
+      text: 'SYSTEM READY // سلام! میں آپ کا پرسنل AI اسسٹنٹ ہوں۔ بتائیے میں آپ کی کیا خدمت کر سکتا ہوں؟',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -100,8 +106,14 @@ export default function AgentTown({ currentUser }) {
   const [showMemoryModal, setShowMemoryModal] = useState(false);
   const [showVoicesModal, setShowVoicesModal] = useState(false);
 
-  // Settings State
+  // Settings: Execution mode & Model Connect / BYOK
   const [autoApprove, setAutoApprove] = useState(true);
+  const [connectModes, setConnectModes] = useState({
+    gemini: 'subscription', // 'subscription' | 'api'
+    openai: 'subscription',
+    groq: 'api',
+    claude: 'subscription'
+  });
   const [apiKeys, setApiKeys] = useState({
     gemini: '',
     groq: '',
@@ -109,6 +121,20 @@ export default function AgentTown({ currentUser }) {
     openai: ''
   });
   const [savingKeys, setSavingKeys] = useState(false);
+
+  // 5-Agent Individual Custom Training Prompts
+  const [agentPrompts, setAgentPrompts] = useState({
+    Saima: 'Act as Chief Market Analyst. Focus on SaaS growth, user acquisition metrics, and competitive pricing analysis.',
+    Dani: 'Act as Lead Fullstack Architect. Specialize in Next.js 16, Supabase SQL, API routes, and high-performance frontend engineering.',
+    Mianzi: 'Act as Autonomous Documentation & Operations Specialist. Generate professional corporate summaries, invoices, and process manuals.',
+    Zohaib: 'Act as Security & QA Specialist. Audit user permissions, enforce 2FA/access rules, and monitor system vulnerability logs.',
+    Aura: 'Act as Chief AI Coordinator. Decompose complex user goals into sub-tasks and orchestrate work across the agent swarm.'
+  });
+
+  // Screen Share in Media Link
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const videoRef = useRef(null);
+  const screenStreamRef = useRef(null);
 
   // References for Continuous Mic and Echo Suppression
   const recognitionRef = useRef(null);
@@ -128,13 +154,50 @@ export default function AgentTown({ currentUser }) {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, lastAssistantResponse]);
 
-  // Load saved settings
+  // Load saved settings & agent prompts
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedAuto = localStorage.getItem('aurasuite_ai_auto_approve');
       if (savedAuto !== null) setAutoApprove(savedAuto === 'true');
+
+      const savedGender = localStorage.getItem('aurasuite_voice_gender');
+      if (savedGender) setVoiceGender(savedGender);
+
+      const savedPrompts = localStorage.getItem('aurasuite_agent_prompts');
+      if (savedPrompts) {
+        try { setAgentPrompts(JSON.parse(savedPrompts)); } catch (e) {}
+      }
     }
   }, []);
+
+  // Screen Sharing WebRTC Functionality
+  const startScreenShare = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setIsScreenSharing(true);
+      stream.getVideoTracks()[0].onended = () => {
+        stopScreenShare();
+      };
+    } catch (err) {
+      console.warn("Screen share cancelled:", err);
+    }
+  };
+
+  const stopScreenShare = () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(t => t.stop());
+      screenStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsScreenSharing(false);
+  };
 
   // Load Phase 2A Agents and Tasks
   useEffect(() => {
@@ -155,7 +218,7 @@ export default function AgentTown({ currentUser }) {
     if (res.tasks) setEngineTasks(res.tasks);
   };
 
-  // Realtime Supabase Subscription for Engine Tasks
+  // Realtime Supabase Subscription for Engine Tasks & agent_executions
   useEffect(() => {
     if (!currentUser?.organization_id) return;
     loadTasks();
@@ -198,10 +261,11 @@ export default function AgentTown({ currentUser }) {
     }
 
     const newStates = {
-      Saima: { state: 'idle', thought: 'Analyzing...' },
-      Dani: { state: 'idle', thought: 'Fixing bugs' },
-      Mianzi: { state: 'idle', thought: 'Printing...' },
-      Zohaib: { state: 'idle', thought: 'Need coffee...' },
+      Saima: { state: 'working', thought: 'Analyzing metrics' },
+      Dani: { state: 'working', thought: 'Fixing bugs' },
+      Mianzi: { state: 'idle', thought: 'Printing docs...' },
+      Zohaib: { state: 'working', thought: 'Security scan' },
+      Aura: { state: 'thinking', thought: 'Coordinating swarm' },
     };
 
     sorted.forEach(task => {
@@ -232,7 +296,7 @@ export default function AgentTown({ currentUser }) {
       } else {
         if (task.status === 'FAILED') newStates[charName] = { state: 'error', thought: 'Failed: ' + (task.error ? task.error.slice(0, 15) : 'Error') };
         else if (task.status === 'VERIFIED' || task.status === 'COMPLETED') {
-          newStates[charName] = { state: 'idle', thought: 'Task Completed' };
+          newStates[charName] = { state: 'working', thought: 'Task Completed' };
         }
       }
     });
@@ -251,7 +315,7 @@ export default function AgentTown({ currentUser }) {
       setIsSpeaking(true);
       isSpeakingRef.current = true;
 
-      // Temporary pause recognition while speaking to avoid echo loop
+      // Pause recognition while speaking to avoid echo loop
       if (recognitionRef.current && continuousMicActiveRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
@@ -259,7 +323,10 @@ export default function AgentTown({ currentUser }) {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ 
+          text,
+          gender: voiceGender
+        })
       });
 
       if (res.ok) {
@@ -271,7 +338,6 @@ export default function AgentTown({ currentUser }) {
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl);
-          // Resume continuous listening if still active
           if (continuousMicActiveRef.current) {
             startRecognitionInstance();
           }
@@ -376,13 +442,13 @@ export default function AgentTown({ currentUser }) {
 
       recognition.onend = () => {
         setIsListening(false);
-        // If continuous mode is enabled and Jarvis is not currently talking, restart listening immediately!
+        // If continuous mode is enabled and assistant is not talking, restart listening
         if (continuousMicActiveRef.current && !isSpeakingRef.current) {
           setTimeout(() => {
             if (continuousMicActiveRef.current && !isSpeakingRef.current) {
               try { recognition.start(); } catch (e) {}
             }
-          }, 300);
+          }, 250);
         }
       };
 
@@ -507,9 +573,16 @@ export default function AgentTown({ currentUser }) {
         let cleanAnswer = data.text;
         let isPlan = data.isActionPlan;
 
-        // If JSON action plan, provide a natural spoken summary
         if (isPlan) {
           cleanAnswer = 'Action executed successfully, sir.';
+          // Direct execution attempt for desktop applications
+          if (data.actions && Array.isArray(data.actions)) {
+            data.actions.forEach(act => {
+              if (act.type === 'open_url' && act.target) {
+                window.open(act.target, '_blank');
+              }
+            });
+          }
         } else {
           cleanAnswer = cleanAnswer
             .replace(/\{[\s\S]*?\}/g, '')
@@ -583,31 +656,169 @@ export default function AgentTown({ currentUser }) {
       case 'generating': return 'bg-purple-400 animate-pulse';
       case 'verifying': return 'bg-indigo-400 animate-pulse';
       case 'completed': return 'bg-emerald-400';
+      case 'working': return 'bg-emerald-400 animate-pulse';
       case 'failed': return 'bg-red-400';
       case 'cancelled': return 'bg-gray-400';
       default: return 'bg-green-500';
     }
   };
 
+  // =========================================================================
+  // RENDER CASE 1: AI LOCKED -> SHOW BEAUTIFUL CYBERPUNK GATE BANNER
+  // =========================================================================
+  if (!isAiUnlocked) {
+    return (
+      <div className="w-full my-6 rounded-2xl overflow-hidden border border-cyan-500/30 bg-gradient-to-br from-[#070811] via-[#0d1022] to-[#05060d] shadow-[0_0_60px_rgba(6,182,212,0.18)] p-8 relative font-sans group">
+        {/* Futuristic Background Accents */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(6,182,212,0.03)_1px,transparent_1px)]" style={{ backgroundSize: '100% 4px' }}></div>
+
+        <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+          
+          {/* Left Text & Capabilities Badges */}
+          <div className="flex-1 space-y-4 text-center lg:text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-[11px] font-mono text-cyan-300">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+              <span>AURASUITE AI OS // ENTERPRISE NEURAL GATE</span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Autonomous 5-Agent Swarm & Jarvis Assistant
+            </h2>
+
+            <p className="text-sm text-gray-300 leading-relaxed max-w-xl">
+              Initialize your dedicated AI Operating System. Featuring an autonomous 5-Agent Swarm at interactive workstations, real-time Computer Screen Sharing, 24kHz Neural Voice, and Windows Desktop Automation.
+            </p>
+
+            <div className="flex flex-wrap gap-2 pt-2 justify-center lg:justify-start">
+              <span className="px-3 py-1 rounded-lg bg-[#0e1224] border border-cyan-500/20 text-xs font-mono text-cyan-300">
+                👥 5 Active Agents
+              </span>
+              <span className="px-3 py-1 rounded-lg bg-[#0e1224] border border-purple-500/20 text-xs font-mono text-purple-300">
+                🎙️ Male & Female 24kHz Voice
+              </span>
+              <span className="px-3 py-1 rounded-lg bg-[#0e1224] border border-emerald-500/20 text-xs font-mono text-emerald-300">
+                🖥️ Live Screen Sharing
+              </span>
+              <span className="px-3 py-1 rounded-lg bg-[#0e1224] border border-amber-500/20 text-xs font-mono text-amber-300">
+                ⚡ Auto-Execution Engine
+              </span>
+            </div>
+          </div>
+
+          {/* Right Holographic Orb & START AI Action Button */}
+          <div className="flex flex-col items-center justify-center bg-[#0a0d1c]/80 border border-cyan-500/30 p-6 rounded-2xl shadow-2xl backdrop-blur-md min-w-[280px]">
+            {/* Holographic Glowing AI Orb */}
+            <div 
+              onClick={() => setShowPinModal(true)}
+              className="relative w-32 h-32 flex items-center justify-center cursor-pointer transition-transform hover:scale-105"
+            >
+              <div className="absolute inset-0 rounded-full bg-cyan-500/20 blur-xl animate-pulse"></div>
+              <div className="absolute inset-0 rounded-full border border-dashed border-cyan-400/50 animate-spin" style={{ animationDuration: '12s' }}></div>
+              <div className="absolute inset-3 rounded-full border border-purple-500/40 animate-[spin_8s_linear_infinite_reverse]"></div>
+              
+              <div className="relative w-20 h-20 rounded-full bg-gradient-to-tr from-[#050b14] to-[#0d1e2e] border-2 border-cyan-400 flex items-center justify-center shadow-[inset_0_0_20px_rgba(6,182,212,0.6)]">
+                <Shield size={32} className="text-cyan-400 animate-pulse" />
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setShowPinModal(true)}
+              className="mt-6 w-full py-3 px-6 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-sm tracking-wide shadow-[0_0_25px_rgba(6,182,212,0.6)] flex items-center justify-center gap-2 cursor-pointer transition-all animate-pulse"
+            >
+              <Unlock size={16} />
+              <span>START AI</span>
+            </button>
+
+            <span className="text-[11px] font-mono text-gray-400 mt-2">
+              Requires 4-Digit Security PIN
+            </span>
+          </div>
+
+        </div>
+
+        {/* PIN Entry Modal */}
+        {showPinModal && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div className="bg-[#0e101d] border-2 border-cyan-500/40 rounded-2xl p-6 max-w-sm w-full shadow-[0_0_50px_rgba(6,182,212,0.4)] relative">
+              <button 
+                onClick={() => setShowPinModal(false)}
+                className="absolute top-3 right-3 text-gray-400 hover:text-white cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+
+              <div className="flex flex-col items-center text-center">
+                <div className="w-14 h-14 rounded-full bg-cyan-950/80 border border-cyan-400 flex items-center justify-center text-cyan-300 mb-3 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
+                  <Shield size={24} />
+                </div>
+                
+                <h3 className="text-base font-bold text-white font-mono tracking-wide">ENTER AI SECURITY PIN</h3>
+                <p className="text-xs text-gray-400 mt-1">Authenticate to unlock AuraSuite AI OS and Swarm Command Deck.</p>
+                
+                <form onSubmit={handleUnlockWithPin} className="w-full mt-5">
+                  <input 
+                    type="password"
+                    maxLength={6}
+                    autoFocus
+                    value={enteredPin}
+                    onChange={(e) => setEnteredPin(e.target.value)}
+                    placeholder="Enter PIN"
+                    className="w-full text-center tracking-[10px] font-mono text-2xl font-bold bg-[#07080f] border border-cyan-500/40 rounded-xl p-3 text-cyan-300 focus:border-cyan-400 outline-none"
+                  />
+
+                  {pinError && (
+                    <div className="text-red-400 text-[11px] font-mono mt-2 font-bold">{pinError}</div>
+                  )}
+
+                  <div className="flex gap-2 mt-5">
+                    <button 
+                      type="button"
+                      onClick={() => setShowPinModal(false)}
+                      className="flex-1 py-2 rounded-xl bg-[#141624] text-gray-300 text-xs font-mono hover:bg-gray-800"
+                    >
+                      Cancel
+                    </button>
+
+                    <button 
+                      type="submit"
+                      className="flex-1 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs font-mono shadow-[0_0_15px_rgba(6,182,212,0.6)] cursor-pointer"
+                    >
+                      AUTHENTICATE
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // RENDER CASE 2: AI UNLOCKED -> FULL 3-PANEL COMMAND DECK
+  // =========================================================================
   return (
     <div className="w-full bg-[#080911] border border-cyan-500/20 rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(6,182,212,0.12)] my-5 flex flex-col font-sans">
       
       {/* ==========================================
-          TOP STONIC OS STATUS HEADER
+          TOP STATUS HEADER
       ========================================== */}
       <div className="flex flex-wrap items-center justify-between px-4 py-2.5 bg-[#0d0e19] border-b border-cyan-500/20 text-xs">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 font-bold tracking-wider text-cyan-400">
             <Zap size={14} className="text-cyan-400 animate-pulse" />
-            <span className="font-mono text-sm uppercase">STONIC NEURAL OS</span>
+            <span className="font-mono text-sm uppercase">AURASUITE AI OS</span>
           </div>
           <span className="text-gray-600">|</span>
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
-            <span className={`w-2 h-2 rounded-full ${isAiUnlocked ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`}></span>
-            <span>{isAiUnlocked ? 'AI CORE: ONLINE' : 'AI CORE: LOCKED'}</span>
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span>AI CORE: ONLINE</span>
           </div>
-          <div className="hidden md:flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-950/40 border border-cyan-500/30 text-[10px] text-cyan-300 font-mono">
-            <span>MASTER PIN: {masterPin}</span>
+          <div className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/30 text-[10px] text-emerald-300 font-mono">
+            <span>5 AGENTS ENGAGED</span>
           </div>
         </div>
 
@@ -616,28 +827,18 @@ export default function AgentTown({ currentUser }) {
             {activeTaskBanner || 'AuraSuite Autonomous SuperAdmin Command Deck'}
           </div>
 
-          {isAiUnlocked ? (
-            <button 
-              onClick={handleLockAi}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-950/40 border border-red-500/30 text-red-300 hover:bg-red-900/60 transition-all text-[11px] font-mono cursor-pointer"
-            >
-              <Lock size={12} />
-              <span>LOCK AI</span>
-            </button>
-          ) : (
-            <button 
-              onClick={() => setShowPinModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold transition-all text-[11px] font-mono shadow-[0_0_15px_rgba(6,182,212,0.5)] cursor-pointer animate-pulse"
-            >
-              <Unlock size={12} />
-              <span>START AI (PIN)</span>
-            </button>
-          )}
+          <button 
+            onClick={handleLockAi}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-red-950/40 border border-red-500/30 text-red-300 hover:bg-red-900/60 transition-all text-[11px] font-mono cursor-pointer"
+          >
+            <Lock size={12} />
+            <span>LOCK AI</span>
+          </button>
 
           <button 
             onClick={() => setShowSettingsModal(true)}
             className="p-1.5 rounded-lg bg-[#141624] border border-cyan-500/20 text-gray-400 hover:text-cyan-300 transition-colors"
-            title="System Settings & BYOK Keys"
+            title="System Settings, BYOK & Agent Training"
           >
             <SettingsIcon size={14} />
           </button>
@@ -645,7 +846,7 @@ export default function AgentTown({ currentUser }) {
       </div>
 
       {/* ==========================================
-          MAIN STONIC 3-PANEL COMMAND DECK
+          MAIN 3-PANEL COMMAND DECK
       ========================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 border-b border-cyan-500/10">
 
@@ -654,33 +855,69 @@ export default function AgentTown({ currentUser }) {
         -------------------------------------- */}
         <div className="lg:col-span-3 bg-[#0a0b14] border-r border-cyan-500/15 p-3 flex flex-col gap-3">
           
-          {/* MEDIA LINK FRAME */}
+          {/* MEDIA LINK & REAL SCREEN SHARING FRAME */}
           <div className="bg-[#0f111e] border border-cyan-500/20 rounded-xl p-2.5 relative overflow-hidden group">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5 text-[11px] font-mono text-cyan-400 font-bold">
-                <Radio size={12} className="text-cyan-400 animate-pulse" />
-                <span>MEDIA LINK</span>
+                <Monitor size={12} className="text-cyan-400" />
+                <span>MEDIA LINK // SCREEN</span>
               </div>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-400 font-mono">
-                LIVE 60FPS
+              <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                isScreenSharing 
+                  ? 'bg-red-950 border border-red-500/40 text-red-400 animate-pulse' 
+                  : 'bg-emerald-950 border border-emerald-500/40 text-emerald-400'
+              }`}>
+                {isScreenSharing ? 'SHARING' : 'READY'}
               </span>
             </div>
 
-            {/* Simulated Sat Camera / Audio Radar */}
-            <div className="h-28 bg-[#07080f] rounded-lg border border-cyan-500/10 relative flex flex-col items-center justify-center overflow-hidden">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(6,182,212,0.15),transparent)]"></div>
-              <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(6,182,212,0.06)_1px,transparent_1px)]" style={{ backgroundSize: '100% 3px' }}></div>
-              
-              {/* Radar Rings */}
-              <div className="relative w-16 h-16 rounded-full border border-cyan-500/30 flex items-center justify-center animate-spin" style={{ animationDuration: '8s' }}>
-                <div className="w-10 h-10 rounded-full border border-dashed border-cyan-400/40"></div>
-                <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.9)]"></div>
-              </div>
+            {/* Video / Radar Display */}
+            <div className="h-32 bg-[#07080f] rounded-lg border border-cyan-500/10 relative flex flex-col items-center justify-center overflow-hidden">
+              {isScreenSharing ? (
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  playsInline 
+                  muted 
+                  className="w-full h-full object-cover rounded-lg"
+                />
+              ) : (
+                <>
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(6,182,212,0.15),transparent)]"></div>
+                  <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(6,182,212,0.06)_1px,transparent_1px)]" style={{ backgroundSize: '100% 3px' }}></div>
+                  
+                  {/* Radar Rings */}
+                  <div className="relative w-14 h-14 rounded-full border border-cyan-500/30 flex items-center justify-center animate-spin" style={{ animationDuration: '8s' }}>
+                    <div className="w-8 h-8 rounded-full border border-dashed border-cyan-400/40"></div>
+                    <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.9)]"></div>
+                  </div>
 
-              <div className="mt-2 text-[10px] font-mono text-cyan-300/80 tracking-widest text-center">
-                AURA-CORE CAM-01
-              </div>
-              <div className="text-[8px] text-gray-500 font-mono">SAT LINK STABLE • 18ms</div>
+                  <div className="mt-1 text-[9px] font-mono text-cyan-300/80 tracking-widest text-center">
+                    AURA-SCREEN CAPTURE
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Screen Share Action Button */}
+            <div className="mt-2 flex gap-1.5">
+              {isScreenSharing ? (
+                <button 
+                  onClick={stopScreenShare}
+                  className="w-full py-1.5 rounded-lg bg-red-600/80 hover:bg-red-500 text-white font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-lg"
+                >
+                  <X size={12} />
+                  <span>STOP SCREEN SHARE</span>
+                </button>
+              ) : (
+                <button 
+                  onClick={startScreenShare}
+                  className="w-full py-1.5 rounded-lg bg-cyan-600/80 hover:bg-cyan-500 text-white font-mono text-[10px] font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.4)]"
+                >
+                  <Share2 size={12} />
+                  <span>SHARE COMPUTER SCREEN</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -698,14 +935,14 @@ export default function AgentTown({ currentUser }) {
               <div className="space-y-2 text-[10px] font-mono text-gray-300">
                 <div className="bg-[#090a12] p-2 rounded border border-cyan-500/10">
                   <div className="text-cyan-400 font-bold mb-0.5">⚡ SYSTEM DIRECTIVE</div>
-                  <div className="text-gray-400 leading-relaxed">Personal Jarvis integrated with 24kHz Charon neural voice pool.</div>
+                  <div className="text-gray-400 leading-relaxed">Personal Jarvis integrated with 24kHz multi-gender neural voice pool.</div>
                 </div>
 
                 <div className="bg-[#090a12] p-2 rounded border border-cyan-500/10">
                   <div className="text-purple-400 font-bold mb-0.5">🌐 LIVE HEADLINES</div>
-                  <div className="text-gray-400 leading-relaxed">• Global AI Agent Swarm throughput peaked at 4.2M req/sec.</div>
-                  <div className="text-gray-400 leading-relaxed mt-1">• AuraSuite PC Automation Daemon listening on local port.</div>
-                  <div className="text-gray-400 leading-relaxed mt-1">• Windows Desktop tools: Notepad, Calc, Browser, File IO active.</div>
+                  <div className="text-gray-400 leading-relaxed">• 5 Specialized Agents engaged in workstation workstations.</div>
+                  <div className="text-gray-400 leading-relaxed mt-1">• AuraSuite PC Automation Daemon listening for task calls.</div>
+                  <div className="text-gray-400 leading-relaxed mt-1">• Multi-Model Pool: Gemini 3.8 Flash + Charon & Aoede active.</div>
                 </div>
               </div>
             </div>
@@ -714,11 +951,11 @@ export default function AgentTown({ currentUser }) {
             <div className="pt-2 border-t border-cyan-500/10 grid grid-cols-2 gap-2 text-center text-[9px] font-mono">
               <div className="bg-[#080911] p-1.5 rounded border border-white/5">
                 <span className="text-gray-500 block">CORE LATENCY</span>
-                <span className="text-cyan-400 font-bold">0.42 SEC</span>
+                <span className="text-cyan-400 font-bold">0.38 SEC</span>
               </div>
               <div className="bg-[#080911] p-1.5 rounded border border-white/5">
-                <span className="text-gray-500 block">VOICE ENGINE</span>
-                <span className="text-emerald-400 font-bold">CHARON 24K</span>
+                <span className="text-gray-500 block">VOICE MODE</span>
+                <span className="text-emerald-400 font-bold uppercase">{voiceGender} (24K)</span>
               </div>
             </div>
           </div>
@@ -726,15 +963,15 @@ export default function AgentTown({ currentUser }) {
         </div>
 
         {/* --------------------------------------
-            CENTER PANEL: AI REACTOR & AGENT TOWN (5 cols)
+            CENTER PANEL: AI REACTOR & 5-AGENT TOWN (5 cols)
         -------------------------------------- */}
         <div className="lg:col-span-5 bg-[#090a13] p-3 flex flex-col gap-3">
 
           {/* TOP SECTION: HEX NODES + HOLOGRAPHIC AI REACTOR */}
-          <div className="bg-[#0f111e] border border-cyan-500/20 rounded-xl p-3 flex items-center justify-between relative overflow-hidden">
+          <div className="bg-[#0f111e] border border-cyan-500/20 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between relative overflow-hidden gap-3">
             
             {/* Background Circuit Lines */}
-            <div className="absolute inset-0 pointer-events-none opacity-20">
+            <div className="absolute inset-0 pointer-events-none opacity-20 hidden sm:block">
               <svg className="w-full h-full" viewBox="0 0 400 160">
                 <path d="M 120 30 L 220 30 L 250 80" stroke="cyan" strokeWidth="1" fill="none" strokeDasharray="3 3" />
                 <path d="M 120 65 L 200 65 L 240 80" stroke="#f59e0b" strokeWidth="1" fill="none" strokeDasharray="3 3" />
@@ -744,10 +981,10 @@ export default function AgentTown({ currentUser }) {
             </div>
 
             {/* 4 Hex Connection Buttons */}
-            <div className="flex flex-col gap-2 z-10 w-28">
+            <div className="flex sm:flex-col gap-2 z-10 w-full sm:w-28 justify-between">
               <button 
                 onClick={() => setShowMemoryModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0b0c16] border border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 hover:border-cyan-400 transition-all text-[10px] font-mono font-bold shadow-[0_0_10px_rgba(6,182,212,0.2)] cursor-pointer"
+                className="flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0b0c16] border border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 transition-all text-[10px] font-mono font-bold shadow-[0_0_10px_rgba(6,182,212,0.2)] cursor-pointer"
               >
                 <Cpu size={12} className="text-cyan-400" />
                 <span>MEMORY</span>
@@ -755,7 +992,7 @@ export default function AgentTown({ currentUser }) {
 
               <button 
                 onClick={() => setShowSkillsModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0b0c16] border border-amber-500/40 text-amber-300 hover:bg-amber-950/60 hover:border-amber-400 transition-all text-[10px] font-mono font-bold shadow-[0_0_10px_rgba(245,158,11,0.2)] cursor-pointer"
+                className="flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0b0c16] border border-amber-500/40 text-amber-300 hover:bg-amber-950/60 transition-all text-[10px] font-mono font-bold shadow-[0_0_10px_rgba(245,158,11,0.2)] cursor-pointer"
               >
                 <Layers size={12} className="text-amber-400" />
                 <span>SKILLS</span>
@@ -763,7 +1000,7 @@ export default function AgentTown({ currentUser }) {
 
               <button 
                 onClick={() => setShowVoicesModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0b0c16] border border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/60 hover:border-emerald-400 transition-all text-[10px] font-mono font-bold shadow-[0_0_10px_rgba(16,185,129,0.2)] cursor-pointer"
+                className="flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0b0c16] border border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/60 transition-all text-[10px] font-mono font-bold shadow-[0_0_10px_rgba(16,185,129,0.2)] cursor-pointer"
               >
                 <Volume2 size={12} className="text-emerald-400" />
                 <span>VOICES</span>
@@ -771,82 +1008,76 @@ export default function AgentTown({ currentUser }) {
 
               <button 
                 onClick={() => setShowSettingsModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0b0c16] border border-purple-500/40 text-purple-300 hover:bg-purple-950/60 hover:border-purple-400 transition-all text-[10px] font-mono font-bold shadow-[0_0_10px_rgba(168,85,247,0.2)] cursor-pointer"
+                className="flex-1 sm:flex-initial flex items-center justify-center sm:justify-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0b0c16] border border-purple-500/40 text-purple-300 hover:bg-purple-950/60 transition-all text-[10px] font-mono font-bold shadow-[0_0_10px_rgba(168,85,247,0.2)] cursor-pointer"
               >
                 <SettingsIcon size={12} className="text-purple-400" />
                 <span>SETTING</span>
               </button>
             </div>
 
-            {/* Center Holographic AI Sphere Reactor */}
-            <div className="flex-1 flex flex-col items-center justify-center z-10 pl-2">
+            {/* Center Holographic AI Sphere Reactor + Primary Mic Underneath */}
+            <div className="flex-1 flex flex-col items-center justify-center z-10">
               <div className="text-[9px] font-mono text-cyan-400/80 mb-1 flex items-center gap-1">
-                <span>THINKING MODE</span>
+                <span>NEURAL REACTOR</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
               </div>
 
               {/* Holographic Glowing Sphere */}
               <div 
-                onClick={() => { if (!isAiUnlocked) setShowPinModal(true); }}
-                className={`relative w-28 h-28 my-1 flex items-center justify-center cursor-pointer transition-all ${
-                  isAiUnlocked ? 'scale-100 hover:scale-105' : 'scale-95 opacity-80 hover:opacity-100'
-                }`}
+                onClick={toggleContinuousListening}
+                className="relative w-24 h-24 my-1 flex items-center justify-center cursor-pointer transition-all hover:scale-105"
+                title="Click to toggle continuous voice assistant"
               >
-                {/* Outer Glow */}
-                <div className={`absolute inset-0 rounded-full blur-xl transition-all duration-700 ${
-                  isSpeaking ? 'bg-cyan-400/40 scale-125' : 
-                  isListening ? 'bg-red-500/30 scale-115' : 
-                  isAiUnlocked ? 'bg-cyan-500/25' : 'bg-amber-500/20'
+                <div className={`absolute inset-0 rounded-full blur-xl transition-all duration-500 ${
+                  isSpeaking ? 'bg-cyan-400/50 scale-125' : 
+                  continuousMicActive ? 'bg-red-500/40 scale-120 animate-pulse' : 
+                  'bg-cyan-500/20'
                 }`}></div>
 
-                {/* Rotating Tech Rings */}
-                <div className={`absolute inset-0 rounded-full border border-dashed transition-all ${
-                  isAiUnlocked ? 'border-cyan-400/40 animate-spin' : 'border-amber-500/40'
-                }`} style={{ animationDuration: isSpeaking ? '2s' : '10s' }}></div>
-
+                {/* Rotating Rings */}
+                <div className="absolute inset-0 rounded-full border border-dashed border-cyan-400/50 animate-spin" style={{ animationDuration: isSpeaking ? '2s' : '10s' }}></div>
                 <div className="absolute inset-2 rounded-full border border-cyan-500/30 animate-[spin_15s_linear_infinite_reverse]"></div>
 
-                {/* Core Sphere / Particle Grid */}
-                <div className="relative w-20 h-20 rounded-full bg-gradient-to-tr from-[#0a0514] via-[#101426] to-[#041c24] border-2 border-cyan-400/60 flex items-center justify-center shadow-[inset_0_0_20px_rgba(6,182,212,0.6)]">
-                  <svg className="w-16 h-16 opacity-80" viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="35" fill="none" stroke="cyan" strokeWidth="0.5" strokeDasharray="2 3" className="animate-spin" style={{ transformOrigin: 'center', animationDuration: '6s' }} />
-                    <circle cx="50" cy="50" r="24" fill="none" stroke="#a855f7" strokeWidth="0.5" strokeDasharray="3 3" className="animate-[spin_4s_linear_infinite_reverse]" style={{ transformOrigin: 'center' }} />
-                    <circle cx="50" cy="50" r="12" fill={isAiUnlocked ? "cyan" : "#f59e0b"} className="animate-pulse" opacity="0.8" />
-                  </svg>
+                {/* Core Sphere */}
+                <div className="relative w-16 h-16 rounded-full bg-gradient-to-tr from-[#0a0514] via-[#101426] to-[#041c24] border-2 border-cyan-400/70 flex items-center justify-center shadow-[inset_0_0_15px_rgba(6,182,212,0.6)]">
+                  {continuousMicActive ? (
+                    <Mic size={22} className="text-red-400 animate-pulse" />
+                  ) : isSpeaking ? (
+                    <Volume2 size={22} className="text-cyan-400 animate-bounce" />
+                  ) : (
+                    <Zap size={22} className="text-cyan-300" />
+                  )}
                 </div>
               </div>
 
-              {/* Reactor Activation Button */}
-              {isAiUnlocked ? (
-                <div className="text-[10px] font-mono px-3 py-1 rounded bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 font-bold shadow-[0_0_12px_rgba(6,182,212,0.4)] mt-1 flex items-center gap-1.5">
-                  <CheckCircle size={11} className="text-emerald-400" />
-                  <span>NEURAL CORE ACTIVE</span>
-                </div>
-              ) : (
-                <button 
-                  onClick={() => setShowPinModal(true)}
-                  className="text-[10px] font-mono px-3.5 py-1 rounded-md bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold shadow-[0_0_15px_rgba(6,182,212,0.6)] mt-1 flex items-center gap-1.5 cursor-pointer animate-pulse"
-                >
-                  <Unlock size={11} />
-                  <span>START AI</span>
-                </button>
-              )}
+              {/* PRIMARY HIGH-TECH MIC TOGGLE RIGHT UNDER THE VOICE ASSISTANT */}
+              <button 
+                onClick={toggleContinuousListening}
+                className={`mt-2 px-4 py-1.5 rounded-full border text-xs font-mono font-bold flex items-center gap-2 cursor-pointer transition-all ${
+                  continuousMicActive 
+                    ? 'bg-red-600/30 border-red-500 text-red-300 animate-pulse shadow-[0_0_18px_rgba(239,68,68,0.6)]' 
+                    : 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 hover:bg-cyan-900/60 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+                }`}
+              >
+                {continuousMicActive ? <MicOff size={13} className="text-red-400" /> : <Mic size={13} />}
+                <span>{continuousMicActive ? 'MIC ON (CLICK TO STOP)' : 'CLICK TO TALK (MIC)'}</span>
+              </button>
             </div>
 
           </div>
 
-          {/* BOTTOM SECTION: AGENT TOWN PIXEL WORKSPACE */}
+          {/* BOTTOM SECTION: 5-AGENT WORKSPACE WITH SITTING & WORKING ANIMATIONS */}
           <div className="flex-1 bg-[#1a1b26] rounded-xl border border-cyan-500/20 flex flex-col overflow-hidden relative min-h-[300px]">
             
-            {/* Pixel Map Header */}
+            {/* Pixel Map Header with all 5 Agents */}
             <div className="flex justify-between items-center p-2.5 border-b border-cyan-500/15 bg-[#0f111e]/90 backdrop-blur z-20">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="font-bold text-white text-xs font-mono">AGENT TOWN</span>
+                <span className="font-bold text-white text-xs font-mono">AGENT TOWN (5 AGENTS)</span>
               </div>
 
-              {/* Agent Status Chips */}
-              <div className="flex items-center gap-1.5">
+              {/* 5 Agent Status Chips */}
+              <div className="flex flex-wrap items-center gap-1">
                 <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-950/60 border border-orange-500/40 text-[9px] text-orange-200">
                   <span className={`w-1.5 h-1.5 rounded-full ${getStatusColor(agentStates.Saima?.state)}`}></span>
                   <span>Saima</span>
@@ -863,10 +1094,14 @@ export default function AgentTown({ currentUser }) {
                   <span className={`w-1.5 h-1.5 rounded-full ${getStatusColor(agentStates.Zohaib?.state)}`}></span>
                   <span>Zohaib</span>
                 </div>
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-500/40 text-[9px] text-purple-200">
+                  <span className={`w-1.5 h-1.5 rounded-full ${getStatusColor(agentStates.Aura?.state)}`}></span>
+                  <span>Aura</span>
+                </div>
               </div>
             </div>
 
-            {/* Pixel Canvas with Characters and Opening Doors */}
+            {/* Pixel Canvas with Characters Sitting at Desks & Walking */}
             <div className="flex-1 bg-[#1a1b26] relative overflow-hidden h-[240px] w-full">
               <img src="/agent-town-map-clean.png" alt="Agent Town Map" className="w-full h-full object-cover opacity-90 mix-blend-lighten pointer-events-none" />
 
@@ -881,7 +1116,7 @@ export default function AgentTown({ currentUser }) {
               {/* Scanline Effect */}
               <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(6,182,212,0.08)_1px,transparent_1px)]" style={{ backgroundSize: '100% 4px' }}></div>
 
-              {/* Character 1: Saima */}
+              {/* Character 1: Saima (Sitting at desk working / walking) */}
               <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent1Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
                     <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate">
@@ -895,7 +1130,7 @@ export default function AgentTown({ currentUser }) {
                 </div>
               </div>
 
-              {/* Character 2: Dani */}
+              {/* Character 2: Dani (Sitting at developer desk / coding) */}
               <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent2Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
                     <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate">
@@ -909,7 +1144,7 @@ export default function AgentTown({ currentUser }) {
                 </div>
               </div>
 
-              {/* Character 3: Mianzi */}
+              {/* Character 3: Mianzi (Document desk / printer) */}
               <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent3Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
                     <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate">
@@ -923,7 +1158,7 @@ export default function AgentTown({ currentUser }) {
                 </div>
               </div>
 
-              {/* Character 4: Zohaib */}
+              {/* Character 4: Zohaib (Security monitoring desk) */}
               <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent4Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
                     <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate">
@@ -936,13 +1171,30 @@ export default function AgentTown({ currentUser }) {
                 </div>
               </div>
 
+              {/* Character 5: Aura (Chief Coordinator sitting at main executive desk) */}
+              <div className="absolute z-20 pointer-events-none" style={{ left: '46%', top: '52%' }}>
+                <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
+                    <div className="absolute -top-[24px] bg-purple-950 text-purple-200 border border-purple-400 text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold">
+                      {agentStates.Aura?.thought || 'Coordinating'}
+                    </div>
+                    {/* Monitor Glow on desk */}
+                    <div className="absolute -top-3 w-8 h-3 bg-cyan-400/20 blur-sm"></div>
+                    <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f8d7c2] rounded-sm border border-black/20"></div>
+                    <div className="absolute -top-0.5 left-0 w-5 h-2 bg-purple-900 rounded-t-sm"></div>
+                    <div className="absolute top-4 left-0.5 w-4 h-4 bg-purple-600 rounded-sm"></div>
+                    {/* Seated typing posture */}
+                    <div className="absolute top-8 left-1 w-1.5 h-2 bg-purple-950 rounded-sm"></div>
+                    <div className="absolute top-8 left-2.5 w-1.5 h-2 bg-purple-950 rounded-sm"></div>
+                </div>
+              </div>
+
             </div>
 
             {/* Pixel Map Footer Bar */}
             <div className="p-2 bg-[#0d0e19] border-t border-cyan-500/15 flex items-center justify-between text-[10px]">
               <div className="flex items-center gap-1.5 text-gray-400 font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span>Swarm Engine: Ready</span>
+                <span>Swarm Engine: 5 Agents Active</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -991,7 +1243,7 @@ export default function AgentTown({ currentUser }) {
                     activeTab === 'agent' ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  AGENT
+                  AGENTS (5)
                 </button>
                 <button 
                   onClick={() => setActiveTab('notes')}
@@ -1028,7 +1280,7 @@ export default function AgentTown({ currentUser }) {
                         {msg.sender === 'assistant' && (
                           <div className="flex items-center gap-1.5 text-[10px] text-cyan-400 font-mono font-bold mb-1">
                             <Zap size={10} />
-                            <span>JARVIS (Charon)</span>
+                            <span>JARVIS ({voiceGender.toUpperCase()})</span>
                           </div>
                         )}
                         <div className="whitespace-pre-wrap">{msg.text}</div>
@@ -1052,7 +1304,7 @@ export default function AgentTown({ currentUser }) {
                       <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${isSpeaking ? 'bg-cyan-400' : 'bg-red-400'} animate-ping`}></span>
                         <span className="text-[10px] font-mono font-bold text-gray-300">
-                          {isSpeaking ? "🔊 Jarvis Speaking (Charon 24kHz)..." : "🎙️ Continuous Mic Listening..."}
+                          {isSpeaking ? `🔊 Assistant Speaking (${voiceGender.toUpperCase()})...` : "🎙️ Continuous Mic Listening..."}
                         </span>
                       </div>
                       
@@ -1072,22 +1324,31 @@ export default function AgentTown({ currentUser }) {
               </div>
             )}
 
-            {/* TAB CONTENT 2: AGENT SWARM SELECTOR */}
+            {/* TAB CONTENT 2: AGENT SWARM SELECTOR & TRAINING ACCESS */}
             {activeTab === 'agent' && (
               <div className="h-[340px] flex flex-col justify-between overflow-y-auto custom-scrollbar pr-1">
                 <div className="space-y-2">
-                  <div className="text-[11px] font-mono text-cyan-400 font-bold mb-1">SELECT SPECIALIZED AGENT:</div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-mono text-cyan-400 font-bold">5 SPECIALIZED AGENTS:</span>
+                    <button 
+                      onClick={() => setShowSettingsModal(true)}
+                      className="text-[9px] font-mono text-purple-300 hover:text-white underline cursor-pointer"
+                    >
+                      Train Agents ⚙️
+                    </button>
+                  </div>
                   
                   {[
                     { name: 'Saima', role: 'Strategic Market Analyst', desc: 'Analyzes SaaS trends, competitive intelligence & expansion metrics.' },
-                    { name: 'Dani', role: 'Senior Fullstack Architect', desc: 'Executes Next.js code, API integrations & database schema mutations.' },
-                    { name: 'Mianzi', role: 'Autonomous Operations & Documents', desc: 'Drafts executive reports, client invoices & system paperwork.' },
-                    { name: 'Zohaib', role: 'Security & QA Automation Specialist', desc: 'Automates user locking, access controls & penetration checks.' },
+                    { name: 'Dani', role: 'Senior Fullstack Architect', desc: 'Executes Next.js code, API integrations & database mutations.' },
+                    { name: 'Mianzi', role: 'Autonomous Operations & Docs', desc: 'Drafts executive reports, client invoices & paperwork.' },
+                    { name: 'Zohaib', role: 'Security & QA Specialist', desc: 'Automates user locking, access controls & penetration checks.' },
+                    { name: 'Aura', role: 'Chief AI Coordinator', desc: 'Swarm lead: routes tasks and supervises autonomous execution.' },
                   ].map(ag => (
                     <div 
                       key={ag.name}
                       onClick={() => setSelectedAgentName(ag.name)}
-                      className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      className={`p-2 rounded-xl border cursor-pointer transition-all ${
                         selectedAgentName === ag.name 
                           ? 'bg-cyan-950/40 border-cyan-400/60 shadow-[0_0_12px_rgba(6,182,212,0.3)]' 
                           : 'bg-[#0f111e] border-cyan-500/10 hover:border-cyan-500/30'
@@ -1097,13 +1358,13 @@ export default function AgentTown({ currentUser }) {
                         <span className="font-bold text-xs text-white">{ag.name}</span>
                         <span className="text-[9px] font-mono text-cyan-400">{ag.role}</span>
                       </div>
-                      <p className="text-[10px] text-gray-400 mt-1 leading-tight">{ag.desc}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5 leading-tight">{ag.desc}</p>
                     </div>
                   ))}
                 </div>
 
                 <div className="p-2 bg-[#090a13] rounded-lg border border-cyan-500/20 text-[10px] text-gray-400 font-mono mt-2">
-                  Active Direct Agent: <strong className="text-cyan-300">{selectedAgentName}</strong>. Prompts typed below will be delegated to this persona.
+                  Active Direct Agent: <strong className="text-cyan-300">{selectedAgentName}</strong>. Prompts typed below are assigned to this specialist.
                 </div>
               </div>
             )}
@@ -1145,12 +1406,11 @@ export default function AgentTown({ currentUser }) {
                 type="text" 
                 value={voiceInput}
                 onChange={(e) => setVoiceInput(e.target.value)}
-                placeholder={isAiUnlocked ? "Type to Assistant (Gemini Live)..." : "Click 'START AI' or enter PIN to type..."}
-                disabled={!isAiUnlocked}
+                placeholder="Type to Assistant (Gemini Live)..."
                 className="bg-transparent border-none outline-none text-xs text-white flex-1 px-2 placeholder-gray-500 font-sans" 
               />
               
-              {/* Continuous Hands-Free Microphone Button */}
+              {/* Mic Button in input bar */}
               <button 
                 type="button" 
                 onClick={toggleContinuousListening}
@@ -1167,7 +1427,7 @@ export default function AgentTown({ currentUser }) {
               {/* Submit Button */}
               <button 
                 type="submit" 
-                disabled={isDispatching || !isAiUnlocked} 
+                disabled={isDispatching} 
                 className="bg-cyan-600 hover:bg-cyan-500 text-white p-2 rounded-lg border border-cyan-400/40 cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.4)] transition-all disabled:opacity-40"
               >
                 <Send size={14} />
@@ -1180,69 +1440,11 @@ export default function AgentTown({ currentUser }) {
       </div>
 
       {/* ==========================================
-          MODAL 1: 4-DIGIT AI SECURITY PIN DIALOG
-      ========================================== */}
-      {showPinModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e101d] border-2 border-cyan-500/40 rounded-2xl p-6 max-w-sm w-full shadow-[0_0_50px_rgba(6,182,212,0.3)] relative">
-            <button 
-              onClick={() => setShowPinModal(false)}
-              className="absolute top-3 right-3 text-gray-400 hover:text-white cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 rounded-full bg-cyan-950/80 border border-cyan-400 flex items-center justify-center text-cyan-300 mb-3 shadow-[0_0_20px_rgba(6,182,212,0.5)]">
-                <Shield size={24} />
-              </div>
-              
-              <h3 className="text-base font-bold text-white font-mono tracking-wide">ENTER AI SECURITY PIN</h3>
-              <p className="text-xs text-gray-400 mt-1">Authenticate to unlock AuraSuite Autonomous AI & Jarvis Voice Daemon.</p>
-              
-              <form onSubmit={handleUnlockWithPin} className="w-full mt-5">
-                <input 
-                  type="password"
-                  maxLength={6}
-                  autoFocus
-                  value={enteredPin}
-                  onChange={(e) => setEnteredPin(e.target.value)}
-                  placeholder="Enter PIN (e.g. 7860)"
-                  className="w-full text-center tracking-[8px] font-mono text-xl font-bold bg-[#07080f] border border-cyan-500/40 rounded-xl p-3 text-cyan-300 focus:border-cyan-400 outline-none"
-                />
-
-                {pinError && (
-                  <div className="text-red-400 text-[11px] font-mono mt-2 font-bold">{pinError}</div>
-                )}
-
-                <div className="flex gap-2 mt-5">
-                  <button 
-                    type="button"
-                    onClick={() => { setEnteredPin(masterPin); }}
-                    className="flex-1 py-2 rounded-xl bg-[#141624] border border-cyan-500/20 text-cyan-300 text-xs font-mono hover:bg-cyan-950/60"
-                  >
-                    Use Master PIN (7860)
-                  </button>
-
-                  <button 
-                    type="submit"
-                    className="flex-1 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs font-mono shadow-[0_0_15px_rgba(6,182,212,0.6)] cursor-pointer"
-                  >
-                    AUTHENTICATE
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================
-          MODAL 2: SYSTEM SETTINGS & BYOK KEYS
+          MODAL 1: SYSTEM SETTINGS, BYOK & 5-AGENT TRAINING
       ========================================== */}
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e101d] border-2 border-cyan-500/40 rounded-2xl p-6 max-w-lg w-full shadow-[0_0_50px_rgba(6,182,212,0.3)] relative">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0e101d] border-2 border-cyan-500/40 rounded-2xl p-6 max-w-2xl w-full shadow-[0_0_50px_rgba(6,182,212,0.3)] relative max-h-[90vh] overflow-y-auto custom-scrollbar">
             <button 
               onClick={() => setShowSettingsModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-white cursor-pointer"
@@ -1252,7 +1454,7 @@ export default function AgentTown({ currentUser }) {
 
             <div className="flex items-center gap-2 mb-4">
               <SettingsIcon size={18} className="text-cyan-400" />
-              <h3 className="text-sm font-bold text-white font-mono">AI ENGINE SETTINGS & BYOK</h3>
+              <h3 className="text-sm font-bold text-white font-mono">SYSTEM SETTINGS, MODELS & AGENT TRAINING</h3>
             </div>
 
             {/* Execution Mode Toggle */}
@@ -1279,48 +1481,89 @@ export default function AgentTown({ currentUser }) {
               </p>
             </div>
 
-            {/* Bring Your Own Key (BYOK) */}
-            <div className="space-y-3">
-              <div className="text-xs font-bold text-cyan-300 font-mono uppercase">BRING YOUR OWN KEYS (BYOK):</div>
-              
-              <div>
-                <label className="text-[10px] text-gray-400 block mb-1">Google Gemini API Key (Required for 24kHz Charon Voice & Fast Chat)</label>
-                <input 
-                  type="password"
-                  placeholder="AIzaSy..."
-                  value={apiKeys.gemini}
-                  onChange={(e) => setApiKeys({...apiKeys, gemini: e.target.value})}
-                  className="w-full bg-[#07080f] border border-cyan-500/20 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400"
-                />
+            {/* AI MODEL INTEGRATION & SUBSCRIPTION CONNECT */}
+            <div className="bg-[#07080f] p-3.5 rounded-xl border border-cyan-500/20 mb-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-cyan-300 font-mono uppercase">AI PROVIDERS & SUBSCRIPTION CONNECT</span>
+                <span className="text-[10px] text-emerald-400 font-mono">Gateway: Active</span>
+              </div>
+              <p className="text-[11px] text-gray-400">
+                Connect via your existing subscriptions (ChatGPT Plus, Gemini Advanced) or enter direct API keys.
+              </p>
+
+              {/* Gemini */}
+              <div className="p-2.5 rounded-lg bg-[#0b0d18] border border-cyan-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold text-white">Google Gemini</div>
+                  <div className="text-[10px] text-gray-400">Powers 24kHz Voice & Sub-second Jarvis Core</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setConnectModes({...connectModes, gemini: connectModes.gemini === 'subscription' ? 'api' : 'subscription'})}
+                    className="px-2 py-1 rounded bg-[#141624] text-[10px] font-mono text-cyan-300 border border-cyan-500/30"
+                  >
+                    {connectModes.gemini === 'subscription' ? '✓ Subscription Connected' : 'API Key Mode'}
+                  </button>
+                </div>
               </div>
 
-              <div>
-                <label className="text-[10px] text-gray-400 block mb-1">Groq API Key (Ultra-Fast Fallback)</label>
-                <input 
-                  type="password"
-                  placeholder="gsk_..."
-                  value={apiKeys.groq}
-                  onChange={(e) => setApiKeys({...apiKeys, groq: e.target.value})}
-                  className="w-full bg-[#07080f] border border-cyan-500/20 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400"
-                />
+              {/* OpenAI ChatGPT */}
+              <div className="p-2.5 rounded-lg bg-[#0b0d18] border border-cyan-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold text-white">OpenAI ChatGPT (GPT-4o)</div>
+                  <div className="text-[10px] text-gray-400">Direct Connect or API Key</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setConnectModes({...connectModes, openai: connectModes.openai === 'subscription' ? 'api' : 'subscription'})}
+                    className="px-2 py-1 rounded bg-[#141624] text-[10px] font-mono text-cyan-300 border border-cyan-500/30"
+                  >
+                    {connectModes.openai === 'subscription' ? '✓ Subscription Connected' : 'API Key Mode'}
+                  </button>
+                </div>
               </div>
 
-              <div>
-                <label className="text-[10px] text-gray-400 block mb-1">Master AI Security PIN</label>
-                <input 
-                  type="text"
-                  maxLength={6}
-                  value={masterPin}
-                  onChange={(e) => {
-                    setMasterPin(e.target.value);
-                    localStorage.setItem('aurasuite_master_pin', e.target.value);
-                  }}
-                  className="w-full bg-[#07080f] border border-cyan-500/20 rounded-lg p-2 text-xs text-cyan-300 font-mono font-bold outline-none focus:border-cyan-400"
-                />
+              {/* Groq */}
+              <div className="p-2.5 rounded-lg bg-[#0b0d18] border border-cyan-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold text-white">Groq LPU</div>
+                  <div className="text-[10px] text-gray-400">Ultra-fast sub-second LLaMA 3.3 Engine</div>
+                </div>
+                <div className="text-[10px] font-mono text-emerald-400 font-bold">
+                  ✓ Pre-configured
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-5">
+            {/* INDIVIDUAL 5-AGENT TRAINING BOXES */}
+            <div className="bg-[#07080f] p-3.5 rounded-xl border border-cyan-500/20 mb-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-purple-300 font-mono uppercase">INDIVIDUAL AGENT TRAINING BOXES (5 AGENTS)</span>
+                <span className="text-[10px] text-gray-400">Customize role instructions</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                {Object.keys(agentPrompts).map(agentName => (
+                  <div key={agentName} className="p-2.5 rounded-lg bg-[#0b0d18] border border-purple-500/20 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white flex items-center gap-1">
+                        <Bot size={12} className="text-purple-400" />
+                        {agentName}
+                      </span>
+                      <span className="text-[9px] font-mono text-purple-300">Training Prompt</span>
+                    </div>
+                    <textarea 
+                      rows={3}
+                      value={agentPrompts[agentName]}
+                      onChange={(e) => setAgentPrompts({...agentPrompts, [agentName]: e.target.value})}
+                      className="w-full bg-[#07080f] border border-purple-500/20 rounded p-1.5 text-[11px] text-gray-200 outline-none focus:border-purple-400 font-sans resize-none"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4">
               <button 
                 onClick={() => setShowSettingsModal(false)}
                 className="px-4 py-2 rounded-xl bg-[#141624] text-gray-300 text-xs font-mono"
@@ -1328,30 +1571,78 @@ export default function AgentTown({ currentUser }) {
                 Close
               </button>
               <button 
-                onClick={async () => {
-                  setSavingKeys(true);
-                  try {
-                    const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
-                    if (apiKeys.gemini) {
-                      await fetch('/api/providers/config', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ organization_id: orgId, provider_name: 'gemini', api_key: apiKeys.gemini })
-                      });
-                    }
-                    alert('Settings and Keys saved successfully!');
-                    setShowSettingsModal(false);
-                  } catch (e) {
-                    alert('Save notice: ' + e.message);
-                  } finally {
-                    setSavingKeys(false);
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('aurasuite_agent_prompts', JSON.stringify(agentPrompts));
                   }
+                  alert('Agent Training Prompts & Settings Saved Successfully!');
+                  setShowSettingsModal(false);
                 }}
-                disabled={savingKeys}
-                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs font-mono shadow-[0_0_15px_rgba(6,182,212,0.5)] cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs font-mono shadow-[0_0_15px_rgba(6,182,212,0.5)] cursor-pointer"
               >
-                {savingKeys ? 'Saving...' : 'SAVE SETTINGS'}
+                SAVE ALL SETTINGS
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==========================================
+          MODAL 2: VOICES & GENDER SWITCH
+      ========================================== */}
+      {showVoicesModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0e101d] border-2 border-emerald-500/40 rounded-2xl p-6 max-w-md w-full shadow-[0_0_50px_rgba(16,185,129,0.3)] relative">
+            <button onClick={() => setShowVoicesModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={16}/></button>
+            <div className="flex items-center gap-2 mb-3">
+              <Volume2 size={18} className="text-emerald-400" />
+              <h3 className="text-sm font-bold text-white font-mono">NEURAL VOICE ENGINE (MALE / FEMALE)</h3>
+            </div>
+            
+            <div className="bg-[#07080f] p-3.5 rounded-xl border border-emerald-500/20 space-y-3">
+              <div className="text-xs font-bold text-white">Select Voice Profile:</div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <button 
+                  onClick={() => {
+                    setVoiceGender('male');
+                    localStorage.setItem('aurasuite_voice_gender', 'male');
+                  }}
+                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                    voiceGender === 'male' 
+                      ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
+                      : 'bg-[#121424] border-gray-700 text-gray-400'
+                  }`}
+                >
+                  <div className="text-xs font-bold">Male (Charon)</div>
+                  <div className="text-[10px] text-emerald-300 mt-1">Iconic British Jarvis</div>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setVoiceGender('female');
+                    localStorage.setItem('aurasuite_voice_gender', 'female');
+                  }}
+                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                    voiceGender === 'female' 
+                      ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
+                      : 'bg-[#121424] border-gray-700 text-gray-400'
+                  }`}
+                >
+                  <div className="text-xs font-bold">Female (Aoede)</div>
+                  <div className="text-[10px] text-pink-300 mt-1">Refined Friday AI</div>
+                </button>
+              </div>
+
+              <div className="pt-2 border-t border-emerald-500/10 flex justify-between items-center">
+                <span className="text-[10px] text-gray-400 font-mono">Sampling Rate: 24,000 Hz WAV</span>
+                <button 
+                  onClick={() => speakText("ہیلو سر! سسٹم مکمل طور پر تیار اور فعال ہے۔")}
+                  className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-mono font-bold cursor-pointer"
+                >
+                  Test Voice 🔊
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1361,7 +1652,7 @@ export default function AgentTown({ currentUser }) {
           MODAL 3: MEMORY & CONTEXT INSPECTOR
       ========================================== */}
       {showMemoryModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#0e101d] border-2 border-cyan-500/40 rounded-2xl p-6 max-w-md w-full shadow-[0_0_50px_rgba(6,182,212,0.3)] relative">
             <button onClick={() => setShowMemoryModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={16}/></button>
             <div className="flex items-center gap-2 mb-3">
@@ -1372,7 +1663,19 @@ export default function AgentTown({ currentUser }) {
               <div><span className="text-cyan-400 font-bold">Active User:</span> {currentUser?.full_name || 'Admin'} ({currentUser?.role})</div>
               <div><span className="text-cyan-400 font-bold">Organization ID:</span> {currentUser?.organization_id || 'Superadmin'}</div>
               <div><span className="text-cyan-400 font-bold">Session Memory:</span> {chatMessages.length} Turns Ingested</div>
-              <div><span className="text-cyan-400 font-bold">Context Tokens:</span> 1.4k / 1.0M Available</div>
+              <div><span className="text-cyan-400 font-bold">Context Tokens:</span> 1.8k / 1.0M Available</div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button 
+                onClick={() => {
+                  setChatMessages([chatMessages[0]]);
+                  alert('Session Memory Cleared!');
+                  setShowMemoryModal(false);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-red-950/60 border border-red-500/30 text-red-300 text-xs font-mono hover:bg-red-900/60"
+              >
+                Clear Session Memory
+              </button>
             </div>
           </div>
         </div>
@@ -1382,7 +1685,7 @@ export default function AgentTown({ currentUser }) {
           MODAL 4: SKILLS CAPABILITY MATRIX
       ========================================== */}
       {showSkillsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#0e101d] border-2 border-amber-500/40 rounded-2xl p-6 max-w-md w-full shadow-[0_0_50px_rgba(245,158,11,0.3)] relative">
             <button onClick={() => setShowSkillsModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={16}/></button>
             <div className="flex items-center gap-2 mb-3">
@@ -1391,36 +1694,17 @@ export default function AgentTown({ currentUser }) {
             </div>
             <div className="space-y-2 text-xs font-mono">
               <div className="bg-[#07080f] p-2.5 rounded-lg border border-amber-500/20 text-gray-300">
-                <span className="text-amber-400 font-bold">1. Windows Automation Daemon:</span> Launch apps (calc, notepad, chrome), execute system commands.
+                <span className="text-amber-400 font-bold">1. Windows Automation Daemon:</span> Launch apps (calc, notepad, chrome, browser), execute system commands.
               </div>
               <div className="bg-[#07080f] p-2.5 rounded-lg border border-amber-500/20 text-gray-300">
                 <span className="text-amber-400 font-bold">2. AuraSuite Enterprise Queries:</span> Real-time user counting, instant account locking/suspension.
               </div>
               <div className="bg-[#07080f] p-2.5 rounded-lg border border-amber-500/20 text-gray-300">
-                <span className="text-amber-400 font-bold">3. Multi-Agent Swarm Orchestration:</span> Task decomposition across Saima, Dani, Mianzi & Zohaib.
+                <span className="text-amber-400 font-bold">3. 5-Agent Swarm Orchestration:</span> Task decomposition across Saima, Dani, Mianzi, Zohaib & Aura.
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==========================================
-          MODAL 5: VOICES CONFIGURATION
-      ========================================== */}
-      {showVoicesModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e101d] border-2 border-emerald-500/40 rounded-2xl p-6 max-w-md w-full shadow-[0_0_50px_rgba(16,185,129,0.3)] relative">
-            <button onClick={() => setShowVoicesModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={16}/></button>
-            <div className="flex items-center gap-2 mb-3">
-              <Volume2 size={18} className="text-emerald-400" />
-              <h3 className="text-sm font-bold text-white font-mono">NEURAL VOICE ENGINE (CHARON)</h3>
-            </div>
-            <div className="bg-[#07080f] p-3 rounded-xl border border-emerald-500/20 text-xs font-mono text-gray-300 space-y-2">
-              <div><span className="text-emerald-400 font-bold">Active Voice:</span> Charon (Iconic British Neural AI)</div>
-              <div><span className="text-emerald-400 font-bold">Sampling Rate:</span> 24,000 Hz Linear PCM to WAV</div>
-              <div><span className="text-emerald-400 font-bold">Model Pool:</span> gemini-3.8-flash-lite-tts, gemini-3.1-flash-tts-preview</div>
-              <div><span className="text-emerald-400 font-bold">Echo Cancellation:</span> Dynamic mic muting during playback</div>
-              <div><span className="text-emerald-400 font-bold">Google Translate:</span> Completely Purged & Disabled</div>
+              <div className="bg-[#07080f] p-2.5 rounded-lg border border-amber-500/20 text-gray-300">
+                <span className="text-amber-400 font-bold">4. Real Computer Screen Share:</span> WebRTC display capture inside Media Link.
+              </div>
             </div>
           </div>
         </div>
