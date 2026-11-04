@@ -228,3 +228,28 @@ body {
   65%, 75% { transform: rotate(-90deg); }
   0%, 20%, 40%, 60%, 80%, 100% { transform: rotate(0deg); }
 }
+
+@keyframes agent5Path {
+  0%, 25% { left: 47%; top: 73%; opacity: 1; } /* Sit and work at executive desk */
+  35% { left: 52%; top: 50%; } /* Walk towards center door */
+  45%, 65% { left: 55%; top: 22%; opacity: 1; } /* Stand at central coordination whiteboard */
+  75% { left: 52%; top: 50%; } /* Walk back */
+  85%, 100% { left: 47%; top: 73%; opacity: 1; } /* Return to executive desk */
+}
+
+@keyframes talk5 {
+  0%, 25% { opacity: 1; }
+  30%, 75% { opacity: 0; }
+  80%, 100% { opacity: 1; }
+}
+
+@keyframes typingMotion {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-1.5px); }
+}
+
+@keyframes screenFlicker {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+

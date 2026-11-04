@@ -34,7 +34,32 @@ async function getGeminiApiKey(orgId) {
 }
 
 function pcmToWav(pcmBase64, sampleRate = 24000, numChannels = 1, bitDepth = 16) {
-  const pcmBuffer = Buffer.from(pcmBase64, 'base64');
+  let pcmBuffer = Buffer.from(pcmBase64, 'base64');
+
+  // Ensure buffer length is strictly aligned to 16-bit 2-byte boundary
+  if (pcmBuffer.length % 2 !== 0) {
+    pcmBuffer = pcmBuffer.subarray(0, pcmBuffer.length - 1);
+  }
+
+  // Smooth Fade-In (~5ms) to eliminate opening DC click
+  const fadeInSamples = Math.min(120, Math.floor(pcmBuffer.length / 2));
+  for (let i = 0; i < fadeInSamples; i++) {
+    const byteOffset = i * 2;
+    const sample = pcmBuffer.readInt16LE(byteOffset);
+    const factor = i / fadeInSamples;
+    pcmBuffer.writeInt16LE(Math.round(sample * factor), byteOffset);
+  }
+
+  // Smooth Fade-Out (~40ms) to eliminate trailing 'khush' hiss/pop
+  const fadeOutSamples = Math.min(960, Math.floor(pcmBuffer.length / 2));
+  const startByte = pcmBuffer.length - (fadeOutSamples * 2);
+  for (let i = 0; i < fadeOutSamples; i++) {
+    const byteOffset = startByte + (i * 2);
+    const sample = pcmBuffer.readInt16LE(byteOffset);
+    const factor = (fadeOutSamples - i) / fadeOutSamples;
+    pcmBuffer.writeInt16LE(Math.round(sample * factor), byteOffset);
+  }
+
   const byteRate = (sampleRate * numChannels * bitDepth) / 8;
   const blockAlign = (numChannels * bitDepth) / 8;
   const dataSize = pcmBuffer.length;

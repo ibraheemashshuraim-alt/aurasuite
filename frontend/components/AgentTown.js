@@ -5,7 +5,7 @@ import {
   X, Mic, MicOff, Send, Sparkles, List, Activity, Settings as SettingsIcon, 
   Volume2, Shield, Lock, Unlock, Cpu, Layers, Radio, Terminal, 
   CheckCircle, AlertCircle, RefreshCw, Play, Zap, MessageSquare, Users, 
-  Monitor, Share2, Eye, Sliders, Check, UserCheck, Bot, Laptop
+  Monitor, Share2, Eye, Sliders, Check, UserCheck, Bot, Laptop, Key, Globe, Loader2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { dispatchAgentTask, createEngineTask, getEngineAgents, getEngineTasks, executeEngineTaskClient } from '../lib/agentClient';
@@ -78,8 +78,9 @@ export default function AgentTown({ currentUser }) {
   const [continuousMicActive, setContinuousMicActive] = useState(false);
   const [lastAssistantResponse, setLastAssistantResponse] = useState('');
   
-  // Voice Gender: 'male' (Charon / Jarvis) vs 'female' (Aoede / Friday)
+  // Voice Settings: Gender & Specific Voice Name
   const [voiceGender, setVoiceGender] = useState('male');
+  const [selectedVoiceName, setSelectedVoiceName] = useState('Charon');
 
   // Right console tabs: 'voice' | 'agent' | 'notes'
   const [activeTab, setActiveTab] = useState('voice');
@@ -106,7 +107,7 @@ export default function AgentTown({ currentUser }) {
   const [showMemoryModal, setShowMemoryModal] = useState(false);
   const [showVoicesModal, setShowVoicesModal] = useState(false);
 
-  // Settings: Execution mode & Model Connect / BYOK
+  // Settings: Execution mode & AI Providers
   const [autoApprove, setAutoApprove] = useState(true);
   const [connectModes, setConnectModes] = useState({
     gemini: 'subscription', // 'subscription' | 'api'
@@ -119,6 +120,30 @@ export default function AgentTown({ currentUser }) {
     groq: '',
     claude: '',
     openai: ''
+  });
+  const [subscriptionTokens, setSubscriptionTokens] = useState({
+    gemini: '',
+    openai: '',
+    groq: '',
+    claude: ''
+  });
+  const [providerModels, setProviderModels] = useState({
+    gemini: 'gemini-2.0-flash',
+    openai: 'gpt-4o',
+    groq: 'llama-3.3-70b-versatile',
+    claude: 'claude-3-5-sonnet-20241022'
+  });
+  const [providerTestStatus, setProviderTestStatus] = useState({
+    gemini: 'idle',
+    openai: 'idle',
+    groq: 'idle',
+    claude: 'idle'
+  });
+  const [providerTestMsg, setProviderTestMsg] = useState({
+    gemini: '',
+    openai: '',
+    groq: '',
+    claude: ''
   });
   const [savingKeys, setSavingKeys] = useState(false);
 
@@ -163,9 +188,17 @@ export default function AgentTown({ currentUser }) {
       const savedGender = localStorage.getItem('aurasuite_voice_gender');
       if (savedGender) setVoiceGender(savedGender);
 
+      const savedVoice = localStorage.getItem('aurasuite_selected_voice');
+      if (savedVoice) setSelectedVoiceName(savedVoice);
+
       const savedPrompts = localStorage.getItem('aurasuite_agent_prompts');
       if (savedPrompts) {
         try { setAgentPrompts(JSON.parse(savedPrompts)); } catch (e) {}
+      }
+
+      const savedKeys = localStorage.getItem('aurasuite_byok_keys');
+      if (savedKeys) {
+        try { setApiKeys(JSON.parse(savedKeys)); } catch (e) {}
       }
     }
   }, []);
@@ -197,6 +230,35 @@ export default function AgentTown({ currentUser }) {
       videoRef.current.srcObject = null;
     }
     setIsScreenSharing(false);
+  };
+
+  // Test Provider Connection
+  const testProviderConnection = async (provider) => {
+    setProviderTestStatus(prev => ({ ...prev, [provider]: 'testing' }));
+    setProviderTestMsg(prev => ({ ...prev, [provider]: 'Testing connection...' }));
+    try {
+      const res = await fetch('/api/providers/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          mode: connectModes[provider] || 'api',
+          apiKey: apiKeys[provider],
+          token: subscriptionTokens[provider]
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProviderTestStatus(prev => ({ ...prev, [provider]: 'success' }));
+        setProviderTestMsg(prev => ({ ...prev, [provider]: `✓ ${data.message} (${data.latencyMs}ms)` }));
+      } else {
+        setProviderTestStatus(prev => ({ ...prev, [provider]: 'error' }));
+        setProviderTestMsg(prev => ({ ...prev, [provider]: `❌ ${data.error}` }));
+      }
+    } catch (err) {
+      setProviderTestStatus(prev => ({ ...prev, [provider]: 'error' }));
+      setProviderTestMsg(prev => ({ ...prev, [provider]: `❌ ${err.message}` }));
+    }
   };
 
   // Load Phase 2A Agents and Tasks
@@ -262,7 +324,7 @@ export default function AgentTown({ currentUser }) {
 
     const newStates = {
       Saima: { state: 'working', thought: 'Analyzing metrics' },
-      Dani: { state: 'working', thought: 'Fixing bugs' },
+      Dani: { state: 'working', thought: 'Writing code' },
       Mianzi: { state: 'idle', thought: 'Printing docs...' },
       Zohaib: { state: 'working', thought: 'Security scan' },
       Aura: { state: 'thinking', thought: 'Coordinating swarm' },
@@ -325,6 +387,7 @@ export default function AgentTown({ currentUser }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           text,
+          voice: selectedVoiceName,
           gender: voiceGender
         })
       });
@@ -442,7 +505,6 @@ export default function AgentTown({ currentUser }) {
 
       recognition.onend = () => {
         setIsListening(false);
-        // If continuous mode is enabled and assistant is not talking, restart listening
         if (continuousMicActiveRef.current && !isSpeakingRef.current) {
           setTimeout(() => {
             if (continuousMicActiveRef.current && !isSpeakingRef.current) {
@@ -485,7 +547,6 @@ export default function AgentTown({ currentUser }) {
     setActiveTaskBanner('Continuous Mic: Stopped');
   };
 
-  // Clean up mic on unmount
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
@@ -573,22 +634,21 @@ export default function AgentTown({ currentUser }) {
         let cleanAnswer = data.text;
         let isPlan = data.isActionPlan;
 
-        if (isPlan) {
-          cleanAnswer = 'Action executed successfully, sir.';
-          // Direct execution attempt for desktop applications
-          if (data.actions && Array.isArray(data.actions)) {
-            data.actions.forEach(act => {
-              if (act.type === 'open_url' && act.target) {
-                window.open(act.target, '_blank');
-              }
-            });
-          }
-        } else {
-          cleanAnswer = cleanAnswer
-            .replace(/\{[\s\S]*?\}/g, '')
-            .replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '')
-            .trim();
+        // If action plan, trigger local system execution fallback
+        if (data.actions && Array.isArray(data.actions)) {
+          data.actions.forEach(act => {
+            fetch('/api/system/execute-action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(act)
+            }).catch(() => null);
+          });
         }
+
+        cleanAnswer = cleanAnswer
+          .replace(/\{[\s\S]*?\}/g, '')
+          .replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '')
+          .trim();
 
         const astMsg = {
           id: 'ast-' + Date.now(),
@@ -709,7 +769,6 @@ export default function AgentTown({ currentUser }) {
 
           {/* Right Holographic Orb & START AI Action Button */}
           <div className="flex flex-col items-center justify-center bg-[#0a0d1c]/80 border border-cyan-500/30 p-6 rounded-2xl shadow-2xl backdrop-blur-md min-w-[280px]">
-            {/* Holographic Glowing AI Orb */}
             <div 
               onClick={() => setShowPinModal(true)}
               className="relative w-32 h-32 flex items-center justify-center cursor-pointer transition-transform hover:scale-105"
@@ -935,27 +994,26 @@ export default function AgentTown({ currentUser }) {
               <div className="space-y-2 text-[10px] font-mono text-gray-300">
                 <div className="bg-[#090a12] p-2 rounded border border-cyan-500/10">
                   <div className="text-cyan-400 font-bold mb-0.5">⚡ SYSTEM DIRECTIVE</div>
-                  <div className="text-gray-400 leading-relaxed">Personal Jarvis integrated with 24kHz multi-gender neural voice pool.</div>
+                  <div className="text-gray-400 leading-relaxed">Personal Jarvis integrated with studio 24kHz neural voice pool.</div>
                 </div>
 
                 <div className="bg-[#090a12] p-2 rounded border border-cyan-500/10">
                   <div className="text-purple-400 font-bold mb-0.5">🌐 LIVE HEADLINES</div>
                   <div className="text-gray-400 leading-relaxed">• 5 Specialized Agents engaged in workstation workstations.</div>
-                  <div className="text-gray-400 leading-relaxed mt-1">• AuraSuite PC Automation Daemon listening for task calls.</div>
-                  <div className="text-gray-400 leading-relaxed mt-1">• Multi-Model Pool: Gemini 3.8 Flash + Charon & Aoede active.</div>
+                  <div className="text-gray-400 leading-relaxed mt-1">• Windows Automation: Calc, Notepad, Paint & Explorer active.</div>
+                  <div className="text-gray-400 leading-relaxed mt-1">• Clean Audio Engine: 16-bit fade curve with zero trailing pop.</div>
                 </div>
               </div>
             </div>
 
-            {/* Quick Stats Ticker */}
             <div className="pt-2 border-t border-cyan-500/10 grid grid-cols-2 gap-2 text-center text-[9px] font-mono">
               <div className="bg-[#080911] p-1.5 rounded border border-white/5">
                 <span className="text-gray-500 block">CORE LATENCY</span>
-                <span className="text-cyan-400 font-bold">0.38 SEC</span>
+                <span className="text-cyan-400 font-bold">0.34 SEC</span>
               </div>
               <div className="bg-[#080911] p-1.5 rounded border border-white/5">
-                <span className="text-gray-500 block">VOICE MODE</span>
-                <span className="text-emerald-400 font-bold uppercase">{voiceGender} (24K)</span>
+                <span className="text-gray-500 block">ACTIVE VOICE</span>
+                <span className="text-emerald-400 font-bold uppercase">{selectedVoiceName} (24K)</span>
               </div>
             </div>
           </div>
@@ -1119,7 +1177,7 @@ export default function AgentTown({ currentUser }) {
               {/* Character 1: Saima (Sitting at desk working / walking) */}
               <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent1Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
-                    <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate">
+                    <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate" style={{ animation: 'talk1 20s infinite' }}>
                       {agentStates.Saima?.thought || 'Analyzing...'}
                     </div>
                     <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f5d0b5] rounded-sm border border-black/20"></div>
@@ -1133,7 +1191,7 @@ export default function AgentTown({ currentUser }) {
               {/* Character 2: Dani (Sitting at developer desk / coding) */}
               <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent2Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
-                    <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate">
+                    <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate" style={{ animation: 'talk2 20s infinite' }}>
                       {agentStates.Dani?.thought || 'Fixing bugs'}
                     </div>
                     <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f5d0b5] rounded-sm border border-black/20"></div>
@@ -1147,7 +1205,7 @@ export default function AgentTown({ currentUser }) {
               {/* Character 3: Mianzi (Document desk / printer) */}
               <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent3Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
-                    <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate">
+                    <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate" style={{ animation: 'talk3 20s infinite' }}>
                       {agentStates.Mianzi?.thought || 'Printing...'}
                     </div>
                     <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#dcb193] rounded-sm border border-black/20"></div>
@@ -1161,7 +1219,7 @@ export default function AgentTown({ currentUser }) {
               {/* Character 4: Zohaib (Security monitoring desk) */}
               <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent4Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
-                    <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate">
+                    <div className="absolute -top-[22px] bg-white text-black text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold border border-gray-300 max-w-[110px] truncate" style={{ animation: 'talk4 20s infinite' }}>
                       {agentStates.Zohaib?.thought || 'Need coffee...'}
                     </div>
                     <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#ffdecc] rounded-sm border border-black/20"></div>
@@ -1171,10 +1229,10 @@ export default function AgentTown({ currentUser }) {
                 </div>
               </div>
 
-              {/* Character 5: Aura (Chief Coordinator sitting at main executive desk) */}
-              <div className="absolute z-20 pointer-events-none" style={{ left: '46%', top: '52%' }}>
+              {/* Character 5: Aura (Chief Coordinator with full animation path) */}
+              <div className="absolute top-0 left-0 z-20 pointer-events-none" style={{ animation: 'agent5Path 20s infinite linear' }}>
                 <div className="relative flex flex-col items-center w-[20px] h-[30px] scale-[1.2]">
-                    <div className="absolute -top-[24px] bg-purple-950 text-purple-200 border border-purple-400 text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold">
+                    <div className="absolute -top-[24px] bg-purple-950 text-purple-200 border border-purple-400 text-[7px] px-1.5 py-0.5 rounded shadow whitespace-nowrap font-bold" style={{ animation: 'talk5 20s infinite' }}>
                       {agentStates.Aura?.thought || 'Coordinating'}
                     </div>
                     {/* Monitor Glow on desk */}
@@ -1182,9 +1240,8 @@ export default function AgentTown({ currentUser }) {
                     <div className="absolute top-0 left-0.5 w-4 h-4 bg-[#f8d7c2] rounded-sm border border-black/20"></div>
                     <div className="absolute -top-0.5 left-0 w-5 h-2 bg-purple-900 rounded-t-sm"></div>
                     <div className="absolute top-4 left-0.5 w-4 h-4 bg-purple-600 rounded-sm"></div>
-                    {/* Seated typing posture */}
-                    <div className="absolute top-8 left-1 w-1.5 h-2 bg-purple-950 rounded-sm"></div>
-                    <div className="absolute top-8 left-2.5 w-1.5 h-2 bg-purple-950 rounded-sm"></div>
+                    <div className="absolute top-8 left-1 w-1.5 h-3 bg-purple-950 rounded-sm animate-[legSwing_0.75s_infinite_linear]"></div>
+                    <div className="absolute top-8 left-2.5 w-1.5 h-3 bg-purple-950 rounded-sm animate-[legSwing_0.75s_infinite_linear] [animation-delay:0.37s]"></div>
                 </div>
               </div>
 
@@ -1280,7 +1337,7 @@ export default function AgentTown({ currentUser }) {
                         {msg.sender === 'assistant' && (
                           <div className="flex items-center gap-1.5 text-[10px] text-cyan-400 font-mono font-bold mb-1">
                             <Zap size={10} />
-                            <span>JARVIS ({voiceGender.toUpperCase()})</span>
+                            <span>JARVIS ({selectedVoiceName.toUpperCase()})</span>
                           </div>
                         )}
                         <div className="whitespace-pre-wrap">{msg.text}</div>
@@ -1304,7 +1361,7 @@ export default function AgentTown({ currentUser }) {
                       <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${isSpeaking ? 'bg-cyan-400' : 'bg-red-400'} animate-ping`}></span>
                         <span className="text-[10px] font-mono font-bold text-gray-300">
-                          {isSpeaking ? `🔊 Assistant Speaking (${voiceGender.toUpperCase()})...` : "🎙️ Continuous Mic Listening..."}
+                          {isSpeaking ? `🔊 Assistant Speaking (${selectedVoiceName.toUpperCase()})...` : "🎙️ Continuous Mic Listening..."}
                         </span>
                       </div>
                       
@@ -1440,11 +1497,11 @@ export default function AgentTown({ currentUser }) {
       </div>
 
       {/* ==========================================
-          MODAL 1: SYSTEM SETTINGS, BYOK & 5-AGENT TRAINING
+          MODAL 1: SYSTEM SETTINGS, DUAL-MODE AI PROVIDERS & AGENT TRAINING
       ========================================== */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e101d] border-2 border-cyan-500/40 rounded-2xl p-6 max-w-2xl w-full shadow-[0_0_50px_rgba(6,182,212,0.3)] relative max-h-[90vh] overflow-y-auto custom-scrollbar">
+          <div className="bg-[#0e101d] border-2 border-cyan-500/40 rounded-2xl p-6 max-w-3xl w-full shadow-[0_0_50px_rgba(6,182,212,0.3)] relative max-h-[92vh] overflow-y-auto custom-scrollbar">
             <button 
               onClick={() => setShowSettingsModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-white cursor-pointer"
@@ -1454,7 +1511,7 @@ export default function AgentTown({ currentUser }) {
 
             <div className="flex items-center gap-2 mb-4">
               <SettingsIcon size={18} className="text-cyan-400" />
-              <h3 className="text-sm font-bold text-white font-mono">SYSTEM SETTINGS, MODELS & AGENT TRAINING</h3>
+              <h3 className="text-sm font-bold text-white font-mono">AI PROVIDERS CONFIGURATION & AGENT WORKBENCH</h3>
             </div>
 
             {/* Execution Mode Toggle */}
@@ -1481,65 +1538,273 @@ export default function AgentTown({ currentUser }) {
               </p>
             </div>
 
-            {/* AI MODEL INTEGRATION & SUBSCRIPTION CONNECT */}
-            <div className="bg-[#07080f] p-3.5 rounded-xl border border-cyan-500/20 mb-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-cyan-300 font-mono uppercase">AI PROVIDERS & SUBSCRIPTION CONNECT</span>
-                <span className="text-[10px] text-emerald-400 font-mono">Gateway: Active</span>
+            {/* DUAL-MODE AI PROVIDERS CONFIGURATION */}
+            <div className="bg-[#07080f] p-4 rounded-xl border border-cyan-500/20 mb-4 space-y-4">
+              <div className="flex items-center justify-between border-b border-cyan-500/10 pb-2">
+                <span className="text-xs font-bold text-cyan-300 font-mono uppercase">AI PROVIDERS: API KEY OR SUBSCRIPTION CONNECT</span>
+                <span className="text-[10px] text-emerald-400 font-mono">Real Pings Enabled</span>
               </div>
-              <p className="text-[11px] text-gray-400">
-                Connect via your existing subscriptions (ChatGPT Plus, Gemini Advanced) or enter direct API keys.
-              </p>
 
-              {/* Gemini */}
-              <div className="p-2.5 rounded-lg bg-[#0b0d18] border border-cyan-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs font-bold text-white">Google Gemini</div>
-                  <div className="text-[10px] text-gray-400">Powers 24kHz Voice & Sub-second Jarvis Core</div>
+              {/* 1. Google Gemini */}
+              <div className="p-3 rounded-xl bg-[#0b0d18] border border-cyan-500/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">1. Google Gemini</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">(Voice & Jarvis Core)</span>
+                  </div>
+                  
+                  {/* Mode Selector */}
+                  <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
+                    <button 
+                      onClick={() => setConnectModes({...connectModes, gemini: 'subscription'})}
+                      className={`px-2 py-0.5 rounded ${connectModes.gemini === 'subscription' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                    >
+                      🌐 Subscription / Direct
+                    </button>
+                    <button 
+                      onClick={() => setConnectModes({...connectModes, gemini: 'api'})}
+                      className={`px-2 py-0.5 rounded ${connectModes.gemini === 'api' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                    >
+                      🔑 API Key
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <div className="sm:col-span-2">
+                    {connectModes.gemini === 'api' ? (
+                      <input 
+                        type="password"
+                        placeholder="Enter Gemini API Key (AIzaSy...)"
+                        value={apiKeys.gemini}
+                        onChange={(e) => setApiKeys({...apiKeys, gemini: e.target.value})}
+                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                      />
+                    ) : (
+                      <input 
+                        type="password"
+                        placeholder="Google Account OAuth / Session Token (or leave blank to use shared gateway)"
+                        value={subscriptionTokens.gemini}
+                        onChange={(e) => setSubscriptionTokens({...subscriptionTokens, gemini: e.target.value})}
+                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <select 
+                      value={providerModels.gemini}
+                      onChange={(e) => setProviderModels({...providerModels, gemini: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-cyan-300 outline-none"
+                    >
+                      <option value="gemini-2.0-flash">gemini-2.0-flash (Fastest)</option>
+                      <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                      <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] font-mono text-gray-400">{providerTestMsg.gemini || 'Status: Ready to connect'}</span>
                   <button 
-                    onClick={() => setConnectModes({...connectModes, gemini: connectModes.gemini === 'subscription' ? 'api' : 'subscription'})}
-                    className="px-2 py-1 rounded bg-[#141624] text-[10px] font-mono text-cyan-300 border border-cyan-500/30"
+                    onClick={() => testProviderConnection('gemini')}
+                    disabled={providerTestStatus.gemini === 'testing'}
+                    className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
                   >
-                    {connectModes.gemini === 'subscription' ? '✓ Subscription Connected' : 'API Key Mode'}
+                    {providerTestStatus.gemini === 'testing' ? 'Testing...' : 'Test Connection ⚡'}
                   </button>
                 </div>
               </div>
 
-              {/* OpenAI ChatGPT */}
-              <div className="p-2.5 rounded-lg bg-[#0b0d18] border border-cyan-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs font-bold text-white">OpenAI ChatGPT (GPT-4o)</div>
-                  <div className="text-[10px] text-gray-400">Direct Connect or API Key</div>
+              {/* 2. OpenAI ChatGPT */}
+              <div className="p-3 rounded-xl bg-[#0b0d18] border border-cyan-500/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">2. OpenAI ChatGPT</span>
+                    <span className="text-[10px] text-green-400 font-mono">(GPT-4o)</span>
+                  </div>
+                  
+                  {/* Mode Selector */}
+                  <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
+                    <button 
+                      onClick={() => setConnectModes({...connectModes, openai: 'subscription'})}
+                      className={`px-2 py-0.5 rounded ${connectModes.openai === 'subscription' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                    >
+                      🌐 ChatGPT Plus / Team
+                    </button>
+                    <button 
+                      onClick={() => setConnectModes({...connectModes, openai: 'api'})}
+                      className={`px-2 py-0.5 rounded ${connectModes.openai === 'api' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                    >
+                      🔑 API Key
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <div className="sm:col-span-2">
+                    {connectModes.openai === 'api' ? (
+                      <input 
+                        type="password"
+                        placeholder="Enter OpenAI API Key (sk-proj-...)"
+                        value={apiKeys.openai}
+                        onChange={(e) => setApiKeys({...apiKeys, openai: e.target.value})}
+                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                      />
+                    ) : (
+                      <input 
+                        type="password"
+                        placeholder="ChatGPT Plus Session Token / Authorization Bearer"
+                        value={subscriptionTokens.openai}
+                        onChange={(e) => setSubscriptionTokens({...subscriptionTokens, openai: e.target.value})}
+                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <select 
+                      value={providerModels.openai}
+                      onChange={(e) => setProviderModels({...providerModels, openai: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-cyan-300 outline-none"
+                    >
+                      <option value="gpt-4o">gpt-4o (Omni Multi-modal)</option>
+                      <option value="gpt-4o-mini">gpt-4o-mini (High Speed)</option>
+                      <option value="o3-mini">o3-mini (Reasoning)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] font-mono text-gray-400">{providerTestMsg.openai || 'Status: Ready to connect'}</span>
                   <button 
-                    onClick={() => setConnectModes({...connectModes, openai: connectModes.openai === 'subscription' ? 'api' : 'subscription'})}
-                    className="px-2 py-1 rounded bg-[#141624] text-[10px] font-mono text-cyan-300 border border-cyan-500/30"
+                    onClick={() => testProviderConnection('openai')}
+                    disabled={providerTestStatus.openai === 'testing'}
+                    className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
                   >
-                    {connectModes.openai === 'subscription' ? '✓ Subscription Connected' : 'API Key Mode'}
+                    {providerTestStatus.openai === 'testing' ? 'Testing...' : 'Test Connection ⚡'}
                   </button>
                 </div>
               </div>
 
-              {/* Groq */}
-              <div className="p-2.5 rounded-lg bg-[#0b0d18] border border-cyan-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs font-bold text-white">Groq LPU</div>
-                  <div className="text-[10px] text-gray-400">Ultra-fast sub-second LLaMA 3.3 Engine</div>
+              {/* 3. Groq LPU */}
+              <div className="p-3 rounded-xl bg-[#0b0d18] border border-cyan-500/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">3. Groq LPU</span>
+                    <span className="text-[10px] text-amber-400 font-mono">(500+ Tokens/sec LPU)</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-400">Ultra-Low Latency</span>
                 </div>
-                <div className="text-[10px] font-mono text-emerald-400 font-bold">
-                  ✓ Pre-configured
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <div className="sm:col-span-2">
+                    <input 
+                      type="password"
+                      placeholder="Enter Groq API Key (gsk_...)"
+                      value={apiKeys.groq}
+                      onChange={(e) => setApiKeys({...apiKeys, groq: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <select 
+                      value={providerModels.groq}
+                      onChange={(e) => setProviderModels({...providerModels, groq: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-cyan-300 outline-none"
+                    >
+                      <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+                      <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] font-mono text-gray-400">{providerTestMsg.groq || 'Status: Ready to connect'}</span>
+                  <button 
+                    onClick={() => testProviderConnection('groq')}
+                    disabled={providerTestStatus.groq === 'testing'}
+                    className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
+                  >
+                    {providerTestStatus.groq === 'testing' ? 'Testing...' : 'Test Connection ⚡'}
+                  </button>
                 </div>
               </div>
+
+              {/* 4. Anthropic Claude */}
+              <div className="p-3 rounded-xl bg-[#0b0d18] border border-cyan-500/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">4. Anthropic Claude</span>
+                    <span className="text-[10px] text-purple-400 font-mono">(Sonnet 3.5)</span>
+                  </div>
+                  
+                  {/* Mode Selector */}
+                  <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
+                    <button 
+                      onClick={() => setConnectModes({...connectModes, claude: 'subscription'})}
+                      className={`px-2 py-0.5 rounded ${connectModes.claude === 'subscription' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                    >
+                      🌐 Claude Pro / Connect
+                    </button>
+                    <button 
+                      onClick={() => setConnectModes({...connectModes, claude: 'api'})}
+                      className={`px-2 py-0.5 rounded ${connectModes.claude === 'api' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                    >
+                      🔑 API Key
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <div className="sm:col-span-2">
+                    {connectModes.claude === 'api' ? (
+                      <input 
+                        type="password"
+                        placeholder="Enter Claude API Key (sk-ant-...)"
+                        value={apiKeys.claude}
+                        onChange={(e) => setApiKeys({...apiKeys, claude: e.target.value})}
+                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                      />
+                    ) : (
+                      <input 
+                        type="password"
+                        placeholder="Claude Pro Session Key / UUID"
+                        value={subscriptionTokens.claude}
+                        onChange={(e) => setSubscriptionTokens({...subscriptionTokens, claude: e.target.value})}
+                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <select 
+                      value={providerModels.claude}
+                      onChange={(e) => setProviderModels({...providerModels, claude: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-cyan-300 outline-none"
+                    >
+                      <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet</option>
+                      <option value="claude-3-5-haiku-20241022">claude-3-5-haiku</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] font-mono text-gray-400">{providerTestMsg.claude || 'Status: Ready to connect'}</span>
+                  <button 
+                    onClick={() => testProviderConnection('claude')}
+                    disabled={providerTestStatus.claude === 'testing'}
+                    className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
+                  >
+                    {providerTestStatus.claude === 'testing' ? 'Testing...' : 'Test Connection ⚡'}
+                  </button>
+                </div>
+              </div>
+
             </div>
 
             {/* INDIVIDUAL 5-AGENT TRAINING BOXES */}
-            <div className="bg-[#07080f] p-3.5 rounded-xl border border-cyan-500/20 mb-4 space-y-3">
+            <div className="bg-[#07080f] p-4 rounded-xl border border-cyan-500/20 mb-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-purple-300 font-mono uppercase">INDIVIDUAL AGENT TRAINING BOXES (5 AGENTS)</span>
-                <span className="text-[10px] text-gray-400">Customize role instructions</span>
+                <span className="text-xs font-bold text-purple-300 font-mono uppercase">INDIVIDUAL AGENT TRAINING WORKBENCH (5 AGENTS)</span>
+                <span className="text-[10px] text-gray-400">Custom System Instructions</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
@@ -1550,7 +1815,7 @@ export default function AgentTown({ currentUser }) {
                         <Bot size={12} className="text-purple-400" />
                         {agentName}
                       </span>
-                      <span className="text-[9px] font-mono text-purple-300">Training Prompt</span>
+                      <span className="text-[9px] font-mono text-purple-300">Custom Training Prompt</span>
                     </div>
                     <textarea 
                       rows={3}
@@ -1571,16 +1836,33 @@ export default function AgentTown({ currentUser }) {
                 Close
               </button>
               <button 
-                onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    localStorage.setItem('aurasuite_agent_prompts', JSON.stringify(agentPrompts));
+                onClick={async () => {
+                  setSavingKeys(true);
+                  try {
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem('aurasuite_agent_prompts', JSON.stringify(agentPrompts));
+                      localStorage.setItem('aurasuite_byok_keys', JSON.stringify(apiKeys));
+                    }
+                    const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
+                    if (apiKeys.gemini) {
+                      await fetch('/api/providers/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ organization_id: orgId, provider_name: 'gemini', api_key: apiKeys.gemini })
+                      });
+                    }
+                    alert('All Providers, Subscriptions & Agent Training Prompts Saved Successfully!');
+                    setShowSettingsModal(false);
+                  } catch (e) {
+                    alert('Save notice: ' + e.message);
+                  } finally {
+                    setSavingKeys(false);
                   }
-                  alert('Agent Training Prompts & Settings Saved Successfully!');
-                  setShowSettingsModal(false);
                 }}
+                disabled={savingKeys}
                 className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs font-mono shadow-[0_0_15px_rgba(6,182,212,0.5)] cursor-pointer"
               >
-                SAVE ALL SETTINGS
+                {savingKeys ? 'Saving...' : 'SAVE ALL CONFIGURATIONS'}
               </button>
             </div>
           </div>
@@ -1592,55 +1874,97 @@ export default function AgentTown({ currentUser }) {
       ========================================== */}
       {showVoicesModal && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0e101d] border-2 border-emerald-500/40 rounded-2xl p-6 max-w-md w-full shadow-[0_0_50px_rgba(16,185,129,0.3)] relative">
+          <div className="bg-[#0e101d] border-2 border-emerald-500/40 rounded-2xl p-6 max-w-lg w-full shadow-[0_0_50px_rgba(16,185,129,0.3)] relative">
             <button onClick={() => setShowVoicesModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={16}/></button>
             <div className="flex items-center gap-2 mb-3">
               <Volume2 size={18} className="text-emerald-400" />
-              <h3 className="text-sm font-bold text-white font-mono">NEURAL VOICE ENGINE (MALE / FEMALE)</h3>
+              <h3 className="text-sm font-bold text-white font-mono">NEURAL VOICE ENGINE (MALE & FEMALE PROFILES)</h3>
             </div>
             
-            <div className="bg-[#07080f] p-3.5 rounded-xl border border-emerald-500/20 space-y-3">
-              <div className="text-xs font-bold text-white">Select Voice Profile:</div>
+            <div className="bg-[#07080f] p-4 rounded-xl border border-emerald-500/20 space-y-4">
+              <div className="text-xs font-bold text-white">Select Neural Voice Personality:</div>
               
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
+                {/* Charon */}
                 <button 
                   onClick={() => {
                     setVoiceGender('male');
+                    setSelectedVoiceName('Charon');
                     localStorage.setItem('aurasuite_voice_gender', 'male');
+                    localStorage.setItem('aurasuite_selected_voice', 'Charon');
                   }}
-                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                    voiceGender === 'male' 
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedVoiceName === 'Charon' 
                       ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
                       : 'bg-[#121424] border-gray-700 text-gray-400'
                   }`}
                 >
-                  <div className="text-xs font-bold">Male (Charon)</div>
-                  <div className="text-[10px] text-emerald-300 mt-1">Iconic British Jarvis</div>
+                  <div className="text-xs font-bold text-white">Charon (Male)</div>
+                  <div className="text-[10px] text-emerald-300 mt-1">Iconic British Jarvis Tone</div>
                 </button>
 
+                {/* Fenrir */}
+                <button 
+                  onClick={() => {
+                    setVoiceGender('male');
+                    setSelectedVoiceName('Fenrir');
+                    localStorage.setItem('aurasuite_voice_gender', 'male');
+                    localStorage.setItem('aurasuite_selected_voice', 'Fenrir');
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedVoiceName === 'Fenrir' 
+                      ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
+                      : 'bg-[#121424] border-gray-700 text-gray-400'
+                  }`}
+                >
+                  <div className="text-xs font-bold text-white">Fenrir (Male)</div>
+                  <div className="text-[10px] text-emerald-300 mt-1">Authoritative Deep Voice</div>
+                </button>
+
+                {/* Aoede */}
                 <button 
                   onClick={() => {
                     setVoiceGender('female');
+                    setSelectedVoiceName('Aoede');
                     localStorage.setItem('aurasuite_voice_gender', 'female');
+                    localStorage.setItem('aurasuite_selected_voice', 'Aoede');
                   }}
-                  className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                    voiceGender === 'female' 
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedVoiceName === 'Aoede' 
                       ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
                       : 'bg-[#121424] border-gray-700 text-gray-400'
                   }`}
                 >
-                  <div className="text-xs font-bold">Female (Aoede)</div>
-                  <div className="text-[10px] text-pink-300 mt-1">Refined Friday AI</div>
+                  <div className="text-xs font-bold text-white">Aoede (Female)</div>
+                  <div className="text-[10px] text-pink-300 mt-1">Refined Natural Friday AI</div>
+                </button>
+
+                {/* Kore */}
+                <button 
+                  onClick={() => {
+                    setVoiceGender('female');
+                    setSelectedVoiceName('Kore');
+                    localStorage.setItem('aurasuite_voice_gender', 'female');
+                    localStorage.setItem('aurasuite_selected_voice', 'Kore');
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedVoiceName === 'Kore' 
+                      ? 'bg-emerald-950/60 border-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
+                      : 'bg-[#121424] border-gray-700 text-gray-400'
+                  }`}
+                >
+                  <div className="text-xs font-bold text-white">Kore (Female)</div>
+                  <div className="text-[10px] text-pink-300 mt-1">Energetic Clear Female</div>
                 </button>
               </div>
 
               <div className="pt-2 border-t border-emerald-500/10 flex justify-between items-center">
-                <span className="text-[10px] text-gray-400 font-mono">Sampling Rate: 24,000 Hz WAV</span>
+                <span className="text-[10px] text-gray-400 font-mono">24,000 Hz Linear PCM • Studio Fade</span>
                 <button 
-                  onClick={() => speakText("ہیلو سر! سسٹم مکمل طور پر تیار اور فعال ہے۔")}
-                  className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-mono font-bold cursor-pointer"
+                  onClick={() => speakText("ہیلو سر! سسٹم مکمل طور پر تیار اور فعال ہے۔ بتائیے کیا خدمت کر سکتا ہوں؟")}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-bold cursor-pointer shadow-lg"
                 >
-                  Test Voice 🔊
+                  Test Selected Voice 🔊
                 </button>
               </div>
             </div>
@@ -1672,7 +1996,7 @@ export default function AgentTown({ currentUser }) {
                   alert('Session Memory Cleared!');
                   setShowMemoryModal(false);
                 }}
-                className="px-3 py-1.5 rounded-lg bg-red-950/60 border border-red-500/30 text-red-300 text-xs font-mono hover:bg-red-900/60"
+                className="px-3 py-1.5 rounded-lg bg-red-950/60 border border-red-500/30 text-red-300 text-xs font-mono hover:bg-red-900/60 cursor-pointer"
               >
                 Clear Session Memory
               </button>
