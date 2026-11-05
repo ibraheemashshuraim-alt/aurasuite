@@ -682,6 +682,8 @@ export default function AgentTown({ currentUser }) {
           orgId, 
           userName,
           userId,
+          voice: selectedVoiceName,
+          gender: voiceGender,
           autoApprove 
         })
       });
@@ -729,17 +731,54 @@ export default function AgentTown({ currentUser }) {
           }
         };
 
-        // Safety fallback: only if audio completely fails or takes over 8 seconds, reveal message
-        const fallbackTimer = setTimeout(revealMessage, 8000);
+        // If server provided instant direct audio payload, play immediately with zero latency!
+        if (data.audioBase64) {
+          try {
+            const audioUrl = 'data:audio/wav;base64,' + data.audioBase64;
+            const audio = new Audio(audioUrl);
 
-        if (cleanAnswer) {
-          speakText(cleanAnswer.slice(0, 220), () => {
+            // Pause microphone while speaking to avoid echo loop
+            if (recognitionRef.current && continuousMicActiveRef.current) {
+              try { recognitionRef.current.abort(); } catch (e) {}
+            }
+
+            audio.onplay = () => {
+              setIsSpeaking(true);
+              isSpeakingRef.current = true;
+              revealMessage();
+            };
+
+            audio.onended = () => {
+              setIsSpeaking(false);
+              isSpeakingRef.current = false;
+              if (continuousMicActiveRef.current) {
+                setTimeout(() => {
+                  if (continuousMicActiveRef.current && !isSpeakingRef.current) {
+                    startRecognitionInstance();
+                  }
+                }, 300);
+              }
+            };
+
+            audio.onerror = () => {
+              setIsSpeaking(false);
+              isSpeakingRef.current = false;
+              revealMessage();
+            };
+
+            await audio.play();
+          } catch (audioErr) {
+            console.warn('Direct audio play rejected:', audioErr);
+            revealMessage();
+            speakText(finalMsgText.slice(0, 220));
+          }
+        } else {
+          // Fallback to separate TTS endpoint if audioBase64 was not in payload
+          const fallbackTimer = setTimeout(revealMessage, 8000);
+          speakText(finalMsgText.slice(0, 220), () => {
             clearTimeout(fallbackTimer);
             revealMessage();
           });
-        } else {
-          clearTimeout(fallbackTimer);
-          revealMessage();
         }
       }
 
