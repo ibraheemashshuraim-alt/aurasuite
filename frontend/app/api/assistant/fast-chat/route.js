@@ -50,6 +50,25 @@ export async function POST(request) {
     const isUrdu = cleanLower.includes('kholo') || cleanLower.includes('khol') || cleanLower.includes('karo') || cleanLower.includes('chalao') || cleanLower.includes('hai') || cleanLower.includes('salam') || cleanLower.includes('sun');
 
     // ==========================================
+    // 0. INSTANT ZERO-LATENCY CONVERSATIONAL REPLIES
+    // ==========================================
+    const isGreeting = cleanLower.includes('salam') || cleanLower.includes('سلام') || cleanLower.includes('hello') || cleanLower.includes('ہیلو') || cleanLower.includes('hi jarvis');
+    const isStatusCheck = cleanLower.includes('kaise ho') || cleanLower.includes('kese ho') || cleanLower.includes('کیسے ہو') || cleanLower.includes('کیا حال') || cleanLower.includes('how are you');
+    const isThanks = cleanLower.includes('shukriya') || cleanLower.includes('شکریہ') || cleanLower.includes('thank');
+
+    if (isGreeting || isStatusCheck || isThanks) {
+      let instantText = '';
+      if (isGreeting) {
+        instantText = isUrdu ? 'وعلیکم السلام سر! میں حاضر ہوں۔ بتائیے کیا حکم ہے؟' : 'Good day, sir. Systems are online and ready for your command.';
+      } else if (isStatusCheck) {
+        instantText = isUrdu ? 'الحمدللہ سر، میں بالکل ٹھیک ہوں۔ سسٹم کے تمام ماڈیولز نارمل کام کر رہے ہیں۔' : 'All systems operating at 100% efficiency, sir. Ready for instructions.';
+      } else if (isThanks) {
+        instantText = isUrdu ? 'میرا فرض ہے سر! کوئی اور کام ہو تو ضرور بتائیے۔' : 'Always at your service, sir.';
+      }
+      return NextResponse.json({ success: true, text: instantText, isActionPlan: false, elapsedMs: Date.now() - startTime });
+    }
+
+    // ==========================================
     // 1. DIRECT AURASUITE SYSTEM & PC ACTIONS
     // ==========================================
     // (a) User count query
@@ -127,7 +146,7 @@ export async function POST(request) {
     }
 
     // ==========================================
-    // 2. GEMINI AI JARVIS ENGINE
+    // 2. GEMINI AI JARVIS ENGINE (gemini-2.5-flash)
     // ==========================================
     const apiKey = await getGeminiApiKey(organizationId);
     if (!apiKey) {
@@ -141,9 +160,9 @@ export async function POST(request) {
       '1. LANGUAGE & ACCENT:',
       '   - If the user speaks in Urdu or Roman Urdu: You MUST reply directly in pure, authentic Urdu script (اردو رسم الخط - e.g. "وعلیکم السلام! میں بالکل ٹھیک ہوں۔ بتائیے کیا خدمت کر سکتا ہوں؟"). DO NOT write in English/Latin letters.',
       '   - If the user speaks in English: Respond in the authentic British Jarvis persona: crisp, polite, refined, loyal (e.g. "Good day, sir. All systems are fully operational. How may I assist you today?").',
-      '2. SPEED & DIRECTNESS:',
-      '   - Respond directly in 1 short, complete, natural sentence (max 20-30 words).',
-      '   - NEVER repeat the user\'s question. Answer directly.',
+      '2. SPEED & ULTRA-DIRECTNESS:',
+      '   - Respond directly in ONE short, complete, natural sentence (max 15-25 words). Never add fluff or preamble.',
+      '   - NEVER repeat the user\'s question. Answer immediately.',
       '3. OS & COMPUTER AUTOMATION ACTIONS:',
       '   - If the user asks to open an application (Notepad, Calculator, Paint, Chrome, Browser), close an app, search google, or write a file, you MUST return ONLY a raw JSON object with an "actions" array.',
       '   - Supported actions:',
@@ -154,36 +173,26 @@ export async function POST(request) {
       '   - If no OS action is needed, return ONLY your natural conversational response without JSON.'
     ].join('\n');
 
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
         generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 250
+          temperature: 0.2,
+          maxOutputTokens: 100
         }
       })
     });
 
-    if (!geminiRes.ok) {
-      // Fallback to flash-lite if 2.0-flash hits limit
-      const fallbackRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          generationConfig: { temperature: 0.3, maxOutputTokens: 250 }
-        })
-      });
-      if (!fallbackRes.ok) throw new Error(await fallbackRes.text());
-      const fbData = await fallbackRes.json();
-      var responseText = fbData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else {
+    let responseText = '';
+    if (geminiRes.ok) {
       const data = await geminiRes.json();
-      var responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      console.warn('gemini-2.5-flash status:', geminiRes.status, await geminiRes.text());
+      responseText = isUrdu ? 'سر، میں آپ کی بات سمجھ گیا ہوں۔ بتائیے کیا کارروائی کرنی ہے؟' : 'Understood, sir. How shall we proceed?';
     }
 
     let text = responseText.trim();

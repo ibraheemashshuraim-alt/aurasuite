@@ -108,58 +108,71 @@ export async function POST(request) {
     const orgId = 'org-aurasuite-superadmin';
     const apiKey = await getGeminiApiKey(orgId);
 
-    // Primary: Google Gemini Studio Neural Voice Pool (Charon / Aoede)
-    if (apiKey) {
-      const ttsModels = [
-        'gemini-3.8-flash-lite-tts',
-        'gemini-3.1-flash-tts-preview',
-        'gemini-3.8-flash-tts',
-        'gemini-2.5-flash-preview-tts'
-      ];
+    // In-memory cache for ultra-fast instant voice responses
+    globalThis.__aurasuite_tts_cache = globalThis.__aurasuite_tts_cache || new Map();
+    const cacheKey = `${selectedVoice}_${speechChunk.trim()}`;
+    if (globalThis.__aurasuite_tts_cache.has(cacheKey)) {
+      const cachedWav = globalThis.__aurasuite_tts_cache.get(cacheKey);
+      return new Response(cachedWav, {
+        status: 200,
+        headers: {
+          'Content-Type': 'audio/wav',
+          'Cache-Control': 'public, max-age=86400, s-maxage=86400',
+          'X-TTS-Cached': 'true'
+        }
+      });
+    }
 
-      for (const modelName of ttsModels) {
-        try {
-          const ttsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: speechChunk }] }],
-              generationConfig: {
-                responseModalities: ['AUDIO'],
-                speechConfig: {
-                  voiceConfig: {
-                    prebuiltVoiceConfig: {
-                      voiceName: selectedVoice
-                    }
+    // Primary: Google Gemini Studio Neural Voice (gemini-2.5-flash-preview-tts)
+    if (apiKey) {
+      try {
+        const ttsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: speechChunk }] }],
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName: selectedVoice
                   }
                 }
               }
-            })
-          });
-
-          if (ttsRes.ok) {
-            const ttsData = await ttsRes.json();
-            const pcmBase64 = ttsData?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-            if (pcmBase64) {
-              const wavBuffer = pcmToWav(pcmBase64, 24000);
-              return new Response(wavBuffer, {
-                status: 200,
-                headers: {
-                  'Content-Type': 'audio/wav',
-                  'Cache-Control': 'public, max-age=86400, s-maxage=86400'
-                }
-              });
             }
-          } else {
-            console.warn(`Model ${modelName} returned status ${ttsRes.status}, trying next Jarvis model...`);
+          })
+        });
+
+        if (ttsRes.ok) {
+          const ttsData = await ttsRes.json();
+          const pcmBase64 = ttsData?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          if (pcmBase64) {
+            const wavBuffer = pcmToWav(pcmBase64, 24000);
+            // Save in cache (keep last 100 clips)
+            if (globalThis.__aurasuite_tts_cache.size > 100) {
+              const firstKey = globalThis.__aurasuite_tts_cache.keys().next().value;
+              globalThis.__aurasuite_tts_cache.delete(firstKey);
+            }
+            globalThis.__aurasuite_tts_cache.set(cacheKey, wavBuffer);
+
+            return new Response(wavBuffer, {
+              status: 200,
+              headers: {
+                'Content-Type': 'audio/wav',
+                'Cache-Control': 'public, max-age=86400, s-maxage=86400',
+                'X-TTS-Cached': 'false'
+              }
+            });
           }
-        } catch (mErr) {
-          console.warn(`Error on ${modelName}:`, mErr.message);
+        } else {
+          console.warn(`gemini-2.5-flash-preview-tts returned ${ttsRes.status}:`, await ttsRes.text());
         }
+      } catch (mErr) {
+        console.warn('Direct gemini-2.5 TTS error:', mErr.message);
       }
     }
 
-    // Never use deprecated low-quality translate fallback!
     return NextResponse.json({ error: 'Jarvis neural engine is currently busy. Please retry in a moment.' }, { status: 503 });
   } catch (err) {
     console.error('TTS API error:', err);

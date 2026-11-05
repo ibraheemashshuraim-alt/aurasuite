@@ -161,11 +161,24 @@ export default function AgentTown({ currentUser }) {
   const videoRef = useRef(null);
   const screenStreamRef = useRef(null);
 
-  // References for Continuous Mic and Echo Suppression
+  // References for Ultra-Low Latency Continuous Mic and Echo Suppression
+  const [speechLang, setSpeechLang] = useState('ur-PK'); // 'ur-PK' or 'en-US'
+  const speechLangRef = useRef('ur-PK');
+  const silenceTimerRef = useRef(null);
+  const isDispatchingRef = useRef(false);
+
   const recognitionRef = useRef(null);
   const continuousMicActiveRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const chatBottomRef = useRef(null);
+
+  useEffect(() => {
+    speechLangRef.current = speechLang;
+  }, [speechLang]);
+
+  useEffect(() => {
+    isDispatchingRef.current = isDispatching;
+  }, [isDispatching]);
 
   useEffect(() => {
     continuousMicActiveRef.current = continuousMicActive;
@@ -467,50 +480,79 @@ export default function AgentTown({ currentUser }) {
   };
 
   // ==========================================
-  // 4. CONTINUOUS HANDS-FREE MICROPHONE
+  // 4. CONTINUOUS HANDS-FREE MICROPHONE (ULTRA-LOW LATENCY)
   // ==========================================
   const startRecognitionInstance = () => {
     if (typeof window === 'undefined') return;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
-    if (isSpeakingRef.current) return;
+    if (isSpeakingRef.current || isDispatchingRef.current) return;
 
     try {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch (e) {}
+      }
+
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
-      recognition.interimResults = false;
-      recognition.lang = 'en-US';
+      recognition.interimResults = true;
+      recognition.lang = speechLangRef.current || 'ur-PK';
+      recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
         setIsListening(true);
-        setActiveTaskBanner('🎙️ Continuous Mic: Online & Listening...');
+        setActiveTaskBanner(`🎙️ Listening (${speechLangRef.current === 'ur-PK' ? 'اردو' : 'English'})... Speak now`);
       };
 
       recognition.onresult = (event) => {
-        const lastIdx = event.results.length - 1;
-        const transcript = event.results[lastIdx][0].transcript.trim();
-        if (transcript) {
-          setActiveTaskBanner(`Heard: "${transcript}"`);
-          handleAssistantSubmit(null, transcript);
+        if (isSpeakingRef.current || isDispatchingRef.current) return;
+
+        let interimText = '';
+        let finalText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const res = event.results[i];
+          if (res.isFinal) {
+            finalText += res[0].transcript;
+          } else {
+            interimText += res[0].transcript;
+          }
+        }
+
+        const candidateText = (finalText || interimText).trim();
+        if (candidateText) {
+          setActiveTaskBanner(`🎙️ "${candidateText}"`);
+
+          clearTimeout(silenceTimerRef.current);
+          // Instant conversational debounce: 500ms on final word, 850ms on interim
+          const debounceMs = finalText ? 500 : 850;
+          silenceTimerRef.current = setTimeout(() => {
+            if (!isDispatchingRef.current && !isSpeakingRef.current) {
+              const toSend = candidateText.trim();
+              if (toSend && toSend.length >= 2) {
+                try { recognition.abort(); } catch (e) {}
+                handleAssistantSubmit(null, toSend);
+              }
+            }
+          }, debounceMs);
         }
       };
 
       recognition.onerror = (event) => {
-        console.warn("Speech recognition notice:", event.error);
         if (event.error !== 'no-speech' && event.error !== 'aborted') {
-          setActiveTaskBanner(`Mic notice: ${event.error}`);
+          console.warn("Speech recognition notice:", event.error);
         }
       };
 
       recognition.onend = () => {
         setIsListening(false);
-        if (continuousMicActiveRef.current && !isSpeakingRef.current) {
+        if (continuousMicActiveRef.current && !isSpeakingRef.current && !isDispatchingRef.current) {
           setTimeout(() => {
-            if (continuousMicActiveRef.current && !isSpeakingRef.current) {
+            if (continuousMicActiveRef.current && !isSpeakingRef.current && !isDispatchingRef.current) {
               try { recognition.start(); } catch (e) {}
             }
-          }, 250);
+          }, 150);
         }
       };
 
@@ -538,6 +580,7 @@ export default function AgentTown({ currentUser }) {
   };
 
   const stopContinuousListening = () => {
+    clearTimeout(silenceTimerRef.current);
     setContinuousMicActive(false);
     continuousMicActiveRef.current = false;
     setIsListening(false);
@@ -1108,18 +1151,37 @@ export default function AgentTown({ currentUser }) {
                 </div>
               </div>
 
-              {/* PRIMARY HIGH-TECH MIC TOGGLE RIGHT UNDER THE VOICE ASSISTANT */}
-              <button 
-                onClick={toggleContinuousListening}
-                className={`mt-2 px-4 py-1.5 rounded-full border text-xs font-mono font-bold flex items-center gap-2 cursor-pointer transition-all ${
-                  continuousMicActive 
-                    ? 'bg-red-600/30 border-red-500 text-red-300 animate-pulse shadow-[0_0_18px_rgba(239,68,68,0.6)]' 
-                    : 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 hover:bg-cyan-900/60 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
-                }`}
-              >
-                {continuousMicActive ? <MicOff size={13} className="text-red-400" /> : <Mic size={13} />}
-                <span>{continuousMicActive ? 'MIC ON (CLICK TO STOP)' : 'CLICK TO TALK (MIC)'}</span>
-              </button>
+              {/* PRIMARY HIGH-TECH MIC TOGGLE & LANGUAGE TOGGLE */}
+              <div className="flex items-center gap-2 mt-2">
+                <button 
+                  onClick={toggleContinuousListening}
+                  className={`px-4 py-1.5 rounded-full border text-xs font-mono font-bold flex items-center gap-2 cursor-pointer transition-all ${
+                    continuousMicActive 
+                      ? 'bg-red-600/30 border-red-500 text-red-300 animate-pulse shadow-[0_0_18px_rgba(239,68,68,0.6)]' 
+                      : 'bg-cyan-950/60 border-cyan-500/50 text-cyan-300 hover:bg-cyan-900/60 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+                  }`}
+                >
+                  {continuousMicActive ? <MicOff size={13} className="text-red-400" /> : <Mic size={13} />}
+                  <span>{continuousMicActive ? 'MIC ON (CLICK TO STOP)' : 'CLICK TO TALK (MIC)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextLang = speechLang === 'ur-PK' ? 'en-US' : 'ur-PK';
+                    setSpeechLang(nextLang);
+                    speechLangRef.current = nextLang;
+                    if (continuousMicActive) {
+                      startRecognitionInstance();
+                    }
+                  }}
+                  title="Toggle Speech Recognition Language (Urdu / English)"
+                  className="px-2.5 py-1.5 rounded-full border border-cyan-500/40 bg-[#0d1020] hover:bg-cyan-950/70 text-cyan-300 text-xs font-mono font-bold cursor-pointer transition-all flex items-center gap-1 shadow-sm"
+                >
+                  <span>🌐</span>
+                  <span>{speechLang === 'ur-PK' ? 'اردو' : 'ENG'}</span>
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1463,10 +1525,27 @@ export default function AgentTown({ currentUser }) {
                 type="text" 
                 value={voiceInput}
                 onChange={(e) => setVoiceInput(e.target.value)}
-                placeholder="Type to Assistant (Gemini Live)..."
+                placeholder="Type or speak to Jarvis (Urdu/English)..."
                 className="bg-transparent border-none outline-none text-xs text-white flex-1 px-2 placeholder-gray-500 font-sans" 
               />
               
+              {/* Mic Language Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const nextLang = speechLang === 'ur-PK' ? 'en-US' : 'ur-PK';
+                  setSpeechLang(nextLang);
+                  speechLangRef.current = nextLang;
+                  if (continuousMicActive) {
+                    startRecognitionInstance();
+                  }
+                }}
+                title="Toggle Voice Language: Urdu (اردو) / English"
+                className="px-2 py-1 text-[10px] font-mono font-bold rounded-lg border border-cyan-500/30 bg-[#141624] text-cyan-300 hover:text-white cursor-pointer"
+              >
+                {speechLang === 'ur-PK' ? 'اردو' : 'EN'}
+              </button>
+
               {/* Mic Button in input bar */}
               <button 
                 type="button" 
