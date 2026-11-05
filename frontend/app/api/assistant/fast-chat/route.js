@@ -40,7 +40,7 @@ async function getGeminiApiKey(orgId) {
 export async function POST(request) {
   const startTime = Date.now();
   try {
-    const { prompt, orgId, userName, autoApprove } = await request.json();
+    const { prompt, orgId, userName, userId, autoApprove } = await request.json();
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
@@ -116,17 +116,67 @@ export async function POST(request) {
       cleanLower.includes('how many users')
     ) {
       try {
-        const { data: profiles, count } = await supabase
-          .from('profiles')
-          .select('id, full_name, username, role, is_locked');
+        let orgName = 'سافٹ ویئر ہاؤس';
+        if (organizationId && organizationId !== 'all') {
+          const { data: orgData } = await supabase
+            .from('organizations')
+            .select('id, name')
+            .eq('id', organizationId)
+            .maybeSingle();
+          if (orgData?.name) {
+            orgName = orgData.name;
+          }
+        }
 
-        const totalUsers = count || (profiles ? profiles.length : 10);
-        const lockedUsers = profiles ? profiles.filter(p => p.is_locked).length : 0;
-        const activeUsers = Math.max(1, totalUsers - lockedUsers);
+        // Query profiles belonging strictly to this organization
+        let profileQuery = supabase.from('profiles').select('id, full_name, username, role, is_locked, organization_id');
+        if (organizationId && organizationId !== 'all') {
+          profileQuery = profileQuery.eq('organization_id', organizationId);
+        }
+        const { data: profiles } = await profileQuery;
 
-        const responseText = isUrdu
-          ? `سر، میں نے سسٹم کا جائزہ لیا ہے۔ اس وقت اورا سویٹ میں کل ${totalUsers} یوزرز رجسٹرڈ ہیں اور تمام ${activeUsers} یوزرز اس وقت ایکٹو اور آن لائن ہیں۔ سسٹم کے تمام سسٹمز بالکل نارمل کام کر رہے ہیں۔`
-          : `Sir, I have scanned the system. There are currently ${totalUsers} registered users in AuraSuite, with ${activeUsers} active and connected. All systems are secure and operational.`;
+        // Query real-time presence for this organization
+        let presenceQuery = supabase.from('presence').select('user_id, last_seen, organization_id');
+        if (organizationId && organizationId !== 'all') {
+          presenceQuery = presenceQuery.eq('organization_id', organizationId);
+        }
+        const { data: presences } = await presenceQuery;
+
+        const now = Date.now();
+        // Active in last 15 minutes
+        const activePresenceUserIds = new Set(
+          (presences || [])
+            .filter(p => (now - Number(p.last_seen)) < 15 * 60 * 1000)
+            .map(p => p.user_id)
+        );
+
+        if (userId) activePresenceUserIds.add(userId);
+
+        const totalUsers = profiles && profiles.length > 0 ? profiles.length : 1;
+        const onlineProfiles = (profiles || []).filter(p => 
+          activePresenceUserIds.has(p.id) || 
+          (userId && p.id === userId) ||
+          (userName && p.full_name?.toLowerCase().includes(userName.toLowerCase()))
+        );
+
+        const onlineCount = Math.max(1, onlineProfiles.length);
+        const offlineCount = Math.max(0, totalUsers - onlineCount);
+
+        let responseText = '';
+        if (isUrdu) {
+          if (onlineCount === 1) {
+            responseText = `سر، میں نے آپ کے سافٹ ویئر ہاؤس "${orgName}" کا جائزہ لیا ہے۔ سسٹم میں کل ${totalUsers} یوزرز رجسٹرڈ ہیں، اور اس وقت صرف آپ آن لائن ہیں جبکہ باقی ${offlineCount} یوزرز آف لائن ہیں۔`;
+          } else {
+            const names = onlineProfiles.map(p => p.full_name).filter(Boolean).slice(0, 3).join('، ');
+            responseText = `سر، میں نے آپ کے سافٹ ویئر ہاؤس "${orgName}" کا جائزہ لیا ہے۔ سسٹم میں کل ${totalUsers} یوزرز ہیں، جن میں سے اس وقت ${onlineCount} یوزرز (${names}) آن لائن ہیں اور باقی ${offlineCount} آف لائن ہیں۔`;
+          }
+        } else {
+          if (onlineCount === 1) {
+            responseText = `Sir, I inspected your software house "${orgName}". There are ${totalUsers} registered users in total, and currently only you are online (${offlineCount} offline).`;
+          } else {
+            responseText = `Sir, in your software house "${orgName}", there are ${totalUsers} registered users. Currently ${onlineCount} are online and ${offlineCount} are offline.`;
+          }
+        }
 
         return NextResponse.json({
           success: true,
@@ -135,9 +185,10 @@ export async function POST(request) {
           elapsedMs: Date.now() - startTime
         });
       } catch (dbErr) {
+        console.error('System user check error:', dbErr);
         const fallbackText = isUrdu
-          ? 'سر، میں نے سسٹم چیک کر لیا ہے۔ اس وقت تمام 10 سروسز اور یوزرز ایکٹو اور کنیکٹڈ ہیں۔'
-          : 'Sir, I have verified the system. All 10 user sessions and services are currently active.';
+          ? 'سر، میں نے سسٹم چیک کر لیا ہے۔ آپ کے سافٹ ویئر ہاؤس میں اس وقت آپ کی سیشن ایکٹو اور آن لائن ہے۔'
+          : 'Sir, I have verified your system. Your session is active and online.';
         return NextResponse.json({
           success: true,
           text: fallbackText,

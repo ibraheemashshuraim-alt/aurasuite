@@ -390,9 +390,6 @@ export default function AgentTown({ currentUser }) {
     };
 
     try {
-      setIsSpeaking(true);
-      isSpeakingRef.current = true;
-
       // Pause recognition while speaking to avoid echo loop
       if (recognitionRef.current && continuousMicActiveRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
@@ -413,7 +410,11 @@ export default function AgentTown({ currentUser }) {
         const audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
 
-        audio.onplay = notifyStart;
+        audio.onplay = () => {
+          setIsSpeaking(true);
+          isSpeakingRef.current = true;
+          notifyStart();
+        };
         
         audio.onended = () => {
           setIsSpeaking(false);
@@ -670,6 +671,7 @@ export default function AgentTown({ currentUser }) {
 
     const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
     const userName = currentUser?.full_name || 'Admin';
+    const userId = currentUser?.id;
 
     try {
       const res = await fetch('/api/assistant/fast-chat', {
@@ -679,6 +681,7 @@ export default function AgentTown({ currentUser }) {
           prompt: promptText, 
           orgId, 
           userName,
+          userId,
           autoApprove 
         })
       });
@@ -719,14 +722,15 @@ export default function AgentTown({ currentUser }) {
         const revealMessage = () => {
           if (!revealed) {
             revealed = true;
+            setIsDispatching(false);
             setChatMessages(prev => [...prev, astMsg]);
             setLastAssistantResponse(finalMsgText);
             setActiveTaskBanner(finalMsgText.slice(0, 60));
           }
         };
 
-        // Safety fallback: If TTS audio takes longer than 1500ms, reveal text immediately
-        const fallbackTimer = setTimeout(revealMessage, 1500);
+        // Safety fallback: only if audio completely fails or takes over 8 seconds, reveal message
+        const fallbackTimer = setTimeout(revealMessage, 8000);
 
         if (cleanAnswer) {
           speakText(cleanAnswer.slice(0, 220), () => {
@@ -771,21 +775,24 @@ export default function AgentTown({ currentUser }) {
               const revMsg = () => {
                 if (!rev) {
                   rev = true;
+                  setIsDispatching(false);
                   setChatMessages(prev => [...prev, fMsg]);
                   setLastAssistantResponse(cAns);
                 }
               };
-              const fTimer = setTimeout(revMsg, 1500);
+              const fTimer = setTimeout(revMsg, 8000);
               speakText(cAns.slice(0, 220), () => {
                 clearTimeout(fTimer);
                 revMsg();
               });
+            } else {
+              setIsDispatching(false);
             }
-          });
+          }).catch(() => setIsDispatching(false));
+        } else {
+          setIsDispatching(false);
         }
-      });
-    } finally {
-      setIsDispatching(false);
+      }).catch(() => setIsDispatching(false));
     }
   };
 
@@ -1437,6 +1444,23 @@ export default function AgentTown({ currentUser }) {
                       <span className="text-[8px] text-gray-500 font-mono mt-0.5 px-1">{msg.timestamp}</span>
                     </div>
                   ))}
+
+                  {/* Jarvis Preparing Voice Response Indicator */}
+                  {isDispatching && !isSpeaking && (
+                    <div className="bg-[#0f111e]/90 border border-cyan-500/30 rounded-xl p-2.5 my-2 flex items-center justify-between animate-pulse">
+                      <div className="flex items-center gap-2">
+                        <Loader2 size={13} className="animate-spin text-cyan-400" />
+                        <span className="text-[10px] font-mono font-bold text-cyan-300">
+                          ⚡ JARVIS is synthesizing voice response...
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 h-3">
+                        <div className="w-1 bg-cyan-400 rounded animate-bounce h-2"></div>
+                        <div className="w-1 bg-cyan-300 rounded animate-bounce [animation-delay:0.15s] h-3"></div>
+                        <div className="w-1 bg-cyan-200 rounded animate-bounce [animation-delay:0.3s] h-2"></div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Audio Waveform Visualizer */}
                   {(isListening || isSpeaking) && (
