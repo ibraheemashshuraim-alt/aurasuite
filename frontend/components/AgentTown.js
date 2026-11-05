@@ -394,38 +394,14 @@ export default function AgentTown({ currentUser }) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
 
-      // Browser speech starts immediately; remote neural synthesis may be used later without blocking a reply.
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = /[\u0600-\u06FF]/.test(text) ? 'ur-PK' : 'en-US';
-        utterance.rate = 1.05;
-        utterance.pitch = 1;
-        const voices = window.speechSynthesis.getVoices();
-        const preferred = voices.find((item) => item.lang.toLowerCase().startsWith(utterance.lang.slice(0, 2)))
-          || voices.find((item) => /natural|google|microsoft/i.test(item.name));
-        if (preferred) utterance.voice = preferred;
-        utterance.onstart = () => {
-          notifyStart();
-          setIsSpeaking(true);
-          isSpeakingRef.current = true;
-        };
-        utterance.onend = utterance.onerror = () => {
-          setIsSpeaking(false);
-          isSpeakingRef.current = false;
-          if (continuousMicActiveRef.current) startRecognitionInstance();
-        };
-        window.speechSynthesis.speak(utterance);
-        return;
-      }
-
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           text,
           voice: selectedVoiceName,
-          gender: voiceGender
+          gender: voiceGender,
+          orgId: currentUser?.organization_id || 'org-aurasuite-superadmin'
         })
       });
 
