@@ -31,6 +31,7 @@ log("Jarvis Full OS & Web Daemon starting up...");
 
 let browser = null;
 let page = null;
+const activeTaskIds = new Set();
 
 async function ensureBrowser() {
   if (browser) {
@@ -325,8 +326,28 @@ async function executeAction(action) {
 }
 
 async function processTask(taskId, orgId, agentId) {
+  if (activeTaskIds.has(taskId)) {
+    log(`Skipping duplicate Jarvis task delivery: ${taskId}`);
+    return;
+  }
+  activeTaskIds.add(taskId);
+
   log(`\n================================`);
   log(`Jarvis received task: ${taskId}`);
+
+  // Claim the task before executing it. This prevents a daemon restart or a repeated
+  // realtime event from launching the same application more than once.
+  const { data: claimedTask, error: claimError } = await supabase
+    .from('engine_tasks')
+    .update({ status: 'RUNNING', started_at: new Date().toISOString() })
+    .eq('id', taskId)
+    .eq('status', 'EXECUTING')
+    .select('id')
+    .maybeSingle();
+  if (claimError || !claimedTask) {
+    log(`Task ${taskId} was already claimed or could not be claimed.`);
+    return;
+  }
   
   // 1. Fetch action plan
   const { data: planRecords, error: planErr } = await supabase

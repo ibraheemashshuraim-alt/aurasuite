@@ -3,28 +3,13 @@ import { NextResponse } from 'next/server';
 export async function POST(request) {
   const startTime = Date.now();
   try {
-    const { provider, mode, apiKey, token } = await request.json();
+    const { provider, mode, apiKey } = await request.json();
 
     if (mode === 'subscription') {
-      // In subscription mode, verify token presence or validate against gateway
-      if (token && token.length > 5) {
-        return NextResponse.json({
-          success: true,
-          provider,
-          mode,
-          latencyMs: Date.now() - startTime + 45,
-          message: `Subscription authenticated for ${provider.toUpperCase()}`
-        });
-      } else {
-        // If no custom token provided, confirm connection through AuraSuite's shared neural gateway
-        return NextResponse.json({
-          success: true,
-          provider,
-          mode,
-          latencyMs: Date.now() - startTime + 60,
-          message: `Connected via AuraSuite Shared Enterprise Gateway for ${provider.toUpperCase()}`
-        });
-      }
+      return NextResponse.json({
+        success: false,
+        error: 'Consumer subscriptions cannot be used as application API credentials. Add the provider\'s official API key instead.'
+      }, { status: 400 });
     }
 
     // API Key verification mode

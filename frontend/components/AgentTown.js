@@ -110,10 +110,10 @@ export default function AgentTown({ currentUser }) {
   // Settings: Execution mode & AI Providers
   const [autoApprove, setAutoApprove] = useState(true);
   const [connectModes, setConnectModes] = useState({
-    gemini: 'subscription', // 'subscription' | 'api'
-    openai: 'subscription',
+    gemini: 'api',
+    openai: 'api',
     groq: 'api',
-    claude: 'subscription'
+    claude: 'api'
   });
   const [apiKeys, setApiKeys] = useState({
     gemini: '',
@@ -247,9 +247,8 @@ export default function AgentTown({ currentUser }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider,
-          mode: connectModes[provider] || 'api',
-          apiKey: apiKeys[provider],
-          token: subscriptionTokens[provider]
+          mode: 'api',
+          apiKey: apiKeys[provider]
         })
       });
       const data = await res.json();
@@ -393,6 +392,31 @@ export default function AgentTown({ currentUser }) {
       // Pause recognition while speaking to avoid echo loop
       if (recognitionRef.current && continuousMicActiveRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
+      }
+
+      // Browser speech starts immediately; remote neural synthesis may be used later without blocking a reply.
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = /[\u0600-\u06FF]/.test(text) ? 'ur-PK' : 'en-US';
+        utterance.rate = 1.05;
+        utterance.pitch = 1;
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find((item) => item.lang.toLowerCase().startsWith(utterance.lang.slice(0, 2)))
+          || voices.find((item) => /natural|google|microsoft/i.test(item.name));
+        if (preferred) utterance.voice = preferred;
+        utterance.onstart = () => {
+          notifyStart();
+          setIsSpeaking(true);
+          isSpeakingRef.current = true;
+        };
+        utterance.onend = utterance.onerror = () => {
+          setIsSpeaking(false);
+          isSpeakingRef.current = false;
+          if (continuousMicActiveRef.current) startRecognitionInstance();
+        };
+        window.speechSynthesis.speak(utterance);
+        return;
       }
 
       const res = await fetch('/api/tts', {
@@ -684,7 +708,8 @@ export default function AgentTown({ currentUser }) {
           userId,
           voice: selectedVoiceName,
           gender: voiceGender,
-          autoApprove 
+          autoApprove,
+          language: 'ur'
         })
       });
 
@@ -694,17 +719,6 @@ export default function AgentTown({ currentUser }) {
       if (data.text) {
         let cleanAnswer = data.text;
         let isPlan = data.isActionPlan;
-
-        // If action plan, trigger local system execution fallback
-        if (data.actions && Array.isArray(data.actions)) {
-          data.actions.forEach(act => {
-            fetch('/api/system/execute-action', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(act)
-            }).catch(() => null);
-          });
-        }
 
         cleanAnswer = cleanAnswer
           .replace(/\{[\s\S]*?\}/g, '')
@@ -773,12 +787,8 @@ export default function AgentTown({ currentUser }) {
             speakText(finalMsgText.slice(0, 220));
           }
         } else {
-          // Fallback to separate TTS endpoint if audioBase64 was not in payload
-          const fallbackTimer = setTimeout(revealMessage, 8000);
-          speakText(finalMsgText.slice(0, 220), () => {
-            clearTimeout(fallbackTimer);
-            revealMessage();
-          });
+          revealMessage();
+          speakText(finalMsgText.slice(0, 220));
         }
       }
 
@@ -1687,8 +1697,8 @@ export default function AgentTown({ currentUser }) {
             {/* DUAL-MODE AI PROVIDERS CONFIGURATION */}
             <div className="bg-[#07080f] p-4 rounded-xl border border-cyan-500/20 mb-4 space-y-4">
               <div className="flex items-center justify-between border-b border-cyan-500/10 pb-2">
-                <span className="text-xs font-bold text-cyan-300 font-mono uppercase">AI PROVIDERS: API KEY OR SUBSCRIPTION CONNECT</span>
-                <span className="text-[10px] text-emerald-400 font-mono">Real Pings Enabled</span>
+                <span className="text-xs font-bold text-cyan-300 font-mono uppercase">AI PROVIDERS: OFFICIAL API CONNECTIONS</span>
+                <span className="text-[10px] text-emerald-400 font-mono">Encrypted BYOK</span>
               </div>
 
               {/* 1. Google Gemini */}
@@ -1702,10 +1712,10 @@ export default function AgentTown({ currentUser }) {
                   {/* Mode Selector */}
                   <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
                     <button 
-                      onClick={() => setConnectModes({...connectModes, gemini: 'subscription'})}
-                      className={`px-2 py-0.5 rounded ${connectModes.gemini === 'subscription' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                      onClick={() => setProviderTestMsg(prev => ({ ...prev, gemini: 'Consumer subscriptions are separate from Gemini API billing. Add an API key.' }))}
+                      className="px-2 py-0.5 rounded text-amber-300 cursor-pointer"
                     >
-                      🌐 Subscription / Direct
+                      Billing notice
                     </button>
                     <button 
                       onClick={() => setConnectModes({...connectModes, gemini: 'api'})}
@@ -1772,10 +1782,10 @@ export default function AgentTown({ currentUser }) {
                   {/* Mode Selector */}
                   <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
                     <button 
-                      onClick={() => setConnectModes({...connectModes, openai: 'subscription'})}
-                      className={`px-2 py-0.5 rounded ${connectModes.openai === 'subscription' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                      onClick={() => setProviderTestMsg(prev => ({ ...prev, openai: 'ChatGPT plans are separate from API billing. Add an OpenAI API key.' }))}
+                      className="px-2 py-0.5 rounded text-amber-300 cursor-pointer"
                     >
-                      🌐 ChatGPT Plus / Team
+                      Billing notice
                     </button>
                     <button 
                       onClick={() => setConnectModes({...connectModes, openai: 'api'})}
@@ -1886,10 +1896,10 @@ export default function AgentTown({ currentUser }) {
                   {/* Mode Selector */}
                   <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
                     <button 
-                      onClick={() => setConnectModes({...connectModes, claude: 'subscription'})}
-                      className={`px-2 py-0.5 rounded ${connectModes.claude === 'subscription' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
+                      onClick={() => setProviderTestMsg(prev => ({ ...prev, claude: 'Consumer subscriptions are separate from Claude API billing. Add an API key.' }))}
+                      className="px-2 py-0.5 rounded text-amber-300 cursor-pointer"
                     >
-                      🌐 Claude Pro / Connect
+                      Billing notice
                     </button>
                     <button 
                       onClick={() => setConnectModes({...connectModes, claude: 'api'})}
@@ -1987,17 +1997,25 @@ export default function AgentTown({ currentUser }) {
                   try {
                     if (typeof window !== 'undefined') {
                       localStorage.setItem('aurasuite_agent_prompts', JSON.stringify(agentPrompts));
-                      localStorage.setItem('aurasuite_byok_keys', JSON.stringify(apiKeys));
                     }
                     const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
-                    if (apiKeys.gemini) {
-                      await fetch('/api/providers/config', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ organization_id: orgId, provider_name: 'gemini', api_key: apiKeys.gemini })
+                    const saves = Object.entries(apiKeys)
+                      .filter(([, apiKey]) => apiKey?.trim())
+                      .map(async ([providerName, apiKey]) => {
+                        const response = await fetch('/api/providers/config', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            organization_id: orgId,
+                            provider_name: providerName,
+                            api_key: apiKey,
+                            default_model: providerModels[providerName]
+                          })
+                        });
+                        if (!response.ok) throw new Error(await response.text());
                       });
-                    }
-                    alert('All Providers, Subscriptions & Agent Training Prompts Saved Successfully!');
+                    await Promise.all(saves);
+                    alert('Official API connections and agent prompts saved securely.');
                     setShowSettingsModal(false);
                   } catch (e) {
                     alert('Save notice: ' + e.message);
