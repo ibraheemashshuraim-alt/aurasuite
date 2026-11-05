@@ -123,89 +123,76 @@ export async function POST(request) {
       });
     }
 
-    // Primary: Google Gemini Studio Neural Voice (gemini-2.5-flash-preview-tts)
+    // Authentic Jarvis Neural Voice Pool
+    // 1. gemini-3.8-flash-lite-tts (Ultra-fast ~2.0s, authentic Jarvis Charon/Aoede)
+    // 2. gemini-3.1-flash-tts-preview (Secondary authentic backup)
+    // 3. gemini-3.8-flash-tts (Tertiary authentic backup)
     if (apiKey) {
-      try {
-        const ttsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: speechChunk }] }],
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: {
-                    voiceName: selectedVoice
+      const ttsModels = [
+        'gemini-3.8-flash-lite-tts',
+        'gemini-3.1-flash-tts-preview',
+        'gemini-3.8-flash-tts'
+      ];
+
+      for (const modelName of ttsModels) {
+        try {
+          const ttsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: speechChunk }] }],
+              generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: {
+                      voiceName: selectedVoice
+                    }
                   }
                 }
               }
-            }
-          })
-        });
+            })
+          });
 
-        if (ttsRes.ok) {
-          const ttsData = await ttsRes.json();
-          const pcmBase64 = ttsData?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-          if (pcmBase64) {
-            const wavBuffer = pcmToWav(pcmBase64, 24000);
-            // Save in cache (keep last 100 clips)
-            if (globalThis.__aurasuite_tts_cache.size > 100) {
-              const firstKey = globalThis.__aurasuite_tts_cache.keys().next().value;
-              globalThis.__aurasuite_tts_cache.delete(firstKey);
-            }
-            globalThis.__aurasuite_tts_cache.set(cacheKey, wavBuffer);
-
-            return new Response(wavBuffer, {
-              status: 200,
-              headers: {
-                'Content-Type': 'audio/wav',
-                'Cache-Control': 'public, max-age=86400, s-maxage=86400',
-                'X-TTS-Cached': 'false'
+          if (ttsRes.ok) {
+            const ttsData = await ttsRes.json();
+            const inlineData = ttsData?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+            if (inlineData?.data) {
+              const rawBuf = Buffer.from(inlineData.data, 'base64');
+              let wavBuffer;
+              // If already a valid complete WAV file (starts with RIFF), use directly!
+              if (rawBuf.slice(0, 4).toString('ascii') === 'RIFF') {
+                wavBuffer = rawBuf;
+              } else {
+                wavBuffer = pcmToWav(inlineData.data, 24000);
               }
-            });
+
+              // Save in cache (keep last 150 clips)
+              if (globalThis.__aurasuite_tts_cache.size > 150) {
+                const firstKey = globalThis.__aurasuite_tts_cache.keys().next().value;
+                globalThis.__aurasuite_tts_cache.delete(firstKey);
+              }
+              globalThis.__aurasuite_tts_cache.set(cacheKey, wavBuffer);
+
+              return new Response(wavBuffer, {
+                status: 200,
+                headers: {
+                  'Content-Type': 'audio/wav',
+                  'Cache-Control': 'public, max-age=86400, s-maxage=86400',
+                  'X-TTS-Model': modelName
+                }
+              });
+            }
+          } else {
+            console.warn(`Model ${modelName} returned status ${ttsRes.status}, trying next Jarvis neural model...`);
           }
+        } catch (mErr) {
+          console.warn(`Error on ${modelName}:`, mErr.message);
         }
-      } catch (geminiErr) {
-        console.warn('Gemini TTS error:', geminiErr.message);
       }
     }
 
-    // Fast, Unlimited Neural TTS Fallback (Auto-detects Urdu vs English)
-    try {
-      const isUrduScript = /[\u0600-\u06FF]/.test(speechChunk);
-      const chosenLang = isUrduScript ? 'ur' : (selectedVoice === 'Charon' ? 'en-GB' : 'en-US');
-      const encoded = encodeURIComponent(speechChunk);
-      const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=${chosenLang}&client=tw-ob`;
-
-      const gRes = await fetch(googleTtsUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-
-      if (gRes.ok) {
-        const audioBuffer = Buffer.from(await gRes.arrayBuffer());
-        if (globalThis.__aurasuite_tts_cache.size > 100) {
-          const firstKey = globalThis.__aurasuite_tts_cache.keys().next().value;
-          globalThis.__aurasuite_tts_cache.delete(firstKey);
-        }
-        globalThis.__aurasuite_tts_cache.set(cacheKey, audioBuffer);
-
-        return new Response(audioBuffer, {
-          status: 200,
-          headers: {
-            'Content-Type': 'audio/mpeg',
-            'Cache-Control': 'public, max-age=86400, s-maxage=86400',
-            'X-TTS-Provider': 'google-neural-fast'
-          }
-        });
-      }
-    } catch (gErr) {
-      console.warn('Google Neural TTS fallback error:', gErr.message);
-    }
-
-    return NextResponse.json({ error: 'Jarvis neural voice unavailable' }, { status: 503 });
+    return NextResponse.json({ error: 'Jarvis neural voice engine is currently busy. Please retry.' }, { status: 503 });
   } catch (err) {
     console.error('TTS API error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
