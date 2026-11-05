@@ -47,19 +47,23 @@ export async function POST(request) {
 
     const organizationId = orgId || 'org-aurasuite-superadmin';
     const cleanLower = prompt.trim().toLowerCase();
-    const isUrdu = cleanLower.includes('kholo') || cleanLower.includes('khol') || cleanLower.includes('karo') || cleanLower.includes('chalao') || cleanLower.includes('hai') || cleanLower.includes('salam') || cleanLower.includes('sun');
+    const isUrdu = cleanLower.includes('kholo') || cleanLower.includes('khol') || cleanLower.includes('karo') || cleanLower.includes('chalao') || cleanLower.includes('hai') || cleanLower.includes('salam') || cleanLower.includes('salaam') || cleanLower.includes('assalam') || cleanLower.includes('سلام') || cleanLower.includes('sun') || /[\u0600-\u06FF]/.test(prompt);
 
     // ==========================================
     // 0. INSTANT ZERO-LATENCY CONVERSATIONAL REPLIES
     // ==========================================
-    const isGreeting = cleanLower.includes('salam') || cleanLower.includes('سلام') || cleanLower.includes('hello') || cleanLower.includes('ہیلو') || cleanLower.includes('hi jarvis');
-    const isStatusCheck = cleanLower.includes('kaise ho') || cleanLower.includes('kese ho') || cleanLower.includes('کیسے ہو') || cleanLower.includes('کیا حال') || cleanLower.includes('how are you');
+    const isGreeting = cleanLower.includes('salam') || cleanLower.includes('salaam') || cleanLower.includes('assalam') || cleanLower.includes('سلام') || cleanLower.includes('hello') || cleanLower.includes('ہیلو') || cleanLower.includes('hi jarvis');
+    const isStatusCheck = cleanLower.includes('kaise') || cleanLower.includes('kese') || cleanLower.includes('کیسے ہو') || cleanLower.includes('کیا حال') || cleanLower.includes('how are you');
     const isThanks = cleanLower.includes('shukriya') || cleanLower.includes('شکریہ') || cleanLower.includes('thank');
 
     if (isGreeting || isStatusCheck || isThanks) {
       let instantText = '';
       if (isGreeting) {
-        instantText = isUrdu ? 'وعلیکم السلام سر! میں حاضر ہوں۔ بتائیے کیا حکم ہے؟' : 'Good day, sir. Systems are online and ready for your command.';
+        if (cleanLower.includes('rahmat') || cleanLower.includes('barakat')) {
+          instantText = 'وعلیکم السلام ورحمۃ اللہ وبرکاتہ سر! میں حاضر ہوں۔ فرمائیے، میں آپ کی کیا خدمت کر سکتا ہوں؟';
+        } else {
+          instantText = isUrdu ? 'وعلیکم السلام سر! میں حاضر ہوں۔ بتائیے کیا حکم ہے؟' : 'Good day, sir. Systems are online and ready for your command.';
+        }
       } else if (isStatusCheck) {
         instantText = isUrdu ? 'الحمدللہ سر، میں بالکل ٹھیک ہوں۔ سسٹم کے تمام ماڈیولز نارمل کام کر رہے ہیں۔' : 'All systems operating at 100% efficiency, sir. Ready for instructions.';
       } else if (isThanks) {

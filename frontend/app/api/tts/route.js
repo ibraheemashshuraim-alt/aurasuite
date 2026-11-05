@@ -165,15 +165,47 @@ export async function POST(request) {
               }
             });
           }
-        } else {
-          console.warn(`gemini-2.5-flash-preview-tts returned ${ttsRes.status}:`, await ttsRes.text());
         }
-      } catch (mErr) {
-        console.warn('Direct gemini-2.5 TTS error:', mErr.message);
+      } catch (geminiErr) {
+        console.warn('Gemini TTS error:', geminiErr.message);
       }
     }
 
-    return NextResponse.json({ error: 'Jarvis neural engine is currently busy. Please retry in a moment.' }, { status: 503 });
+    // Fast, Unlimited Neural TTS Fallback (Auto-detects Urdu vs English)
+    try {
+      const isUrduScript = /[\u0600-\u06FF]/.test(speechChunk);
+      const chosenLang = isUrduScript ? 'ur' : (selectedVoice === 'Charon' ? 'en-GB' : 'en-US');
+      const encoded = encodeURIComponent(speechChunk);
+      const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=${chosenLang}&client=tw-ob`;
+
+      const gRes = await fetch(googleTtsUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      if (gRes.ok) {
+        const audioBuffer = Buffer.from(await gRes.arrayBuffer());
+        if (globalThis.__aurasuite_tts_cache.size > 100) {
+          const firstKey = globalThis.__aurasuite_tts_cache.keys().next().value;
+          globalThis.__aurasuite_tts_cache.delete(firstKey);
+        }
+        globalThis.__aurasuite_tts_cache.set(cacheKey, audioBuffer);
+
+        return new Response(audioBuffer, {
+          status: 200,
+          headers: {
+            'Content-Type': 'audio/mpeg',
+            'Cache-Control': 'public, max-age=86400, s-maxage=86400',
+            'X-TTS-Provider': 'google-neural-fast'
+          }
+        });
+      }
+    } catch (gErr) {
+      console.warn('Google Neural TTS fallback error:', gErr.message);
+    }
+
+    return NextResponse.json({ error: 'Jarvis neural voice unavailable' }, { status: 503 });
   } catch (err) {
     console.error('TTS API error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
