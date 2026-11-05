@@ -374,9 +374,20 @@ export default function AgentTown({ currentUser }) {
   // ==========================================
   // 3. JARVIS NEURAL VOICE PLAYBACK (/api/tts)
   // ==========================================
-  const speakText = async (text) => {
+  const speakText = async (text, onStart = null) => {
     if (typeof window === 'undefined') return;
-    if (!text || typeof text !== 'string') return;
+    if (!text || typeof text !== 'string') {
+      try { onStart?.(); } catch (e) {}
+      return;
+    }
+
+    let started = false;
+    const notifyStart = () => {
+      if (!started) {
+        started = true;
+        try { onStart?.(); } catch (e) {}
+      }
+    };
 
     try {
       setIsSpeaking(true);
@@ -401,6 +412,8 @@ export default function AgentTown({ currentUser }) {
         const blob = await res.blob();
         const audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
+
+        audio.onplay = notifyStart;
         
         audio.onended = () => {
           setIsSpeaking(false);
@@ -430,9 +443,11 @@ export default function AgentTown({ currentUser }) {
 
         try {
           await audio.play();
+          notifyStart();
           return;
         } catch (playErr) {
           console.warn("Audio play rejected or interrupted:", playErr);
+          notifyStart();
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl);
@@ -446,11 +461,13 @@ export default function AgentTown({ currentUser }) {
           return;
         }
       } else {
+        notifyStart();
         setIsSpeaking(false);
         isSpeakingRef.current = false;
       }
     } catch (err) {
       console.warn("Natural TTS endpoint fallback:", err);
+      notifyStart();
       setIsSpeaking(false);
       isSpeakingRef.current = false;
     }
@@ -470,6 +487,7 @@ export default function AgentTown({ currentUser }) {
         }
 
         utterance.onstart = () => {
+          notifyStart();
           setIsSpeaking(true);
           isSpeakingRef.current = true;
         };
@@ -481,6 +499,7 @@ export default function AgentTown({ currentUser }) {
           }
         };
         utterance.onerror = () => {
+          notifyStart();
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           if (continuousMicActiveRef.current) {
@@ -488,9 +507,12 @@ export default function AgentTown({ currentUser }) {
           }
         };
         window.speechSynthesis.speak(utterance);
+      } else {
+        notifyStart();
       }
     } catch (e) {
       console.warn("Speech synthesis error", e);
+      notifyStart();
       setIsSpeaking(false);
       isSpeakingRef.current = false;
       if (continuousMicActiveRef.current) {
@@ -684,20 +706,36 @@ export default function AgentTown({ currentUser }) {
           .replace(/Jarvis Execution Completed:|- [a-zA-Z_]+:/g, '')
           .trim();
 
+        const finalMsgText = cleanAnswer || data.text;
         const astMsg = {
           id: 'ast-' + Date.now(),
           sender: 'assistant',
-          text: cleanAnswer || data.text,
+          text: finalMsgText,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isActionPlan: isPlan
         };
 
-        setChatMessages(prev => [...prev, astMsg]);
-        setLastAssistantResponse(cleanAnswer || data.text);
-        setActiveTaskBanner((cleanAnswer || data.text).slice(0, 60));
+        let revealed = false;
+        const revealMessage = () => {
+          if (!revealed) {
+            revealed = true;
+            setChatMessages(prev => [...prev, astMsg]);
+            setLastAssistantResponse(finalMsgText);
+            setActiveTaskBanner(finalMsgText.slice(0, 60));
+          }
+        };
+
+        // Safety fallback: If TTS audio takes longer than 1500ms, reveal text immediately
+        const fallbackTimer = setTimeout(revealMessage, 1500);
 
         if (cleanAnswer) {
-          speakText(cleanAnswer.slice(0, 220));
+          speakText(cleanAnswer.slice(0, 220), () => {
+            clearTimeout(fallbackTimer);
+            revealMessage();
+          });
+        } else {
+          clearTimeout(fallbackTimer);
+          revealMessage();
         }
       }
 
@@ -723,14 +761,25 @@ export default function AgentTown({ currentUser }) {
           executeEngineTaskClient(tRes.task.id).then(r => {
             if (r?.result) {
               const cAns = r.result.replace(/\{[\s\S]*?\}/g, '').trim();
-              setChatMessages(prev => [...prev, {
+              const fMsg = {
                 id: 'ast-' + Date.now(),
                 sender: 'assistant',
                 text: cAns,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              }]);
-              setLastAssistantResponse(cAns);
-              speakText(cAns.slice(0, 220));
+              };
+              let rev = false;
+              const revMsg = () => {
+                if (!rev) {
+                  rev = true;
+                  setChatMessages(prev => [...prev, fMsg]);
+                  setLastAssistantResponse(cAns);
+                }
+              };
+              const fTimer = setTimeout(revMsg, 1500);
+              speakText(cAns.slice(0, 220), () => {
+                clearTimeout(fTimer);
+                revMsg();
+              });
             }
           });
         }
