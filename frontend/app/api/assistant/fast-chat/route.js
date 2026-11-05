@@ -15,9 +15,9 @@ function safeDesktopAction(prompt) {
   const normalized = prompt.toLowerCase();
   const apps = [
     { matches: ['calculator', 'calc', 'کیلکولیٹر'], target: 'calc', urdu: 'کیلکولیٹر' },
-    { matches: ['notepad', 'نوٹ پیڈ', 'نوٹپیڈ'], target: 'notepad', urdu: 'نوٹ پیڈ' },
+    { matches: ['notepad', 'note pad', 'note-pad', 'نوٹ پیڈ', 'نوٹپیڈ'], target: 'notepad', urdu: 'نوٹ پیڈ' },
     { matches: ['paint', 'پینٹ'], target: 'paint', urdu: 'پینٹ' },
-    { matches: ['file explorer', 'explorer', 'my computer', 'فائلز'], target: 'explorer', urdu: 'فائل ایکسپلورر' },
+    { matches: ['file explorer', 'explorer', 'my computer', 'my pc', 'file manager', 'فائلز'], target: 'explorer', urdu: 'فائل ایکسپلورر' },
     { matches: ['chrome', 'کروم'], target: 'chrome', urdu: 'گوگل کروم' },
   ];
 

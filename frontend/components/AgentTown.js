@@ -388,11 +388,46 @@ export default function AgentTown({ currentUser }) {
       }
     };
 
+    let browserFallbackStarted = false;
+    let fallbackTimer = null;
+    const startBrowserSpeech = () => {
+      if (!window.speechSynthesis || browserFallbackStarted) return;
+
+      browserFallbackStarted = true;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find((voice) => (
+        voice.lang.includes('ur') || voice.lang.includes('hi') ||
+        (voice.lang.startsWith('en') && (voice.name.includes('Natural') || voice.name.includes('Google') || voice.name.includes('David')))
+      ));
+      if (preferred) utterance.voice = preferred;
+
+      utterance.onstart = () => {
+        notifyStart();
+        setIsSpeaking(true);
+        isSpeakingRef.current = true;
+      };
+      utterance.onend = utterance.onerror = () => {
+        setIsSpeaking(false);
+        isSpeakingRef.current = false;
+        if (continuousMicActiveRef.current) startRecognitionInstance();
+      };
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utterance);
+    };
+
     try {
       // Pause recognition while speaking to avoid echo loop
       if (recognitionRef.current && continuousMicActiveRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
+
+      // Neural speech is preferred, but never leave the user waiting for it.
+      fallbackTimer = window.setTimeout(startBrowserSpeech, 650);
 
       const res = await fetch('/api/tts', {
         method: 'POST',
@@ -404,6 +439,9 @@ export default function AgentTown({ currentUser }) {
           orgId: currentUser?.organization_id || 'org-aurasuite-superadmin'
         })
       });
+
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      if (browserFallbackStarted) return;
 
       if (res.ok) {
         const blob = await res.blob();
@@ -467,14 +505,15 @@ export default function AgentTown({ currentUser }) {
         isSpeakingRef.current = false;
       }
     } catch (err) {
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
       console.warn("Natural TTS endpoint fallback:", err);
-      notifyStart();
-      setIsSpeaking(false);
-      isSpeakingRef.current = false;
+      startBrowserSpeech();
+      return;
     }
 
     // High quality browser fallback if server is unreachable
     try {
+      if (browserFallbackStarted) return;
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
