@@ -274,29 +274,41 @@ function safeDesktopAction(prompt) {
   return null;
 }
 
+function prepareNotepad() {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const localAppData = process.env.LOCALAPPDATA || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Local') : null);
+    if (localAppData) {
+      const tabState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'TabState');
+      const winState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'WindowState');
+      if (fs.existsSync(tabState)) fs.rmSync(tabState, { recursive: true, force: true });
+      if (fs.existsSync(winState)) fs.rmSync(winState, { recursive: true, force: true });
+    }
+  } catch (e) {}
+}
+
 function executeDesktopActions(actions) {
   if (!Array.isArray(actions) || actions.length === 0) return;
-  const appMap = {
-    calc: 'cmd.exe /c start "" calc',
-    calculator: 'cmd.exe /c start "" calc',
-    notepad: 'powershell -Command "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; Start-Process notepad"',
-    paint: 'cmd.exe /c start "" mspaint',
-    mspaint: 'cmd.exe /c start "" mspaint',
-    chrome: 'cmd.exe /c start "" chrome',
-    browser: 'cmd.exe /c start "" chrome',
-    explorer: 'cmd.exe /c start "" explorer',
-    files: 'cmd.exe /c start "" explorer',
-    cmd: 'cmd.exe /c start "" cmd',
-    powershell: 'cmd.exe /c start "" powershell'
-  };
 
   for (const act of actions) {
     try {
       if (act.type === 'launch_app' || act.type === 'open_app') {
-        const cmd = appMap[act.target?.toLowerCase()] || `cmd.exe /c start "" ${act.target}`;
-        exec(cmd, (err) => {
-          if (err) console.warn('Fast-chat direct execution error:', err.message);
-        });
+        const target = (act.target || '').toLowerCase().trim();
+        if (target === 'notepad') {
+          prepareNotepad();
+          exec('cmd.exe /c taskkill /F /IM notepad.exe 2>nul & start "" notepad');
+        } else if (target === 'calc' || target === 'calculator') {
+          exec('cmd.exe /c start "" calc');
+        } else if (target === 'paint' || target === 'mspaint') {
+          exec('cmd.exe /c start "" mspaint');
+        } else if (target === 'chrome' || target === 'browser') {
+          exec('cmd.exe /c start "" chrome');
+        } else if (target === 'explorer' || target === 'files') {
+          exec('cmd.exe /c start "" explorer');
+        } else {
+          exec(`cmd.exe /c start "" ${act.target}`);
+        }
       } else if (act.type === 'close_app') {
         const target = (act.target || '').toLowerCase().trim();
         let killCmd = '';
@@ -311,14 +323,10 @@ function executeDesktopActions(actions) {
         } else {
           killCmd = `taskkill /F /IM ${target}.exe 2>nul`;
         }
-        exec(`cmd.exe /c ${killCmd}`, (err) => {
-          if (err) console.warn('Fast-chat direct close error:', err.message);
-        });
+        exec(`cmd.exe /c ${killCmd}`);
       } else if (act.type === 'open_url') {
         const url = act.target.startsWith('http') ? act.target : `https://${act.target}`;
-        exec(`cmd.exe /c start "" "${url}"`, (err) => {
-          if (err) console.warn('Fast-chat direct URL execution error:', err.message);
-        });
+        exec(`cmd.exe /c start "" "${url}"`);
       }
     } catch (e) {
       console.warn('Desktop action exec exception:', e);

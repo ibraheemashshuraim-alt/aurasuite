@@ -115,7 +115,7 @@ function resolveFilePath(targetPath) {
   return path.join(os.homedir(), 'Desktop', targetPath);
 }
 
-const BROWSER_ACTIONS = ['open_url', 'browser_navigation', 'click', 'type', 'press_key', 'scroll', 'read_screen', 'screenshot', 'wait'];
+const BROWSER_ACTIONS = ['browser_navigation', 'click', 'type', 'press_key', 'scroll', 'read_screen', 'screenshot', 'wait'];
 
 async function executeAction(action) {
   // 1. WEB & BROWSER ACTIONS
@@ -247,7 +247,14 @@ async function executeAction(action) {
           if (resolvedApp.startsWith('http://') || resolvedApp.startsWith('https://')) {
             launchCmd = `cmd.exe /c start "" "${resolvedApp}"`;
           } else if (resolvedApp === 'notepad') {
-            launchCmd = `powershell -Command "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; Start-Process notepad"`;
+            try {
+              const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+              const tabState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'TabState');
+              const winState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'WindowState');
+              if (fs.existsSync(tabState)) fs.rmSync(tabState, { recursive: true, force: true });
+              if (fs.existsSync(winState)) fs.rmSync(winState, { recursive: true, force: true });
+            } catch (e) {}
+            launchCmd = `cmd.exe /c taskkill /F /IM notepad.exe 2>nul & start "" notepad`;
           } else if (fileArg) {
             launchCmd = `cmd.exe /c start "" ${resolvedApp} ${fileArg}`;
           } else {

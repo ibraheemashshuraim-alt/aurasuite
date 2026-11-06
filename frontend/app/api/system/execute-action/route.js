@@ -14,6 +14,28 @@ export async function POST(request) {
 
     // 1. Launch local Windows application
     if (action === 'launch_app' || action === 'open_app') {
+      const lowerTarget = target?.toLowerCase().trim();
+      if (lowerTarget === 'notepad') {
+        try {
+          const localAppData = process.env.LOCALAPPDATA || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Local') : null);
+          if (localAppData) {
+            const tabState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'TabState');
+            const winState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'WindowState');
+            if (fs.existsSync(tabState)) fs.rmSync(tabState, { recursive: true, force: true });
+            if (fs.existsSync(winState)) fs.rmSync(winState, { recursive: true, force: true });
+          }
+        } catch (e) {}
+        return new Promise((resolve) => {
+          exec('cmd.exe /c taskkill /F /IM notepad.exe 2>nul & start "" notepad', (err) => {
+            if (err) {
+              resolve(NextResponse.json({ success: false, error: err.message }, { status: 500 }));
+            } else {
+              resolve(NextResponse.json({ success: true, message: 'Launched notepad successfully' }));
+            }
+          });
+        });
+      }
+
       const appMap = {
         calc: 'cmd.exe /c start "" calc',
         calculator: 'cmd.exe /c start "" calc',
@@ -28,7 +50,7 @@ export async function POST(request) {
         powershell: 'cmd.exe /c start "" powershell'
       };
 
-      const cmd = appMap[target?.toLowerCase()] || `cmd.exe /c start "" ${target}`;
+      const cmd = appMap[lowerTarget] || `cmd.exe /c start "" ${target}`;
       return new Promise((resolve) => {
         exec(cmd, (err) => {
           if (err) {
