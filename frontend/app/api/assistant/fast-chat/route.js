@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decryptKey } from '@/lib/ai/crypto';
 import { generateAI } from '@/lib/ai/providers';
+import { generateJarvisVoiceWav } from '@/lib/ai/tts';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
@@ -35,26 +36,58 @@ function safeDesktopAction(prompt) {
   return null;
 }
 
-async function getProviderConfig(orgId) {
+async function getProviderConfig(orgId, requestedProvider = null) {
   const { data: configs, error } = await supabase
     .from('ai_provider_configs')
-    .select('provider_name, encrypted_api_key, nonce, default_model, updated_at')
-    .eq('organization_id', orgId)
-    .eq('is_active', true)
-    .order('updated_at', { ascending: false });
+    .select('provider_name, encrypted_api_key, nonce, default_model, base_url, is_active, updated_at')
+    .eq('organization_id', orgId);
 
   if (error) throw error;
 
-  // Groq is deliberately preferred for conversational latency when configured.
-  const preferred = ['groq', 'gemini', 'openai', 'claude'];
-  const config = preferred.map((provider) => configs?.find((item) => item.provider_name === provider)).find(Boolean);
-  if (!config?.encrypted_api_key || !config?.nonce) return null;
+  let chosen = null;
+  if (requestedProvider) {
+    chosen = configs?.find((c) => c.provider_name.toLowerCase() === requestedProvider.toLowerCase());
+  }
 
-  return {
-    provider: config.provider_name,
-    apiKey: decryptKey(config.encrypted_api_key, config.nonce),
-    model: config.default_model || undefined,
-  };
+  if (!chosen) {
+    // Pick the most recently updated active provider, or fallback in preferred order
+    const activeConfigs = (configs || []).filter((c) => c.is_active);
+    activeConfigs.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+    chosen = activeConfigs[0];
+  }
+
+  if (!chosen) {
+    const preferred = ['groq', 'gemini', 'openai', 'claude', 'ollama'];
+    chosen = preferred.map((p) => configs?.find((item) => item.provider_name === p)).find(Boolean);
+  }
+
+  if (chosen) {
+    if (chosen.provider_name === 'ollama') {
+      return {
+        provider: 'ollama',
+        baseURL: chosen.base_url || 'http://localhost:11434',
+        model: chosen.default_model || 'llama3.2',
+      };
+    }
+    if (chosen.encrypted_api_key && chosen.nonce) {
+      return {
+        provider: chosen.provider_name,
+        apiKey: decryptKey(chosen.encrypted_api_key, chosen.nonce),
+        model: chosen.default_model || undefined,
+      };
+    }
+  }
+
+  // Final fallback to environment Gemini key
+  if (process.env.GEMINI_API_KEY) {
+    return {
+      provider: 'gemini',
+      apiKey: process.env.GEMINI_API_KEY,
+      model: 'gemini-2.0-flash',
+    };
+  }
+
+  return null;
 }
 
 async function getAgentId(orgId) {
@@ -123,91 +156,179 @@ async function persistConversation({ organizationId, prompt, userId, result }) {
 export async function POST(request) {
   const startedAt = Date.now();
   try {
-    const { prompt, orgId, userId, language = 'ur' } = await request.json();
+    const { prompt, orgId, userId, userName, provider: requestedProvider, voice, gender, language = 'ur' } = await request.json();
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
     const organizationId = orgId || 'org-aurasuite-superadmin';
     const cleanPrompt = prompt.trim();
+    const cleanLower = cleanPrompt.toLowerCase();
     const forceUrdu = language === 'ur' || isUrduPrompt(cleanPrompt);
     const reply = (urdu, english) => (forceUrdu ? urdu : english);
+    const selectedVoice = voice || (gender === 'female' ? 'Aoede' : 'Charon');
 
-    // These answers intentionally avoid database/provider calls so voice feedback starts immediately.
-    if (/\b(assalam|salam|salaam|hello|hi jarvis)\b|سلام|ہیلو/i.test(cleanPrompt)) {
-      const text = reply('وعلیکم السلام سر! میں حاضر ہوں۔ بتائیے کیا حکم ہے؟', 'Hello. I am ready for your command.');
-      return NextResponse.json({ success: true, text, isActionPlan: false, actions: [], elapsedMs: Date.now() - startedAt });
-    }
-    if (/\b(shukriya|thank)\b|شکریہ/i.test(cleanPrompt)) {
-      const text = reply('میرا فرض ہے سر۔ کوئی اور کام ہو تو بتائیے۔', 'Always at your service.');
-      return NextResponse.json({ success: true, text, isActionPlan: false, actions: [], elapsedMs: Date.now() - startedAt });
-    }
-
-    const desktopTask = safeDesktopAction(cleanPrompt);
-    if (desktopTask) {
-      const taskId = await queueJarvisTask({ organizationId, prompt: cleanPrompt, userId, actions: desktopTask.actions });
-      const text = reply(
-        `سر، ${desktopTask.label} کھولنے کا کام آپ کے مقامی Jarvis کو بھیج دیا ہے۔`,
-        `I sent the request to open ${desktopTask.label} to your local Jarvis daemon.`
-      );
-      return NextResponse.json({ success: true, text, isActionPlan: true, actions: desktopTask.actions, taskId, elapsedMs: Date.now() - startedAt });
-    }
-
-    const needsRoster = /online|offline|user|users|لوگ|یوزر|آن لائن|آف لائن|کتنے/i.test(cleanPrompt);
-    let context = '';
-    if (needsRoster) {
-      const [{ data: organization }, { data: profiles }, { data: presence }] = await Promise.all([
+    // ==========================================
+    // 0. LIVE SOFTWARE HOUSE CONTEXT (ORGANIZATION & MEMBERS)
+    // ==========================================
+    let orgName = 'Software House';
+    let profiles = [];
+    let presence = [];
+    try {
+      const [orgRes, profRes, presRes] = await Promise.all([
         supabase.from('organizations').select('name').eq('id', organizationId).maybeSingle(),
         supabase.from('profiles').select('id, full_name, username, role, is_locked').eq('organization_id', organizationId),
         supabase.from('presence').select('user_id, last_seen').eq('organization_id', organizationId),
       ]);
-      const now = Date.now();
-      const onlineIds = new Set((presence || []).filter((item) => now - Number(item.last_seen) < 15 * 60 * 1000).map((item) => item.user_id));
-      if (userId) onlineIds.add(userId);
-      const memberList = (profiles || []).map((member) => `${member.full_name || member.username || 'User'} (${member.role || 'member'}, ${onlineIds.has(member.id) ? 'online' : 'offline'}, ${member.is_locked ? 'locked' : 'active'})`).join('; ');
-      context = `Live organization: ${organization?.name || 'Software House'}. Members: ${memberList || 'No members found.'}`;
+      if (orgRes.data?.name) orgName = orgRes.data.name;
+      if (profRes.data) profiles = profRes.data;
+      if (presRes.data) presence = presRes.data;
+    } catch (e) {
+      console.warn('Live roster fetch warning:', e.message);
     }
 
-    const provider = await getProviderConfig(organizationId);
-    if (!provider) {
-      const text = reply(
-        'سر، Jarvis کے لیے کوئی API provider ابھی connect نہیں ہے۔ Settings میں Gemini، OpenAI یا Groq کی official API key save کریں۔',
-        'Jarvis does not have an API provider connected yet. Add an official Gemini, OpenAI, or Groq API key in Settings.'
-      );
-      return NextResponse.json({ success: true, text, isActionPlan: false, actions: [], elapsedMs: Date.now() - startedAt });
+    const now = Date.now();
+    const onlineIds = new Set(
+      (presence || [])
+        .filter((item) => now - Number(item.last_seen) < 15 * 60 * 1000)
+        .map((item) => item.user_id)
+    );
+    if (userId) onlineIds.add(userId);
+
+    const totalUsers = profiles.length || 1;
+    const onlineProfiles = profiles.filter((p) => onlineIds.has(p.id) || (userName && p.full_name?.toLowerCase().includes(userName.toLowerCase())));
+    const offlineProfiles = profiles.filter((p) => !onlineProfiles.some((op) => op.id === p.id));
+
+    const onlineCount = Math.max(1, onlineProfiles.length);
+    const offlineCount = Math.max(0, totalUsers - onlineCount);
+
+    const onlineNames = onlineProfiles.map((p) => p.full_name || p.username || 'User').join('، ');
+    const offlineNames = offlineProfiles.map((p) => p.full_name || p.username || 'User').join('، ');
+
+    let decidedText = null;
+
+    // Instant greetings
+    if (/\b(assalam|salam|salaam|hello|hi jarvis)\b|سلام|ہیلو/i.test(cleanPrompt)) {
+      decidedText = reply('وعلیکم السلام سر! میں حاضر ہوں۔ فرمائیے کیا حکم ہے؟', 'Hello, sir. I am ready for your command.');
+    } else if (/\b(shukriya|thank)\b|شکریہ/i.test(cleanPrompt)) {
+      decidedText = reply('میرا فرض ہے سر۔ کوئی اور کام ہو تو بتائیے۔', 'Always at your service, sir.');
     }
 
-    const systemPrompt = [
-      'You are Jarvis, a concise and reliable software-house assistant.',
-      forceUrdu
-        ? 'Reply only in clear Urdu script. Never switch to English unless the user explicitly asks you to use English.'
-        : 'Reply in the language used by the user.',
-      'Give a direct answer in no more than two sentences. Do not claim to have executed a desktop action unless the local Jarvis daemon has received an action plan.',
-      context,
-    ].filter(Boolean).join('\n');
+    // Windows local desktop action
+    let isActionPlan = false;
+    let actions = [];
+    let taskId = null;
+    if (!decidedText) {
+      const desktopTask = safeDesktopAction(cleanPrompt);
+      if (desktopTask) {
+        taskId = await queueJarvisTask({ organizationId, prompt: cleanPrompt, userId, actions: desktopTask.actions });
+        decidedText = reply(
+          `سر، ${desktopTask.label} کھولنے کا حکم دے دیا گیا ہے۔`,
+          `Launching ${desktopTask.label} now, sir.`
+        );
+        isActionPlan = true;
+        actions = desktopTask.actions;
+      }
+    }
 
-    let text;
+    // Direct live roster queries
+    if (!decidedText) {
+      const isAskingNames = /نام|name|naam|کون کون|کون ہے|کون ہیں|لسٹ|list|تفصیل|چاروں|چار|باقی/i.test(cleanPrompt);
+      const isAskingOnline = /online|آن لائن|ان لائن|آنلائن|کون آن لائن/i.test(cleanPrompt);
+      const isAskingUsers = /user|users|لوگ|یوزر|کتنے|kitne|how many|total/i.test(cleanPrompt);
+
+      if (isAskingNames && (/offline|آف لائن|اف لائن|چار|باقی|یوزر|لوگ/i.test(cleanPrompt) || offlineCount > 0)) {
+        decidedText = reply(
+          `سر، آپ کے سافٹ ویئر ہاؤس "${orgName}" میں اس وقت جو ${offlineCount} یوزرز آف لائن ہیں ان کے نام یہ ہیں: ${offlineNames}۔ اور آن لائن یوزر آپ خود (${onlineNames}) ہیں۔`,
+          `Sir, the ${offlineCount} offline users in "${orgName}" are: ${offlineNames}. Currently online is: ${onlineNames}.`
+        );
+      } else if (isAskingOnline || (isAskingUsers && (cleanLower.includes('online') || cleanLower.includes('کتنے') || cleanLower.includes('دیکھ')))) {
+        if (onlineCount === 1) {
+          decidedText = reply(
+            `سر، میں نے آپ کے سافٹ ویئر ہاؤس "${orgName}" کا لائیو جائزہ لیا ہے۔ سسٹم میں کل ${totalUsers} یوزرز رجسٹرڈ ہیں، اور اس وقت صرف آپ (${userName || onlineNames}) آن لائن ہیں جبکہ باقی ${offlineCount} یوزرز آف لائن ہیں۔`,
+            `Sir, in "${orgName}" there are ${totalUsers} registered users. Currently only you (${onlineNames}) are online, and ${offlineCount} are offline.`
+          );
+        } else {
+          decidedText = reply(
+            `سر، میں نے آپ کے سافٹ ویئر ہاؤس "${orgName}" کا جائزہ لیا ہے۔ کل ${totalUsers} یوزرز ہیں جن میں سے ${onlineCount} یوزرز (${onlineNames}) آن لائن ہیں اور ${offlineCount} آف لائن ہیں۔`,
+            `Sir, in "${orgName}" there are ${totalUsers} users. Currently ${onlineCount} are online (${onlineNames}) and ${offlineCount} are offline.`
+          );
+        }
+      }
+    }
+
+    // AI Provider Call
+    if (!decidedText) {
+      const provider = await getProviderConfig(organizationId, requestedProvider);
+      if (!provider) {
+        decidedText = reply(
+          'سر، Jarvis کے لیے کوئی AI Provider کنیکٹ نہیں ہے۔ Settings میں Gemini، Groq یا OpenAI کی API Key محفوظ کریں۔',
+          'Jarvis does not have an active AI provider connected yet. Please configure an API key in Settings.'
+        );
+      } else {
+        const rosterContext = `Current Software House: "${orgName}". Total Registered Members: ${totalUsers}. Online Members (${onlineCount}): ${onlineNames}. Offline Members (${offlineCount}): ${offlineNames}. Members List: ${profiles.map(p => `${p.full_name || p.username} (Role: ${p.role}, Status: ${p.is_locked ? 'Locked' : 'Active'})`).join('; ')}.`;
+
+        const systemPrompt = [
+          'You are Jarvis, the authentic, highly intelligent, iconic AI assistant from Iron Man.',
+          `LIVE DATABASE STATE:\n${rosterContext}`,
+          'CRITICAL DATABASE RULES:',
+          `1. The software house "${orgName}" has strictly ${totalUsers} registered users. NEVER hallucinate 10 users or any fake numbers.`,
+          `2. If asked about user names or offline users, use the exact real names above: ${offlineNames}.`,
+          forceUrdu
+            ? '3. Always reply directly in pure, elegant Urdu script (اردو رسم الخط). Keep answers concise (1-2 sentences maximum).'
+            : '3. Reply concisely in the user\'s language (1-2 sentences maximum).',
+        ].join('\n');
+
+        try {
+          const aiOptions = {
+            apiKey: provider.apiKey,
+            model: provider.model,
+            systemPrompt,
+            prompt: cleanPrompt,
+            temperature: 0.2,
+            maxTokens: 300,
+          };
+          if (provider.provider === 'ollama') {
+            aiOptions.baseURL = provider.baseURL;
+          }
+          const result = await generateAI(provider.provider, aiOptions);
+          decidedText = result.text?.trim();
+        } catch (providerError) {
+          console.warn('Jarvis provider request error:', providerError.message);
+          decidedText = reply(
+            'سر، AI provider اس وقت جواب نہیں دے رہا۔ Settings میں API connection چیک کریں۔',
+            'The AI provider did not respond. Please check your connection in Settings.'
+          );
+        }
+      }
+    }
+
+    const finalText = decidedText || reply('جی سر، میں حاضر ہوں۔ بتائیے کیا خدمت کر سکتا ہوں؟', 'At your service, sir.');
+
+    // Server-side instant neural voice synthesis (zero-latency audio)
+    let audioBase64 = null;
     try {
-      const result = await generateAI(provider.provider, {
-        apiKey: provider.apiKey,
-        model: provider.model,
-        systemPrompt,
-        prompt: cleanPrompt,
-        temperature: 0.2,
-        maxTokens: 220,
-      });
-      text = result.text?.trim();
-    } catch (providerError) {
-      console.warn('Jarvis provider request failed:', providerError.message);
-      text = reply('سر، AI provider اس وقت جواب نہیں دے رہا۔ Settings میں API connection دوبارہ test کر لیجیے۔', 'The AI provider is not responding. Please test its API connection in Settings.');
+      const wavBuf = await generateJarvisVoiceWav(finalText, selectedVoice, null, organizationId);
+      if (wavBuf) {
+        audioBase64 = wavBuf.toString('base64');
+      }
+    } catch (ttsErr) {
+      console.warn('Fast-chat direct TTS synthesis error:', ttsErr.message);
     }
 
-    const finalText = text || reply('جی سر، میں حاضر ہوں۔ مزید ہدایت دیجیے۔', 'I am ready for your next instruction.');
-    persistConversation({ organizationId, prompt: cleanPrompt, userId, result: finalText }).catch((error) => console.warn('Conversation history save failed:', error.message));
+    persistConversation({ organizationId, prompt: cleanPrompt, userId, result: finalText }).catch((err) => console.warn('Conversation save error:', err.message));
 
-    return NextResponse.json({ success: true, text: finalText, isActionPlan: false, actions: [], elapsedMs: Date.now() - startedAt });
+    return NextResponse.json({
+      success: true,
+      text: finalText,
+      audioBase64,
+      isActionPlan,
+      actions,
+      taskId,
+      elapsedMs: Date.now() - startedAt,
+    });
   } catch (error) {
     console.error('Fast assistant API error:', error);
-    return NextResponse.json({ error: error.message || 'Jarvis could not process this request.' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Jarvis error' }, { status: 500 });
   }
 }

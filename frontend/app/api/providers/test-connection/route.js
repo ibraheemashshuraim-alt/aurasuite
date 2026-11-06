@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
+import { decryptKey } from '@/lib/ai/crypto';
 
 export async function POST(request) {
   const startTime = Date.now();
   try {
-    const { provider, mode, apiKey } = await request.json();
+    const body = await request.json();
+    const { provider, mode, apiKey, baseUrl, organization_id } = body;
 
     if (mode === 'subscription') {
       return NextResponse.json({
@@ -12,8 +15,36 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
+    if (provider === 'ollama') {
+      const cleanBase = (baseUrl || 'http://localhost:11434').replace(/\/$/, '');
+      const res = await fetch(`${cleanBase}/api/tags`, { method: 'GET' });
+      if (!res.ok) throw new Error(`Ollama server returned HTTP ${res.status}`);
+      const data = await res.json();
+      const modelCount = data?.models?.length || 0;
+      return NextResponse.json({
+        success: true,
+        provider,
+        latencyMs: Date.now() - startTime,
+        message: `Ollama Local verified (${modelCount} local models available)`
+      });
+    }
+
     // API Key verification mode
-    const keyToTest = apiKey?.trim();
+    let keyToTest = apiKey?.trim();
+
+    if (!keyToTest && organization_id) {
+      const { data: stored } = await supabase
+        .from('ai_provider_configs')
+        .select('encrypted_api_key, nonce')
+        .eq('organization_id', organization_id)
+        .eq('provider_name', provider)
+        .maybeSingle();
+
+      if (stored?.encrypted_api_key && stored?.nonce) {
+        keyToTest = decryptKey(stored.encrypted_api_key, stored.nonce);
+      }
+    }
+
     if (!keyToTest) {
       return NextResponse.json({ success: false, error: 'API key is required' }, { status: 400 });
     }

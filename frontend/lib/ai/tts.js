@@ -1,4 +1,10 @@
 // Shared Jarvis Neural Voice Generator & WAV Encoder
+import { createClient } from '@supabase/supabase-js';
+import { decryptKey } from '@/lib/ai/crypto';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export function pcmToWav(pcmBase64, sampleRate = 24000, numChannels = 1, bitDepth = 16) {
   let pcmBuffer = Buffer.from(pcmBase64, 'base64');
@@ -17,7 +23,7 @@ export function pcmToWav(pcmBase64, sampleRate = 24000, numChannels = 1, bitDept
     pcmBuffer.writeInt16LE(Math.round(sample * factor), byteOffset);
   }
 
-  // Smooth Fade-Out (~40ms) to eliminate trailing 'khush' hiss/pop
+  // Smooth Fade-Out (~40ms) to eliminate trailing hiss/pop
   const fadeOutSamples = Math.min(960, Math.floor(pcmBuffer.length / 2));
   const startByte = pcmBuffer.length - (fadeOutSamples * 2);
   for (let i = 0; i < fadeOutSamples; i++) {
@@ -53,12 +59,35 @@ export function pcmToWav(pcmBase64, sampleRate = 24000, numChannels = 1, bitDept
  * Generates an authentic Jarvis neural voice WAV Buffer directly on the server
  * @param {string} text - Spoken text
  * @param {string} voice - Voice name ('Charon' | 'Aoede')
- * @param {string} apiKey - Gemini API key
+ * @param {string} apiKey - Optional Gemini API key
+ * @param {string} orgId - Organization ID for key lookup fallback
  * @returns {Promise<Buffer|null>}
  */
-export async function generateJarvisVoiceWav(text, voice = 'Charon', apiKey = null) {
+export async function generateJarvisVoiceWav(text, voice = 'Charon', apiKey = null, orgId = 'org-aurasuite-superadmin') {
   if (!text || typeof text !== 'string') return null;
-  if (!apiKey) return null;
+
+  let activeKey = apiKey;
+  if (!activeKey) {
+    try {
+      const { data: configs } = await supabase
+        .from('ai_provider_configs')
+        .select('*')
+        .eq('organization_id', orgId);
+
+      const cfg = configs?.find(c => c.provider_name === 'gemini') || configs?.[0];
+      if (cfg?.encrypted_api_key && cfg?.nonce) {
+        activeKey = decryptKey(cfg.encrypted_api_key, cfg.nonce);
+      }
+    } catch (e) {
+      console.warn('TTS API key decryption failed:', e.message);
+    }
+  }
+
+  if (!activeKey) {
+    activeKey = process.env.GEMINI_API_KEY || '';
+  }
+
+  if (!activeKey) return null;
 
   // Clean text: strip code blocks, markdown symbols, URLs
   let clean = text
@@ -87,7 +116,7 @@ export async function generateJarvisVoiceWav(text, voice = 'Charon', apiKey = nu
 
   for (const modelName of ttsModels) {
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${activeKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

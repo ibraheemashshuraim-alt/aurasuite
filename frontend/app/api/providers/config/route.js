@@ -5,25 +5,56 @@ import { encryptKey } from '@/lib/ai/crypto';
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { organization_id, provider_name, api_key, default_model, base_url } = body;
+    const { organization_id, provider_name, api_key, default_model, base_url, action } = body;
 
     if (!organization_id || !provider_name) {
       return NextResponse.json({ error: 'organization_id and provider_name are required' }, { status: 400 });
     }
 
     const pName = provider_name.toLowerCase().trim();
+
+    // Quick active engine switch
+    if (action === 'set_active') {
+      await supabase
+        .from('ai_provider_configs')
+        .update({ is_active: true, updated_at: new Date().toISOString() })
+        .eq('organization_id', organization_id)
+        .eq('provider_name', pName);
+
+      return NextResponse.json({
+        success: true,
+        active_provider: pName,
+        message: `Switched active AI engine to ${pName.toUpperCase()}`
+      });
+    }
+
     let ciphertext = '';
     let nonce = '';
     let hint = '';
 
     if (pName !== 'ollama') {
-      if (!api_key || !api_key.trim()) {
-        return NextResponse.json({ error: 'api_key is required for cloud providers' }, { status: 400 });
+      if (api_key && api_key.trim()) {
+        const enc = encryptKey(api_key);
+        ciphertext = enc.ciphertext;
+        nonce = enc.nonce;
+        hint = enc.hint;
+      } else {
+        // Keep existing encrypted key if already saved
+        const { data: existing } = await supabase
+          .from('ai_provider_configs')
+          .select('encrypted_api_key, nonce, key_hint')
+          .eq('organization_id', organization_id)
+          .eq('provider_name', pName)
+          .maybeSingle();
+
+        if (existing?.encrypted_api_key && existing?.nonce) {
+          ciphertext = existing.encrypted_api_key;
+          nonce = existing.nonce;
+          hint = existing.key_hint || 'Configured';
+        } else {
+          return NextResponse.json({ error: `api_key is required for ${provider_name}` }, { status: 400 });
+        }
       }
-      const enc = encryptKey(api_key);
-      ciphertext = enc.ciphertext;
-      nonce = enc.nonce;
-      hint = enc.hint;
     } else {
       hint = 'Local Ollama Engine';
     }
@@ -73,7 +104,8 @@ export async function GET(request) {
     const { data, error } = await supabase
       .from('ai_provider_configs')
       .select('id, organization_id, provider_name, key_hint, base_url, default_model, is_active, is_byok, updated_at')
-      .eq('organization_id', orgId);
+      .eq('organization_id', orgId)
+      .order('updated_at', { ascending: false });
 
     if (error) throw error;
 

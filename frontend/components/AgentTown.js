@@ -42,8 +42,7 @@ export default function AgentTown({ currentUser }) {
       setPinError('');
       setEnteredPin('');
       if (typeof window !== 'undefined' && window.speechSynthesis) {
-        const chime = new SpeechSynthesisUtterance('');
-        window.speechSynthesis.speak(chime);
+        window.speechSynthesis.cancel();
       }
     } else {
       setPinError('Invalid PIN! Please check the PIN sent to your email or chat.');
@@ -109,17 +108,23 @@ export default function AgentTown({ currentUser }) {
 
   // Settings: Execution mode & AI Providers
   const [autoApprove, setAutoApprove] = useState(true);
+  const [activeAiProvider, setActiveAiProvider] = useState('gemini');
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('http://localhost:11434');
+  const [savedProviderHints, setSavedProviderHints] = useState({});
+  const [savingSingle, setSavingSingle] = useState({});
   const [connectModes, setConnectModes] = useState({
     gemini: 'api',
     openai: 'api',
     groq: 'api',
-    claude: 'api'
+    claude: 'api',
+    ollama: 'api'
   });
   const [apiKeys, setApiKeys] = useState({
     gemini: '',
     groq: '',
     claude: '',
-    openai: ''
+    openai: '',
+    ollama: ''
   });
   const [subscriptionTokens, setSubscriptionTokens] = useState({
     gemini: '',
@@ -131,19 +136,22 @@ export default function AgentTown({ currentUser }) {
     gemini: 'gemini-2.0-flash',
     openai: 'gpt-4o',
     groq: 'llama-3.3-70b-versatile',
-    claude: 'claude-3-5-sonnet-20241022'
+    claude: 'claude-3-5-sonnet-20241022',
+    ollama: 'llama3.2'
   });
   const [providerTestStatus, setProviderTestStatus] = useState({
     gemini: 'idle',
     openai: 'idle',
     groq: 'idle',
-    claude: 'idle'
+    claude: 'idle',
+    ollama: 'idle'
   });
   const [providerTestMsg, setProviderTestMsg] = useState({
     gemini: '',
     openai: '',
     groq: '',
-    claude: ''
+    claude: '',
+    ollama: ''
   });
   const [savingKeys, setSavingKeys] = useState(false);
 
@@ -237,31 +245,128 @@ export default function AgentTown({ currentUser }) {
     setIsScreenSharing(false);
   };
 
+  // Load Saved Providers from Server/Supabase
+  const loadSavedProviders = async () => {
+    try {
+      const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
+      const res = await fetch(`/api/providers/config?organization_id=${encodeURIComponent(orgId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.providers)) {
+        const hints = {};
+        const models = { ...providerModels };
+        let active = null;
+        data.providers.forEach(p => {
+          if (p.provider_name) {
+            const pKey = p.provider_name.toLowerCase();
+            hints[pKey] = p.key_hint || (pKey === 'ollama' ? 'Local Engine' : 'Encrypted');
+            if (p.default_model) models[pKey] = p.default_model;
+            if (p.base_url && pKey === 'ollama') setOllamaBaseUrl(p.base_url);
+            if (p.is_active) active = pKey;
+          }
+        });
+        setSavedProviderHints(hints);
+        setProviderModels(models);
+        if (active) setActiveAiProvider(active);
+      }
+    } catch (err) {
+      console.warn('Failed to load saved AI providers:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadSavedProviders();
+  }, [currentUser?.organization_id]);
+
+  // Fast Switch Active AI Engine
+  const selectActiveEngine = async (providerName) => {
+    const pKey = providerName.toLowerCase();
+    setActiveAiProvider(pKey);
+    try {
+      const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
+      await fetch('/api/providers/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: orgId,
+          provider_name: pKey,
+          action: 'set_active'
+        })
+      });
+    } catch (e) {
+      console.warn('Set active provider notice:', e);
+    }
+  };
+
+  // Save Single Provider
+  const saveSingleProvider = async (providerName) => {
+    const pKey = providerName.toLowerCase();
+    setSavingSingle(prev => ({ ...prev, [pKey]: true }));
+    setProviderTestMsg(prev => ({ ...prev, [pKey]: 'Encrypting & saving...' }));
+    try {
+      const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
+      const res = await fetch('/api/providers/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: orgId,
+          provider_name: pKey,
+          api_key: apiKeys[pKey],
+          default_model: providerModels[pKey],
+          base_url: pKey === 'ollama' ? (ollamaBaseUrl || 'http://localhost:11434') : null
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+      
+      setSavedProviderHints(prev => ({
+        ...prev,
+        [pKey]: data.key_hint || (pKey === 'ollama' ? 'Local' : 'Saved')
+      }));
+      setProviderTestMsg(prev => ({
+        ...prev,
+        [pKey]: `✓ Key Encrypted & Saved (${data.key_hint || 'Secure'})`
+      }));
+      setApiKeys(prev => ({ ...prev, [pKey]: '' }));
+    } catch (err) {
+      setProviderTestMsg(prev => ({
+        ...prev,
+        [pKey]: `❌ Save error: ${err.message}`
+      }));
+    } finally {
+      setSavingSingle(prev => ({ ...prev, [pKey]: false }));
+    }
+  };
+
   // Test Provider Connection
   const testProviderConnection = async (provider) => {
-    setProviderTestStatus(prev => ({ ...prev, [provider]: 'testing' }));
-    setProviderTestMsg(prev => ({ ...prev, [provider]: 'Testing connection...' }));
+    const pKey = provider.toLowerCase();
+    setProviderTestStatus(prev => ({ ...prev, [pKey]: 'testing' }));
+    setProviderTestMsg(prev => ({ ...prev, [pKey]: 'Testing connection...' }));
     try {
+      const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
       const res = await fetch('/api/providers/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider,
+          provider: pKey,
           mode: 'api',
-          apiKey: apiKeys[provider]
+          apiKey: apiKeys[pKey],
+          baseUrl: pKey === 'ollama' ? (ollamaBaseUrl || 'http://localhost:11434') : undefined,
+          organization_id: orgId
         })
       });
       const data = await res.json();
       if (data.success) {
-        setProviderTestStatus(prev => ({ ...prev, [provider]: 'success' }));
-        setProviderTestMsg(prev => ({ ...prev, [provider]: `✓ ${data.message} (${data.latencyMs}ms)` }));
+        setProviderTestStatus(prev => ({ ...prev, [pKey]: 'success' }));
+        setProviderTestMsg(prev => ({ ...prev, [pKey]: `✓ ${data.message} (${data.latencyMs}ms)` }));
       } else {
-        setProviderTestStatus(prev => ({ ...prev, [provider]: 'error' }));
-        setProviderTestMsg(prev => ({ ...prev, [provider]: `❌ ${data.error}` }));
+        setProviderTestStatus(prev => ({ ...prev, [pKey]: 'error' }));
+        setProviderTestMsg(prev => ({ ...prev, [pKey]: `❌ ${data.error}` }));
       }
     } catch (err) {
-      setProviderTestStatus(prev => ({ ...prev, [provider]: 'error' }));
-      setProviderTestMsg(prev => ({ ...prev, [provider]: `❌ ${err.message}` }));
+      setProviderTestStatus(prev => ({ ...prev, [pKey]: 'error' }));
+      setProviderTestMsg(prev => ({ ...prev, [pKey]: `❌ ${err.message}` }));
     }
   };
 
@@ -380,6 +485,11 @@ export default function AgentTown({ currentUser }) {
       return;
     }
 
+    // Completely cancel any browser robotic synthesis
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+
     let started = false;
     const notifyStart = () => {
       if (!started) {
@@ -388,46 +498,11 @@ export default function AgentTown({ currentUser }) {
       }
     };
 
-    let browserFallbackStarted = false;
-    let fallbackTimer = null;
-    const startBrowserSpeech = () => {
-      if (!window.speechSynthesis || browserFallbackStarted) return;
-
-      browserFallbackStarted = true;
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-
-      const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find((voice) => (
-        voice.lang.includes('ur') || voice.lang.includes('hi') ||
-        (voice.lang.startsWith('en') && (voice.name.includes('Natural') || voice.name.includes('Google') || voice.name.includes('David')))
-      ));
-      if (preferred) utterance.voice = preferred;
-
-      utterance.onstart = () => {
-        notifyStart();
-        setIsSpeaking(true);
-        isSpeakingRef.current = true;
-      };
-      utterance.onend = utterance.onerror = () => {
-        setIsSpeaking(false);
-        isSpeakingRef.current = false;
-        if (continuousMicActiveRef.current) startRecognitionInstance();
-      };
-      window.speechSynthesis.resume();
-      window.speechSynthesis.speak(utterance);
-    };
-
     try {
       // Pause recognition while speaking to avoid echo loop
       if (recognitionRef.current && continuousMicActiveRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
-
-      // Neural speech is preferred, but never leave the user waiting for it.
-      fallbackTimer = window.setTimeout(startBrowserSpeech, 650);
 
       const res = await fetch('/api/tts', {
         method: 'POST',
@@ -439,9 +514,6 @@ export default function AgentTown({ currentUser }) {
           orgId: currentUser?.organization_id || 'org-aurasuite-superadmin'
         })
       });
-
-      if (fallbackTimer) window.clearTimeout(fallbackTimer);
-      if (browserFallbackStarted) return;
 
       if (res.ok) {
         const blob = await res.blob();
@@ -471,6 +543,7 @@ export default function AgentTown({ currentUser }) {
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl);
+          notifyStart();
           if (continuousMicActiveRef.current) {
             setTimeout(() => {
               if (continuousMicActiveRef.current && !isSpeakingRef.current) {
@@ -482,7 +555,6 @@ export default function AgentTown({ currentUser }) {
 
         try {
           await audio.play();
-          notifyStart();
           return;
         } catch (playErr) {
           console.warn("Audio play rejected or interrupted:", playErr);
@@ -490,13 +562,6 @@ export default function AgentTown({ currentUser }) {
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl);
-          if (continuousMicActiveRef.current) {
-            setTimeout(() => {
-              if (continuousMicActiveRef.current && !isSpeakingRef.current) {
-                startRecognitionInstance();
-              }
-            }, 300);
-          }
           return;
         }
       } else {
@@ -505,59 +570,10 @@ export default function AgentTown({ currentUser }) {
         isSpeakingRef.current = false;
       }
     } catch (err) {
-      if (fallbackTimer) window.clearTimeout(fallbackTimer);
-      console.warn("Natural TTS endpoint fallback:", err);
-      startBrowserSpeech();
-      return;
-    }
-
-    // High quality browser fallback if server is unreachable
-    try {
-      if (browserFallbackStarted) return;
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0) {
-          const preferred = voices.find(v => (v.lang.includes('ur') || v.lang.includes('hi')) || (v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('David'))));
-          if (preferred) utterance.voice = preferred;
-        }
-
-        utterance.onstart = () => {
-          notifyStart();
-          setIsSpeaking(true);
-          isSpeakingRef.current = true;
-        };
-        utterance.onend = () => {
-          setIsSpeaking(false);
-          isSpeakingRef.current = false;
-          if (continuousMicActiveRef.current) {
-            startRecognitionInstance();
-          }
-        };
-        utterance.onerror = () => {
-          notifyStart();
-          setIsSpeaking(false);
-          isSpeakingRef.current = false;
-          if (continuousMicActiveRef.current) {
-            startRecognitionInstance();
-          }
-        };
-        window.speechSynthesis.speak(utterance);
-      } else {
-        notifyStart();
-      }
-    } catch (e) {
-      console.warn("Speech synthesis error", e);
+      console.warn("Natural TTS endpoint notice:", err);
       notifyStart();
       setIsSpeaking(false);
       isSpeakingRef.current = false;
-      if (continuousMicActiveRef.current) {
-        startRecognitionInstance();
-      }
     }
   };
 
@@ -724,7 +740,8 @@ export default function AgentTown({ currentUser }) {
           voice: selectedVoiceName,
           gender: voiceGender,
           autoApprove,
-          language: 'ur'
+          language: 'ur',
+          provider: activeAiProvider
         })
       });
 
@@ -1709,57 +1726,88 @@ export default function AgentTown({ currentUser }) {
               </p>
             </div>
 
-            {/* DUAL-MODE AI PROVIDERS CONFIGURATION */}
+            {/* ACTIVE AI ENGINE SWITCHER */}
+            <div className="bg-[#07080f] p-4 rounded-xl border border-cyan-500/20 mb-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-cyan-500/10 pb-2">
+                <span className="text-xs font-bold text-cyan-300 font-mono uppercase flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                  Active AI Engine For Jarvis (Model Switcher)
+                </span>
+                <span className="text-[10px] text-gray-400 font-mono">Current: <strong className="text-cyan-300 uppercase">{activeAiProvider}</strong></span>
+              </div>
+              <p className="text-[11px] text-gray-400">
+                Switch which intelligence engine powers Jarvis real-time conversations, voice queries, and agent coordination:
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                {[
+                  { id: 'groq', name: 'Groq LPU', badge: '⚡ 500+ tok/s', color: 'border-amber-500/50 bg-amber-950/20 text-amber-300' },
+                  { id: 'gemini', name: 'Google Gemini', badge: '💎 Voice & Core', color: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-300' },
+                  { id: 'openai', name: 'OpenAI GPT', badge: '🤖 GPT-4o', color: 'border-emerald-500/50 bg-emerald-950/20 text-emerald-300' },
+                  { id: 'claude', name: 'Anthropic', badge: '🧠 Claude 3.5', color: 'border-purple-500/50 bg-purple-950/20 text-purple-300' },
+                  { id: 'ollama', name: 'Ollama Local', badge: '🦙 Free / Offline', color: 'border-blue-500/50 bg-blue-950/20 text-blue-300' },
+                ].map((engine) => {
+                  const isActive = activeAiProvider === engine.id;
+                  return (
+                    <button
+                      key={engine.id}
+                      type="button"
+                      onClick={() => selectActiveEngine(engine.id)}
+                      className={`p-2.5 rounded-xl border text-left transition-all relative cursor-pointer ${
+                        isActive
+                          ? 'border-cyan-400 bg-cyan-950/40 shadow-[0_0_15px_rgba(6,182,212,0.4)] ring-1 ring-cyan-400'
+                          : 'border-white/10 bg-[#0b0d18] hover:border-cyan-500/40 hover:bg-[#101322]'
+                      }`}
+                    >
+                      {isActive && (
+                        <span className="absolute top-1.5 right-1.5 px-1 py-0.2 text-[8px] font-mono font-bold bg-cyan-500 text-black rounded uppercase">
+                          ACTIVE
+                        </span>
+                      )}
+                      <div className="font-bold text-xs text-white truncate">{engine.name}</div>
+                      <div className="text-[9px] font-mono mt-0.5 text-gray-400">{engine.badge}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* DUAL-MODE AI PROVIDERS CONFIGURATION & INDIVIDUAL KEYS */}
             <div className="bg-[#07080f] p-4 rounded-xl border border-cyan-500/20 mb-4 space-y-4">
               <div className="flex items-center justify-between border-b border-cyan-500/10 pb-2">
-                <span className="text-xs font-bold text-cyan-300 font-mono uppercase">AI PROVIDERS: OFFICIAL API CONNECTIONS</span>
-                <span className="text-[10px] text-emerald-400 font-mono">Encrypted BYOK</span>
+                <span className="text-xs font-bold text-cyan-300 font-mono uppercase">AI PROVIDERS: SECURE API CREDENTIALS & LOCAL ENGINES</span>
+                <span className="text-[10px] text-emerald-400 font-mono">Server-Side AES-256 BYOK</span>
               </div>
 
               {/* 1. Google Gemini */}
-              <div className="p-3 rounded-xl bg-[#0b0d18] border border-cyan-500/20 space-y-2">
+              <div className={`p-3 rounded-xl bg-[#0b0d18] border transition-all space-y-2 ${activeAiProvider === 'gemini' ? 'border-cyan-500/60 shadow-[0_0_10px_rgba(6,182,212,0.15)]' : 'border-cyan-500/20'}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white">1. Google Gemini</span>
-                    <span className="text-[10px] text-cyan-400 font-mono">(Voice & Jarvis Core)</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">(Voice & Multimodal Core)</span>
+                    {activeAiProvider === 'gemini' && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">● ACTIVE</span>
+                    )}
                   </div>
-                  
-                  {/* Mode Selector */}
-                  <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
-                    <button 
-                      onClick={() => setProviderTestMsg(prev => ({ ...prev, gemini: 'Consumer subscriptions are separate from Gemini API billing. Add an API key.' }))}
-                      className="px-2 py-0.5 rounded text-amber-300 cursor-pointer"
-                    >
-                      Billing notice
-                    </button>
-                    <button 
-                      onClick={() => setConnectModes({...connectModes, gemini: 'api'})}
-                      className={`px-2 py-0.5 rounded ${connectModes.gemini === 'api' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
-                    >
-                      🔑 API Key
-                    </button>
+                  <div className="flex items-center gap-2">
+                    {savedProviderHints.gemini ? (
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-500/30">
+                        ✓ Saved: {savedProviderHints.gemini}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono text-gray-500">No Key Saved</span>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   <div className="sm:col-span-2">
-                    {connectModes.gemini === 'api' ? (
-                      <input 
-                        type="password"
-                        placeholder="Enter Gemini API Key (AIzaSy...)"
-                        value={apiKeys.gemini}
-                        onChange={(e) => setApiKeys({...apiKeys, gemini: e.target.value})}
-                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
-                      />
-                    ) : (
-                      <input 
-                        type="password"
-                        placeholder="Google Account OAuth / Session Token (or leave blank to use shared gateway)"
-                        value={subscriptionTokens.gemini}
-                        onChange={(e) => setSubscriptionTokens({...subscriptionTokens, gemini: e.target.value})}
-                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
-                      />
-                    )}
+                    <input 
+                      type="password"
+                      placeholder={savedProviderHints.gemini ? "Update Gemini API Key (leave empty to keep saved)" : "Enter Gemini API Key (AIzaSy...)"}
+                      value={apiKeys.gemini}
+                      onChange={(e) => setApiKeys({...apiKeys, gemini: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                    />
                   </div>
                   <div>
                     <select 
@@ -1775,61 +1823,56 @@ export default function AgentTown({ currentUser }) {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] font-mono text-gray-400">{providerTestMsg.gemini || 'Status: Ready to connect'}</span>
-                  <button 
-                    onClick={() => testProviderConnection('gemini')}
-                    disabled={providerTestStatus.gemini === 'testing'}
-                    className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
-                  >
-                    {providerTestStatus.gemini === 'testing' ? 'Testing...' : 'Test Connection ⚡'}
-                  </button>
+                  <span className="text-[10px] font-mono text-gray-400 truncate max-w-[280px] sm:max-w-md">{providerTestMsg.gemini || 'Ready to connect'}</span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => saveSingleProvider('gemini')}
+                      disabled={savingSingle.gemini}
+                      className="px-2.5 py-1 rounded bg-cyan-700 hover:bg-cyan-600 text-white border border-cyan-400/40 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {savingSingle.gemini ? 'Saving...' : '💾 Save Key'}
+                    </button>
+                    <button 
+                      onClick={() => testProviderConnection('gemini')}
+                      disabled={providerTestStatus.gemini === 'testing'}
+                      className="px-2.5 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {providerTestStatus.gemini === 'testing' ? 'Testing...' : 'Test ⚡'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* 2. OpenAI ChatGPT */}
-              <div className="p-3 rounded-xl bg-[#0b0d18] border border-cyan-500/20 space-y-2">
+              <div className={`p-3 rounded-xl bg-[#0b0d18] border transition-all space-y-2 ${activeAiProvider === 'openai' ? 'border-emerald-500/60 shadow-[0_0_10px_rgba(16,185,129,0.15)]' : 'border-cyan-500/20'}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white">2. OpenAI ChatGPT</span>
                     <span className="text-[10px] text-green-400 font-mono">(GPT-4o)</span>
+                    {activeAiProvider === 'openai' && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">● ACTIVE</span>
+                    )}
                   </div>
-                  
-                  {/* Mode Selector */}
-                  <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
-                    <button 
-                      onClick={() => setProviderTestMsg(prev => ({ ...prev, openai: 'ChatGPT plans are separate from API billing. Add an OpenAI API key.' }))}
-                      className="px-2 py-0.5 rounded text-amber-300 cursor-pointer"
-                    >
-                      Billing notice
-                    </button>
-                    <button 
-                      onClick={() => setConnectModes({...connectModes, openai: 'api'})}
-                      className={`px-2 py-0.5 rounded ${connectModes.openai === 'api' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
-                    >
-                      🔑 API Key
-                    </button>
+                  <div className="flex items-center gap-2">
+                    {savedProviderHints.openai ? (
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-500/30">
+                        ✓ Saved: {savedProviderHints.openai}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono text-gray-500">No Key Saved</span>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   <div className="sm:col-span-2">
-                    {connectModes.openai === 'api' ? (
-                      <input 
-                        type="password"
-                        placeholder="Enter OpenAI API Key (sk-proj-...)"
-                        value={apiKeys.openai}
-                        onChange={(e) => setApiKeys({...apiKeys, openai: e.target.value})}
-                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
-                      />
-                    ) : (
-                      <input 
-                        type="password"
-                        placeholder="ChatGPT Plus Session Token / Authorization Bearer"
-                        value={subscriptionTokens.openai}
-                        onChange={(e) => setSubscriptionTokens({...subscriptionTokens, openai: e.target.value})}
-                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
-                      />
-                    )}
+                    <input 
+                      type="password"
+                      placeholder={savedProviderHints.openai ? "Update OpenAI API Key (leave empty to keep saved)" : "Enter OpenAI API Key (sk-proj-...)"}
+                      value={apiKeys.openai}
+                      onChange={(e) => setApiKeys({...apiKeys, openai: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                    />
                   </div>
                   <div>
                     <select 
@@ -1845,32 +1888,52 @@ export default function AgentTown({ currentUser }) {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] font-mono text-gray-400">{providerTestMsg.openai || 'Status: Ready to connect'}</span>
-                  <button 
-                    onClick={() => testProviderConnection('openai')}
-                    disabled={providerTestStatus.openai === 'testing'}
-                    className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
-                  >
-                    {providerTestStatus.openai === 'testing' ? 'Testing...' : 'Test Connection ⚡'}
-                  </button>
+                  <span className="text-[10px] font-mono text-gray-400 truncate max-w-[280px] sm:max-w-md">{providerTestMsg.openai || 'Ready to connect'}</span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => saveSingleProvider('openai')}
+                      disabled={savingSingle.openai}
+                      className="px-2.5 py-1 rounded bg-cyan-700 hover:bg-cyan-600 text-white border border-cyan-400/40 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {savingSingle.openai ? 'Saving...' : '💾 Save Key'}
+                    </button>
+                    <button 
+                      onClick={() => testProviderConnection('openai')}
+                      disabled={providerTestStatus.openai === 'testing'}
+                      className="px-2.5 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {providerTestStatus.openai === 'testing' ? 'Testing...' : 'Test ⚡'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* 3. Groq LPU */}
-              <div className="p-3 rounded-xl bg-[#0b0d18] border border-cyan-500/20 space-y-2">
+              <div className={`p-3 rounded-xl bg-[#0b0d18] border transition-all space-y-2 ${activeAiProvider === 'groq' ? 'border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.15)]' : 'border-cyan-500/20'}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white">3. Groq LPU</span>
-                    <span className="text-[10px] text-amber-400 font-mono">(500+ Tokens/sec LPU)</span>
+                    <span className="text-[10px] text-amber-400 font-mono">(500+ Tokens/sec Ultra-Fast)</span>
+                    {activeAiProvider === 'groq' && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">● ACTIVE</span>
+                    )}
                   </div>
-                  <span className="text-[10px] font-mono text-emerald-400">Ultra-Low Latency</span>
+                  <div className="flex items-center gap-2">
+                    {savedProviderHints.groq ? (
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-500/30">
+                        ✓ Saved: {savedProviderHints.groq}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono text-gray-500">No Key Saved</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   <div className="sm:col-span-2">
                     <input 
                       type="password"
-                      placeholder="Enter Groq API Key (gsk_...)"
+                      placeholder={savedProviderHints.groq ? "Update Groq API Key (leave empty to keep saved)" : "Enter Groq API Key (gsk_...)"}
                       value={apiKeys.groq}
                       onChange={(e) => setApiKeys({...apiKeys, groq: e.target.value})}
                       className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
@@ -1889,61 +1952,56 @@ export default function AgentTown({ currentUser }) {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] font-mono text-gray-400">{providerTestMsg.groq || 'Status: Ready to connect'}</span>
-                  <button 
-                    onClick={() => testProviderConnection('groq')}
-                    disabled={providerTestStatus.groq === 'testing'}
-                    className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
-                  >
-                    {providerTestStatus.groq === 'testing' ? 'Testing...' : 'Test Connection ⚡'}
-                  </button>
+                  <span className="text-[10px] font-mono text-gray-400 truncate max-w-[280px] sm:max-w-md">{providerTestMsg.groq || 'Ready to connect'}</span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => saveSingleProvider('groq')}
+                      disabled={savingSingle.groq}
+                      className="px-2.5 py-1 rounded bg-cyan-700 hover:bg-cyan-600 text-white border border-cyan-400/40 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {savingSingle.groq ? 'Saving...' : '💾 Save Key'}
+                    </button>
+                    <button 
+                      onClick={() => testProviderConnection('groq')}
+                      disabled={providerTestStatus.groq === 'testing'}
+                      className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {providerTestStatus.groq === 'testing' ? 'Testing...' : 'Test ⚡'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* 4. Anthropic Claude */}
-              <div className="p-3 rounded-xl bg-[#0b0d18] border border-cyan-500/20 space-y-2">
+              <div className={`p-3 rounded-xl bg-[#0b0d18] border transition-all space-y-2 ${activeAiProvider === 'claude' ? 'border-purple-500/60 shadow-[0_0_10px_rgba(168,85,247,0.15)]' : 'border-cyan-500/20'}`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white">4. Anthropic Claude</span>
                     <span className="text-[10px] text-purple-400 font-mono">(Sonnet 3.5)</span>
+                    {activeAiProvider === 'claude' && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">● ACTIVE</span>
+                    )}
                   </div>
-                  
-                  {/* Mode Selector */}
-                  <div className="flex bg-[#07080f] p-0.5 rounded-lg border border-cyan-500/20 text-[10px] font-mono">
-                    <button 
-                      onClick={() => setProviderTestMsg(prev => ({ ...prev, claude: 'Consumer subscriptions are separate from Claude API billing. Add an API key.' }))}
-                      className="px-2 py-0.5 rounded text-amber-300 cursor-pointer"
-                    >
-                      Billing notice
-                    </button>
-                    <button 
-                      onClick={() => setConnectModes({...connectModes, claude: 'api'})}
-                      className={`px-2 py-0.5 rounded ${connectModes.claude === 'api' ? 'bg-cyan-600 text-white font-bold' : 'text-gray-400'}`}
-                    >
-                      🔑 API Key
-                    </button>
+                  <div className="flex items-center gap-2">
+                    {savedProviderHints.claude ? (
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-500/30">
+                        ✓ Saved: {savedProviderHints.claude}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono text-gray-500">No Key Saved</span>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                   <div className="sm:col-span-2">
-                    {connectModes.claude === 'api' ? (
-                      <input 
-                        type="password"
-                        placeholder="Enter Claude API Key (sk-ant-...)"
-                        value={apiKeys.claude}
-                        onChange={(e) => setApiKeys({...apiKeys, claude: e.target.value})}
-                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
-                      />
-                    ) : (
-                      <input 
-                        type="password"
-                        placeholder="Claude Pro Session Key / UUID"
-                        value={subscriptionTokens.claude}
-                        onChange={(e) => setSubscriptionTokens({...subscriptionTokens, claude: e.target.value})}
-                        className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
-                      />
-                    )}
+                    <input 
+                      type="password"
+                      placeholder={savedProviderHints.claude ? "Update Claude API Key (leave empty to keep saved)" : "Enter Claude API Key (sk-ant-...)"}
+                      value={apiKeys.claude}
+                      onChange={(e) => setApiKeys({...apiKeys, claude: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                    />
                   </div>
                   <div>
                     <select 
@@ -1958,14 +2016,84 @@ export default function AgentTown({ currentUser }) {
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] font-mono text-gray-400">{providerTestMsg.claude || 'Status: Ready to connect'}</span>
-                  <button 
-                    onClick={() => testProviderConnection('claude')}
-                    disabled={providerTestStatus.claude === 'testing'}
-                    className="px-3 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
-                  >
-                    {providerTestStatus.claude === 'testing' ? 'Testing...' : 'Test Connection ⚡'}
-                  </button>
+                  <span className="text-[10px] font-mono text-gray-400 truncate max-w-[280px] sm:max-w-md">{providerTestMsg.claude || 'Ready to connect'}</span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => saveSingleProvider('claude')}
+                      disabled={savingSingle.claude}
+                      className="px-2.5 py-1 rounded bg-cyan-700 hover:bg-cyan-600 text-white border border-cyan-400/40 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {savingSingle.claude ? 'Saving...' : '💾 Save Key'}
+                    </button>
+                    <button 
+                      onClick={() => testProviderConnection('claude')}
+                      disabled={providerTestStatus.claude === 'testing'}
+                      className="px-2.5 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {providerTestStatus.claude === 'testing' ? 'Testing...' : 'Test ⚡'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Ollama Local Engine */}
+              <div className={`p-3 rounded-xl bg-[#0b0d18] border transition-all space-y-2 ${activeAiProvider === 'ollama' ? 'border-blue-500/60 shadow-[0_0_10px_rgba(59,130,246,0.15)]' : 'border-cyan-500/20'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">5. Ollama Local Engine</span>
+                    <span className="text-[10px] text-blue-400 font-mono">(Offline Local GPU / Zero API Fees)</span>
+                    {activeAiProvider === 'ollama' && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">● ACTIVE</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-500/30">
+                    Local Machine
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                  <div className="sm:col-span-2">
+                    <input 
+                      type="text"
+                      placeholder="http://localhost:11434"
+                      value={ollamaBaseUrl}
+                      onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-white outline-none focus:border-cyan-400 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <select 
+                      value={providerModels.ollama}
+                      onChange={(e) => setProviderModels({...providerModels, ollama: e.target.value})}
+                      className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-cyan-300 outline-none"
+                    >
+                      <option value="llama3.2">llama3.2 (Recommended)</option>
+                      <option value="deepseek-r1:8b">deepseek-r1:8b (Reasoning)</option>
+                      <option value="mistral">mistral (7B General)</option>
+                      <option value="llama3:8b">llama3:8b</option>
+                      <option value="phi3">phi3 (Lightweight)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] font-mono text-gray-400 truncate max-w-[280px] sm:max-w-md">{providerTestMsg.ollama || 'Ollama running on port 11434'}</span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => saveSingleProvider('ollama')}
+                      disabled={savingSingle.ollama}
+                      className="px-2.5 py-1 rounded bg-cyan-700 hover:bg-cyan-600 text-white border border-cyan-400/40 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {savingSingle.ollama ? 'Saving...' : '💾 Save Config'}
+                    </button>
+                    <button 
+                      onClick={() => testProviderConnection('ollama')}
+                      disabled={providerTestStatus.ollama === 'testing'}
+                      className="px-2.5 py-1 rounded bg-[#141624] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold cursor-pointer"
+                    >
+                      {providerTestStatus.ollama === 'testing' ? 'Testing...' : 'Test ⚡'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -2030,7 +2158,32 @@ export default function AgentTown({ currentUser }) {
                         if (!response.ok) throw new Error(await response.text());
                       });
                     await Promise.all(saves);
-                    alert('Official API connections and agent prompts saved securely.');
+
+                    // Also save Ollama configuration
+                    await fetch('/api/providers/config', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        organization_id: orgId,
+                        provider_name: 'ollama',
+                        base_url: ollamaBaseUrl || 'http://localhost:11434',
+                        default_model: providerModels.ollama || 'llama3.2'
+                      })
+                    }).catch(() => null);
+
+                    // Set current active engine
+                    await fetch('/api/providers/config', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        organization_id: orgId,
+                        provider_name: activeAiProvider,
+                        action: 'set_active'
+                      })
+                    }).catch(() => null);
+
+                    await loadSavedProviders();
+                    alert('Official API connections, Ollama configs, and active engine saved securely.');
                     setShowSettingsModal(false);
                   } catch (e) {
                     alert('Save notice: ' + e.message);
