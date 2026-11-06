@@ -238,6 +238,23 @@ async function executeAction(action) {
         });
       }
 
+            case 'open_url': {
+        const url = (action.target || action.value || '').trim();
+        const safeUrl = url.startsWith('http') ? url : `https://${url}`;
+        log(`Jarvis OS: Opening URL in default browser: ${safeUrl}...`);
+        return new Promise((resolve) => {
+          exec(`cmd.exe /c start "" "${safeUrl}"`, (err) => {
+            if (err) {
+              log(`Jarvis Error opening URL: ${err.message}`);
+              resolve({ status: 'FAILED', result: err.message });
+            } else {
+              log(`Jarvis OS: Successfully opened URL: ${safeUrl}`);
+              resolve({ status: 'SUCCESS', result: `Opened ${safeUrl}` });
+            }
+          });
+        });
+      }
+
       case 'close_app': {
         const target = (action.target || action.value || '').toLowerCase().trim();
         log(`Jarvis OS: Closing application: ${target}...`);
@@ -256,13 +273,16 @@ async function executeAction(action) {
           'photos': ['Microsoft.Photos']
         };
         const targetsToKill = processMap[target] || [target];
-        const pList = targetsToKill.map(t => `'${t}'`).join(',');
-        const psCmd = `powershell -Command "Get-Process -ErrorAction SilentlyContinue | Where-Object { (${pList}) -contains $_.ProcessName } | Stop-Process -Force -ErrorAction SilentlyContinue"`;
+        const cmdKill = targetsToKill.map(t => `/IM ${t}.exe`).join(' ');
         
         return new Promise((resolve) => {
-          exec(psCmd, () => {
-            log(`Jarvis OS: Application close command finished for ${target}`);
-            resolve({ status: 'SUCCESS', result: `Closed application: ${target}` });
+          exec(`taskkill /F ${cmdKill} 2>nul`, () => {
+            const pList = targetsToKill.map(t => `'${t}'`).join(',');
+            const psCmd = `powershell -Command "Get-Process -ErrorAction SilentlyContinue | Where-Object { (${pList}) -contains \$_.ProcessName } | Stop-Process -Force -ErrorAction SilentlyContinue"`;
+            exec(psCmd, () => {
+              log(`Jarvis OS: Application close command finished for ${target}`);
+              resolve({ status: 'SUCCESS', result: `Closed application: ${target}` });
+            });
           });
         });
       }

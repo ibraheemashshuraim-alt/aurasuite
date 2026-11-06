@@ -38,23 +38,27 @@ function detectPromptLanguage(text) {
 
 function safeDesktopAction(prompt) {
   const normalized = prompt.toLowerCase().trim();
+
+  // Close verbs detection (Urdu, Arabic, English)
+  const isClose = /(بند\s*(کر|کریں|کردو|کردیں|کرو|ہو|دیں|دو)?|بند$|close|exit|quit|stop|kill|shut|أغلق|اغلق|اقفل|سكر|قفل)/i.test(prompt);
+
   const apps = [
     { 
-      matches: ['calculator', 'calc', 'کیلکولیٹر', 'کیلکولیٹر کھول', 'الحاسبة', 'آلة حاسبة', 'احسب', 'حاسبة'], 
+      matches: ['calculator', 'calc', 'کیلکولیٹر', 'الحاسبة', 'آلة حاسبة', 'احسب', 'حاسبة'], 
       target: 'calc', 
       urdu: 'کیلکولیٹر',
       arabic: 'الحاسبة (Calculator)',
       english: 'Calculator'
     },
     { 
-      matches: ['notepad', 'note pad', 'note-pad', 'نوٹ پیڈ', 'نوٹپیڈ', 'نوٹ پیڈ کھول', 'المفكرة', 'مفكرة', 'نوت باد', 'نوت‌باد'], 
+      matches: ['notepad', 'note pad', 'note-pad', 'نوٹ پیڈ', 'نوٹپیڈ', 'المفكرة', 'مفكرة', 'نوت باد', 'نوت‌باد'], 
       target: 'notepad', 
       urdu: 'نوٹ پیڈ',
       arabic: 'المفكرة (Notepad)',
       english: 'Notepad'
     },
     { 
-      matches: ['paint', 'پینٹ', 'پینٹ کھول', 'الرسام', 'رسام'], 
+      matches: ['paint', 'پینٹ', 'الرسام', 'رسام'], 
       target: 'paint', 
       urdu: 'پینٹ',
       arabic: 'الرسام (Paint)',
@@ -68,7 +72,7 @@ function safeDesktopAction(prompt) {
       english: 'File Explorer'
     },
     { 
-      matches: ['chrome', 'کروم', 'کروم کھول', 'جوجل كروم', 'المتصفح'], 
+      matches: ['chrome', 'کروم', 'جوجل كروم', 'المتصفح', 'browser'], 
       target: 'chrome', 
       urdu: 'گوگل کروم',
       arabic: 'متصفح جوجل كروم',
@@ -76,7 +80,52 @@ function safeDesktopAction(prompt) {
     },
   ];
 
-  // Direct retry / feedback from user
+  const webApps = [
+    {
+      matches: ['youtube', 'یوٹیوب', 'يوتيوب', 'یو ٹیوب'],
+      url: 'https://www.youtube.com',
+      urdu: 'یوٹیوب',
+      arabic: 'يوتيوب (YouTube)',
+      english: 'YouTube'
+    },
+    {
+      matches: ['google', 'گوگل', 'جوجل'],
+      url: 'https://www.google.com',
+      urdu: 'گوگل',
+      arabic: 'جوجل (Google)',
+      english: 'Google'
+    },
+    {
+      matches: ['whatsapp', 'واٹس ایپ', 'واتساب', 'واتس اب', 'واٹسایپ'],
+      url: 'https://web.whatsapp.com',
+      urdu: 'واٹس ایپ',
+      arabic: 'واتساب (WhatsApp)',
+      english: 'WhatsApp Web'
+    },
+    {
+      matches: ['facebook', 'فیس بک', 'فيسبوك', 'فیسبوک'],
+      url: 'https://www.facebook.com',
+      urdu: 'فیس بک',
+      arabic: 'فيسبوك (Facebook)',
+      english: 'Facebook'
+    },
+    {
+      matches: ['gmail', 'جی میل', 'جيميل'],
+      url: 'https://mail.google.com',
+      urdu: 'جی میل',
+      arabic: 'بريد جيميل (Gmail)',
+      english: 'Gmail'
+    },
+    {
+      matches: ['github', 'گٹ ہب', 'جيت هب', 'گٹہب'],
+      url: 'https://github.com',
+      urdu: 'گٹ ہب',
+      arabic: 'جيت هب (GitHub)',
+      english: 'GitHub'
+    }
+  ];
+
+  // 1. Direct retry / feedback from user ("نہیں کھلا")
   if (/(نہیں کھلا|نہیں چلی|نہیں چلا|نہیں کھل رہا|کھلا نہیں|دوبارہ کھولو|دوبارہ چلاؤ|لم يفتح|افتح مرة اخرى|open again|not opened)/i.test(prompt)) {
     let targetApp = 'notepad';
     let appObj = apps[1];
@@ -84,28 +133,96 @@ function safeDesktopAction(prompt) {
       if (app.matches.some((match) => normalized.includes(match))) {
         targetApp = app.target;
         appObj = app;
-        break;
+        return {
+          actions: [{ type: 'launch_app', target: targetApp }],
+          app: appObj,
+          isClose: false,
+          isRetry: true,
+          isOpenUrl: false
+        };
+      }
+    }
+    for (const web of webApps) {
+      if (web.matches.some((match) => normalized.includes(match))) {
+        return {
+          actions: [{ type: 'open_url', target: web.url }],
+          app: web,
+          isClose: false,
+          isRetry: true,
+          isOpenUrl: true
+        };
       }
     }
     return {
       actions: [{ type: 'launch_app', target: targetApp }],
       app: appObj,
-      isRetry: true
+      isClose: false,
+      isRetry: true,
+      isOpenUrl: false
     };
   }
 
-  for (const app of apps) {
-    if (app.matches.some((match) => normalized.includes(match))) {
-      return { actions: [{ type: 'launch_app', target: app.target }], app, isRetry: false };
+  // 2. Close command check (close app or close browser for web apps)
+  if (isClose) {
+    for (const app of apps) {
+      if (app.matches.some((match) => normalized.includes(match))) {
+        return {
+          actions: [{ type: 'close_app', target: app.target }],
+          app,
+          isClose: true,
+          isRetry: false,
+          isOpenUrl: false
+        };
+      }
+    }
+    for (const web of webApps) {
+      if (web.matches.some((match) => normalized.includes(match))) {
+        return {
+          actions: [{ type: 'close_app', target: 'chrome' }],
+          app: web,
+          isClose: true,
+          isRetry: false,
+          isOpenUrl: false
+        };
+      }
     }
   }
 
+  // 3. Web apps open check
+  for (const web of webApps) {
+    if (web.matches.some((match) => normalized.includes(match))) {
+      return {
+        actions: [{ type: 'open_url', target: web.url }],
+        app: web,
+        isClose: false,
+        isRetry: false,
+        isOpenUrl: true
+      };
+    }
+  }
+
+  // 4. Desktop apps open check
+  for (const app of apps) {
+    if (app.matches.some((match) => normalized.includes(match))) {
+      return {
+        actions: [{ type: 'launch_app', target: app.target }],
+        app,
+        isClose: false,
+        isRetry: false,
+        isOpenUrl: false
+      };
+    }
+  }
+
+  // 5. Raw URL in prompt
   const url = prompt.match(/https?:\/\/[^\s]+/i)?.[0];
   if (url && /(open|kholo|کھولو|کھول|browser|براؤزر|افتح)/i.test(prompt)) {
     return { 
       actions: [{ type: 'open_url', target: url }], 
       app: { urdu: url, arabic: url, english: url }, 
-      isRetry: false 
+      isClose: false,
+      isRetry: false,
+      isOpenUrl: true
     };
   }
 
@@ -134,6 +251,23 @@ function executeDesktopActions(actions) {
         const cmd = appMap[act.target?.toLowerCase()] || `start "" ${act.target}`;
         exec(`cmd.exe /c ${cmd}`, (err) => {
           if (err) console.warn('Fast-chat direct execution error:', err.message);
+        });
+      } else if (act.type === 'close_app') {
+        const target = (act.target || '').toLowerCase().trim();
+        let killCmd = '';
+        if (target === 'calc' || target === 'calculator') {
+          killCmd = 'taskkill /F /IM CalculatorApp.exe /IM calc.exe 2>nul';
+        } else if (target === 'notepad') {
+          killCmd = 'taskkill /F /IM notepad.exe 2>nul';
+        } else if (target === 'paint' || target === 'mspaint') {
+          killCmd = 'taskkill /F /IM mspaint.exe 2>nul';
+        } else if (target === 'chrome' || target === 'browser') {
+          killCmd = 'taskkill /F /IM chrome.exe 2>nul';
+        } else {
+          killCmd = `taskkill /F /IM ${target}.exe 2>nul`;
+        }
+        exec(`cmd.exe /c ${killCmd}`, (err) => {
+          if (err) console.warn('Fast-chat direct close error:', err.message);
         });
       } else if (act.type === 'open_url') {
         const url = act.target.startsWith('http') ? act.target : `https://${act.target}`;
@@ -351,18 +485,42 @@ export async function POST(request) {
         // Execute on the local system
         executeDesktopActions(desktopTask.actions);
 
-        if (promptLang === 'ar') {
-          decidedText = desktopTask.isRetry
-            ? `معذرة يا سيدي! تم إعادة فتح ${desktopTask.app.arabic} على شاشتك فوراً.`
-            : `تم فتح ${desktopTask.app.arabic} على شاشتك بنجاح يا سيدي.`;
-        } else if (promptLang === 'en') {
-          decidedText = desktopTask.isRetry
-            ? `My apologies sir! I have immediately relaunched ${desktopTask.app.english} on your screen.`
-            : `Launching ${desktopTask.app.english} on your screen now, sir.`;
+        if (desktopTask.isClose) {
+          if (promptLang === 'ar') {
+            decidedText = `تم إغلاق ${desktopTask.app.arabic} بنجاح يا سيدي.`;
+          } else if (promptLang === 'en') {
+            decidedText = `Sir, ${desktopTask.app.english} has been closed.`;
+          } else {
+            decidedText = `سر، ${desktopTask.app.urdu} بند کر دیا گیا ہے۔`;
+          }
+        } else if (desktopTask.isOpenUrl) {
+          if (promptLang === 'ar') {
+            decidedText = desktopTask.isRetry
+              ? `معذرة يا سيدي! تم إعادة فتح ${desktopTask.app.arabic} في متصفحك فوراً.`
+              : `تم فتح ${desktopTask.app.arabic} فوراً يا سيدي.`;
+          } else if (promptLang === 'en') {
+            decidedText = desktopTask.isRetry
+              ? `My apologies sir! I have relaunched ${desktopTask.app.english} in your browser.`
+              : `Opening ${desktopTask.app.english} in your browser now, sir.`;
+          } else {
+            decidedText = desktopTask.isRetry
+              ? `معذرت سر! میں نے دوبارہ براؤزر میں ${desktopTask.app.urdu} کھول دی ہے۔`
+              : `سر، ${desktopTask.app.urdu} کھول دی گئی ہے۔`;
+          }
         } else {
-          decidedText = desktopTask.isRetry
-            ? `معذرت سر! میں نے فوراً دوبارہ حکم جاری کر کے ${desktopTask.app.urdu} اسکرین پر کھول دیا ہے۔`
-            : `سر، ${desktopTask.app.urdu} اسکرین پر کھول دیا گیا ہے۔`;
+          if (promptLang === 'ar') {
+            decidedText = desktopTask.isRetry
+              ? `معذرة يا سيدي! تم إعادة فتح ${desktopTask.app.arabic} على شاشتك فوراً.`
+              : `تم فتح ${desktopTask.app.arabic} على شاشتك بنجاح يا سيدي.`;
+          } else if (promptLang === 'en') {
+            decidedText = desktopTask.isRetry
+              ? `My apologies sir! I have immediately relaunched ${desktopTask.app.english} on your screen.`
+              : `Launching ${desktopTask.app.english} on your screen now, sir.`;
+          } else {
+            decidedText = desktopTask.isRetry
+              ? `معذرت سر! میں نے فوراً دوبارہ حکم جاری کر کے ${desktopTask.app.urdu} اسکرین پر کھول دیا ہے۔`
+              : `سر، ${desktopTask.app.urdu} اسکرین پر کھول دیا گیا ہے۔`;
+          }
         }
 
         isActionPlan = true;
@@ -419,7 +577,12 @@ export async function POST(request) {
           '   - If the user speaks in Arabic or says "عربی میں بات کرو" or "تكلم بالعربية", IMMEDIATELY switch to fluent, polite, elegant Arabic (العربية الفصحى)! NEVER refuse or say you only speak Urdu or English.',
           '   - If the user speaks Urdu, reply in natural Urdu script.',
           '   - If the user speaks English, reply in English.',
-          '4. Keep answers concise, helpful, sharp, and respectful (1-2 sentences maximum).'
+          '4. OS INTEGRATION & COMMAND EXECUTION (CRITICAL):',
+          '   - You are directly connected to the user\'s Windows system via the Jarvis OS engine.',
+          '   - You CAN and DO open websites (YouTube, Google, WhatsApp, Facebook, etc.), launch desktop applications (Calculator, Notepad, Paint, Chrome, etc.), and close applications on command.',
+          '   - NEVER give disclaimers like "I am an AI and cannot open websites/YouTube/apps" or "I do not have access to your system".',
+          '   - If the user asks you to open or close any app or website, confirm with concise elegance that the action has been executed.',
+          '5. Keep answers concise, sharp, helpful, and respectful (1-2 sentences maximum).'
         ].join('\n');
 
         try {

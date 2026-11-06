@@ -41,6 +41,27 @@ export async function POST(request) {
       });
     }
 
+    // 1.5 Close local Windows application
+    if (action === 'close_app') {
+      const processMap = {
+        calc: ['CalculatorApp.exe', 'calc.exe'],
+        calculator: ['CalculatorApp.exe', 'calc.exe'],
+        notepad: ['notepad.exe'],
+        paint: ['mspaint.exe'],
+        mspaint: ['mspaint.exe'],
+        chrome: ['chrome.exe'],
+        browser: ['chrome.exe', 'msedge.exe'],
+        explorer: ['explorer.exe']
+      };
+      const targets = processMap[target?.toLowerCase()] || [`${target}.exe`];
+      const killCmd = targets.map(t => `taskkill /F /IM ${t} 2>nul`).join(' & ');
+      return new Promise((resolve) => {
+        exec(`cmd.exe /c "${killCmd}"`, () => {
+          resolve(NextResponse.json({ success: true, message: `Closed ${target} successfully` }));
+        });
+      });
+    }
+
     // 2. Open URL
     if (action === 'open_url') {
       const url = target.startsWith('http') ? target : `https://${target}`;

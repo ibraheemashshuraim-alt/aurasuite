@@ -78,6 +78,13 @@ export async function POST(request) {
       ? body.is_active 
       : (existingRow?.is_active ?? false);
 
+    if (shouldBeActive) {
+      await supabase
+        .from('ai_provider_configs')
+        .update({ is_active: false })
+        .eq('organization_id', organization_id);
+    }
+
     const { error } = await supabase
       .from('ai_provider_configs')
       .upsert({

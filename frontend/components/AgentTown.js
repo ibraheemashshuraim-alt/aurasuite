@@ -273,10 +273,13 @@ export default function AgentTown({ currentUser }) {
         setSavedProviderHints(hints);
         setProviderModels(models);
 
-        // Keep user's explicit selection stored in localStorage or fall back to DB active
+        // Prefer active provider from DB, then localStorage, fallback to gemini
         const savedLocal = typeof window !== 'undefined' ? localStorage.getItem('aurasuite_active_ai_provider') : null;
-        const chosenActive = savedLocal || activeFromDb || 'gemini';
+        const chosenActive = activeFromDb || savedLocal || 'gemini';
         setActiveAiProvider(chosenActive);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('aurasuite_active_ai_provider', chosenActive);
+        }
       }
     } catch (err) {
       console.warn('Failed to load saved AI providers:', err);
@@ -325,7 +328,8 @@ export default function AgentTown({ currentUser }) {
           provider_name: pKey,
           api_key: apiKeys[pKey],
           default_model: providerModels[pKey],
-          base_url: pKey === 'ollama' ? (ollamaBaseUrl || 'http://localhost:11434') : null
+          base_url: pKey === 'ollama' ? (ollamaBaseUrl || 'http://localhost:11434') : null,
+          is_active: true
         })
       });
       const data = await res.json();
@@ -340,6 +344,7 @@ export default function AgentTown({ currentUser }) {
         [pKey]: `✓ Key Encrypted & Saved (${data.key_hint || 'Secure'})`
       }));
       setApiKeys(prev => ({ ...prev, [pKey]: '' }));
+      await selectActiveEngine(pKey);
     } catch (err) {
       setProviderTestMsg(prev => ({
         ...prev,
