@@ -15,6 +15,13 @@ export async function POST(request) {
 
     // Quick active engine switch
     if (action === 'set_active') {
+      // Deactivate all providers for this organization
+      await supabase
+        .from('ai_provider_configs')
+        .update({ is_active: false })
+        .eq('organization_id', organization_id);
+
+      // Activate only the chosen provider
       await supabase
         .from('ai_provider_configs')
         .update({ is_active: true, updated_at: new Date().toISOString() })
@@ -59,6 +66,18 @@ export async function POST(request) {
       hint = 'Local Ollama Engine';
     }
 
+    // Preserve existing is_active status or use requested
+    const { data: existingRow } = await supabase
+      .from('ai_provider_configs')
+      .select('is_active')
+      .eq('organization_id', organization_id)
+      .eq('provider_name', pName)
+      .maybeSingle();
+
+    const shouldBeActive = typeof body.is_active === 'boolean' 
+      ? body.is_active 
+      : (existingRow?.is_active ?? false);
+
     const { error } = await supabase
       .from('ai_provider_configs')
       .upsert({
@@ -69,7 +88,7 @@ export async function POST(request) {
         key_hint: hint,
         base_url: base_url || null,
         default_model: default_model || null,
-        is_active: true,
+        is_active: shouldBeActive,
         is_byok: true,
         updated_at: new Date().toISOString(),
       }, {

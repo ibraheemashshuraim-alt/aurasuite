@@ -108,7 +108,12 @@ export default function AgentTown({ currentUser }) {
 
   // Settings: Execution mode & AI Providers
   const [autoApprove, setAutoApprove] = useState(true);
-  const [activeAiProvider, setActiveAiProvider] = useState('gemini');
+  const [activeAiProvider, setActiveAiProvider] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aurasuite_active_ai_provider') || 'gemini';
+    }
+    return 'gemini';
+  });
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState('http://localhost:11434');
   const [savedProviderHints, setSavedProviderHints] = useState({});
   const [savingSingle, setSavingSingle] = useState({});
@@ -255,19 +260,23 @@ export default function AgentTown({ currentUser }) {
       if (Array.isArray(data.providers)) {
         const hints = {};
         const models = { ...providerModels };
-        let active = null;
+        let activeFromDb = null;
         data.providers.forEach(p => {
           if (p.provider_name) {
             const pKey = p.provider_name.toLowerCase();
             hints[pKey] = p.key_hint || (pKey === 'ollama' ? 'Local Engine' : 'Encrypted');
             if (p.default_model) models[pKey] = p.default_model;
             if (p.base_url && pKey === 'ollama') setOllamaBaseUrl(p.base_url);
-            if (p.is_active) active = pKey;
+            if (p.is_active && !activeFromDb) activeFromDb = pKey;
           }
         });
         setSavedProviderHints(hints);
         setProviderModels(models);
-        if (active) setActiveAiProvider(active);
+
+        // Keep user's explicit selection stored in localStorage or fall back to DB active
+        const savedLocal = typeof window !== 'undefined' ? localStorage.getItem('aurasuite_active_ai_provider') : null;
+        const chosenActive = savedLocal || activeFromDb || 'gemini';
+        setActiveAiProvider(chosenActive);
       }
     } catch (err) {
       console.warn('Failed to load saved AI providers:', err);
@@ -282,6 +291,9 @@ export default function AgentTown({ currentUser }) {
   const selectActiveEngine = async (providerName) => {
     const pKey = providerName.toLowerCase();
     setActiveAiProvider(pKey);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('aurasuite_active_ai_provider', pKey);
+    }
     try {
       const orgId = currentUser?.organization_id || 'org-aurasuite-superadmin';
       await fetch('/api/providers/config', {
@@ -2183,6 +2195,9 @@ export default function AgentTown({ currentUser }) {
                     }).catch(() => null);
 
                     // Set current active engine
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem('aurasuite_active_ai_provider', activeAiProvider);
+                    }
                     await fetch('/api/providers/config', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
