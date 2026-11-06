@@ -9,47 +9,104 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-function isUrduPrompt(text) {
-  return /[\u0600-\u06FF]/.test(text) || /\b(assalam|salam|salaam|kya|kaise|kese|mujhe|aap|ap|karo|karna|kholo|chalao|batao|shukriya|meherbani|sir|janab)\b/i.test(text);
+function detectPromptLanguage(text) {
+  const t = text.toLowerCase().trim();
+  // Explicit language request
+  if (/عربی|عربي|العربية|بالعربي|arabic/i.test(t)) return 'ar';
+  if (/urdu|اردو/i.test(t)) return 'ur';
+  if (/english|انگریزی|انگلیش/i.test(t)) return 'en';
+
+  // Arabic detection (Arabic characters without Urdu-specific characters)
+  const hasUrduSpecific = /[\u0679\u067E\u0686\u0698\u06AF\u06BA\u06D2\u06C1\u06BE]/.test(text);
+  const hasArabicWords = /\b(مرحبا|اهلا|أهلا|كيف|حالك|شكرا|سيدي|تكلم|اريد|افتح|ماذا|من|انت|نعم|لا|صباح|مساء)\b/i.test(t);
+  if (hasArabicWords || (!hasUrduSpecific && /[\u0600-\u06FF]/.test(text) && /\b(في|على|الى|من|عن|مع|هذا|هذه|هل)\b/i.test(t))) {
+    return 'ar';
+  }
+
+  // Urdu detection
+  if (hasUrduSpecific || /\b(assalam|salam|salaam|kya|kaise|kese|mujhe|aap|ap|karo|karna|kholo|chalao|batao|shukriya|meherbani|sir|janab|نہیں|کھولو|کھولنا|کرو|بتائیں|کیسے)\b/i.test(t)) {
+    return 'ur';
+  }
+
+  // English fallback
+  if (/^[a-zA-Z0-9\s.,!?'"_\-]+$/.test(text)) {
+    return 'en';
+  }
+
+  return 'auto';
 }
 
 function safeDesktopAction(prompt) {
   const normalized = prompt.toLowerCase().trim();
   const apps = [
-    { matches: ['calculator', 'calc', 'کیلکولیٹر', 'کیلکولیٹر کھول'], target: 'calc', urdu: 'کیلکولیٹر' },
-    { matches: ['notepad', 'note pad', 'note-pad', 'نوٹ پیڈ', 'نوٹپیڈ', 'نوٹ پیڈ کھول'], target: 'notepad', urdu: 'نوٹ پیڈ' },
-    { matches: ['paint', 'پینٹ', 'پینٹ کھول'], target: 'paint', urdu: 'پینٹ' },
-    { matches: ['file explorer', 'explorer', 'my computer', 'my pc', 'file manager', 'فائلز'], target: 'explorer', urdu: 'فائل ایکسپلورر' },
-    { matches: ['chrome', 'کروم', 'کروم کھول'], target: 'chrome', urdu: 'گوگل کروم' },
+    { 
+      matches: ['calculator', 'calc', 'کیلکولیٹر', 'کیلکولیٹر کھول', 'الحاسبة', 'آلة حاسبة', 'احسب', 'حاسبة'], 
+      target: 'calc', 
+      urdu: 'کیلکولیٹر',
+      arabic: 'الحاسبة (Calculator)',
+      english: 'Calculator'
+    },
+    { 
+      matches: ['notepad', 'note pad', 'note-pad', 'نوٹ پیڈ', 'نوٹپیڈ', 'نوٹ پیڈ کھول', 'المفكرة', 'مفكرة', 'نوت باد', 'نوت‌باد'], 
+      target: 'notepad', 
+      urdu: 'نوٹ پیڈ',
+      arabic: 'المفكرة (Notepad)',
+      english: 'Notepad'
+    },
+    { 
+      matches: ['paint', 'پینٹ', 'پینٹ کھول', 'الرسام', 'رسام'], 
+      target: 'paint', 
+      urdu: 'پینٹ',
+      arabic: 'الرسام (Paint)',
+      english: 'Paint'
+    },
+    { 
+      matches: ['file explorer', 'explorer', 'my computer', 'my pc', 'file manager', 'فائلز', 'مستكشف الملفات', 'الملفات'], 
+      target: 'explorer', 
+      urdu: 'فائل ایکسپلورر',
+      arabic: 'مستكشف الملفات',
+      english: 'File Explorer'
+    },
+    { 
+      matches: ['chrome', 'کروم', 'کروم کھول', 'جوجل كروم', 'المتصفح'], 
+      target: 'chrome', 
+      urdu: 'گوگل کروم',
+      arabic: 'متصفح جوجل كروم',
+      english: 'Google Chrome'
+    },
   ];
 
   // Direct retry / feedback from user
-  if (/(نہیں کھلا|نہیں چلی|نہیں چلا|نہیں کھل رہا|کھلا نہیں|دوبارہ کھولو|دوبارہ چلاؤ)/.test(prompt)) {
+  if (/(نہیں کھلا|نہیں چلی|نہیں چلا|نہیں کھل رہا|کھلا نہیں|دوبارہ کھولو|دوبارہ چلاؤ|لم يفتح|افتح مرة اخرى|open again|not opened)/i.test(prompt)) {
     let targetApp = 'notepad';
-    let targetLabel = 'نوٹ پیڈ';
+    let appObj = apps[1];
     for (const app of apps) {
       if (app.matches.some((match) => normalized.includes(match))) {
         targetApp = app.target;
-        targetLabel = app.urdu;
+        appObj = app;
         break;
       }
     }
     return {
       actions: [{ type: 'launch_app', target: targetApp }],
-      label: targetLabel,
+      app: appObj,
       isRetry: true
     };
   }
 
   for (const app of apps) {
     if (app.matches.some((match) => normalized.includes(match))) {
-      return { actions: [{ type: 'launch_app', target: app.target }], label: app.urdu, isRetry: false };
+      return { actions: [{ type: 'launch_app', target: app.target }], app, isRetry: false };
     }
   }
 
   const url = prompt.match(/https?:\/\/[^\s]+/i)?.[0];
-  if (url && /(open|kholo|کھولو|کھول|browser|براؤزر)/i.test(prompt)) {
-    return { actions: [{ type: 'open_url', target: url }], label: url, isRetry: false };
+  if (url && /(open|kholo|کھولو|کھول|browser|براؤزر|افتح)/i.test(prompt)) {
+    return { 
+      actions: [{ type: 'open_url', target: url }], 
+      app: { urdu: url, arabic: url, english: url }, 
+      isRetry: false 
+    };
   }
 
   return null;
@@ -58,29 +115,29 @@ function safeDesktopAction(prompt) {
 function executeDesktopActions(actions) {
   if (!Array.isArray(actions) || actions.length === 0) return;
   const appMap = {
-    calc: 'start calc',
-    calculator: 'start calc',
-    notepad: 'start notepad',
-    paint: 'start mspaint',
-    mspaint: 'start mspaint',
-    chrome: 'start chrome',
-    browser: 'start chrome',
-    explorer: 'start explorer',
-    files: 'start explorer',
-    cmd: 'start cmd',
-    powershell: 'start powershell'
+    calc: 'start "" calc',
+    calculator: 'start "" calc',
+    notepad: 'start "" notepad',
+    paint: 'start "" mspaint',
+    mspaint: 'start "" mspaint',
+    chrome: 'start "" chrome',
+    browser: 'start "" chrome',
+    explorer: 'start "" explorer',
+    files: 'start "" explorer',
+    cmd: 'start "" cmd',
+    powershell: 'start "" powershell'
   };
 
   for (const act of actions) {
     try {
       if (act.type === 'launch_app' || act.type === 'open_app') {
-        const cmd = appMap[act.target?.toLowerCase()] || `start ${act.target}`;
-        exec(cmd, (err) => {
+        const cmd = appMap[act.target?.toLowerCase()] || `start "" ${act.target}`;
+        exec(`cmd.exe /c ${cmd}`, (err) => {
           if (err) console.warn('Fast-chat direct execution error:', err.message);
         });
       } else if (act.type === 'open_url') {
         const url = act.target.startsWith('http') ? act.target : `https://${act.target}`;
-        exec(`start "" "${url}"`, (err) => {
+        exec(`cmd.exe /c start "" "${url}"`, (err) => {
           if (err) console.warn('Fast-chat direct URL execution error:', err.message);
         });
       }
@@ -104,7 +161,7 @@ async function getProviderConfig(orgId, requestedProvider = null) {
   }
 
   if (!chosen) {
-    // Pick the most recently updated active provider, or fallback in preferred order
+    // Pick the active provider
     const activeConfigs = (configs || []).filter((c) => c.is_active);
     activeConfigs.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
     chosen = activeConfigs[0];
@@ -216,20 +273,18 @@ async function persistConversation({ organizationId, prompt, userId, result }) {
 export async function POST(request) {
   const startedAt = Date.now();
   try {
-    const { prompt, orgId, userId, userName, provider: requestedProvider, voice, gender, language = 'ur' } = await request.json();
+    const { prompt, orgId, userId, userName, provider: requestedProvider, voice, gender } = await request.json();
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
     const organizationId = orgId || 'org-aurasuite-superadmin';
     const cleanPrompt = prompt.trim();
-    const cleanLower = cleanPrompt.toLowerCase();
-    const forceUrdu = language === 'ur' || isUrduPrompt(cleanPrompt);
-    const reply = (urdu, english) => (forceUrdu ? urdu : english);
+    const promptLang = detectPromptLanguage(cleanPrompt);
     const selectedVoice = voice || (gender === 'female' ? 'Aoede' : 'Charon');
 
     // ==========================================
-    // 0. LIVE SOFTWARE HOUSE CONTEXT (ORGANIZATION & MEMBERS)
+    // 0. LIVE SOFTWARE HOUSE CONTEXT
     // ==========================================
     let orgName = 'Software House';
     let profiles = [];
@@ -267,62 +322,75 @@ export async function POST(request) {
 
     let decidedText = null;
 
-    // Instant greetings
-    if (/\b(assalam|salam|salaam|hello|hi jarvis)\b|سلام|ہیلو/i.test(cleanPrompt)) {
-      decidedText = reply('وعلیکم السلام سر! میں حاضر ہوں۔ فرمائیے کیا حکم ہے؟', 'Hello, sir. I am ready for your command.');
-    } else if (/\b(shukriya|thank)\b|شکریہ/i.test(cleanPrompt)) {
-      decidedText = reply('میرا فرض ہے سر۔ کوئی اور کام ہو تو بتائیے۔', 'Always at your service, sir.');
+    // Language switch requests (e.g. "عربی میں بات کرو", "speak Arabic", "talk in English") -> Pass directly to AI
+    const isLanguageSwitchRequest = /(عربی میں|عربی بولو|تكلم بالعربية|تكلم عربي|باللغة العربية|speak in arabic|speak english|talk in)/i.test(cleanPrompt);
+
+    // Instant greetings (only if not an explicit language request)
+    if (!isLanguageSwitchRequest) {
+      if (/مرحبا|أهلا|اهلا|صباح الخير|مساء الخير/i.test(cleanPrompt)) {
+        decidedText = 'أهلاً وسهلاً بك يا سيدي! أنا جارفيس في خدمتك، كيف يمكنني مساعدتك؟';
+      } else if (/\b(assalam|salam|salaam)\b|سلام|ہیلو/i.test(cleanPrompt)) {
+        decidedText = 'وعلیکم السلام سر! میں حاضر ہوں۔ فرمائیے کیا حکم ہے؟';
+      } else if (/^(hello|hi|hey jarvis|hello jarvis)$/i.test(cleanPrompt)) {
+        decidedText = 'Hello sir! Jarvis at your service. How can I help you today?';
+      } else if (/\b(shukriya|thank)\b|شکریہ|شكرا/i.test(cleanPrompt)) {
+        if (promptLang === 'ar') decidedText = 'عفواً يا سيدي، هذا واجبي دائماً.';
+        else if (promptLang === 'en') decidedText = 'Always a pleasure to serve you, sir.';
+        else decidedText = 'میرا فرض ہے سر۔ کوئی اور کام ہو تو بتائیے۔';
+      }
     }
 
     // Windows local desktop action
     let isActionPlan = false;
     let actions = [];
     let taskId = null;
-    if (!decidedText) {
+    if (!decidedText && !isLanguageSwitchRequest) {
       const desktopTask = safeDesktopAction(cleanPrompt);
       if (desktopTask) {
         taskId = await queueJarvisTask({ organizationId, prompt: cleanPrompt, userId, actions: desktopTask.actions });
-        // Physically execute on the Windows OS right now
+        // Execute on the local system
         executeDesktopActions(desktopTask.actions);
 
-        if (desktopTask.isRetry) {
-          decidedText = reply(
-            `معذرت سر! میں نے فوراً دوبارہ حکم جاری کر کے ${desktopTask.label} اسکرین پر کھول دیا ہے۔`,
-            `Apologies sir! I have relaunched ${desktopTask.label} directly.`
-          );
+        if (promptLang === 'ar') {
+          decidedText = desktopTask.isRetry
+            ? `معذرة يا سيدي! تم إعادة فتح ${desktopTask.app.arabic} على شاشتك فوراً.`
+            : `تم فتح ${desktopTask.app.arabic} على شاشتك بنجاح يا سيدي.`;
+        } else if (promptLang === 'en') {
+          decidedText = desktopTask.isRetry
+            ? `My apologies sir! I have immediately relaunched ${desktopTask.app.english} on your screen.`
+            : `Launching ${desktopTask.app.english} on your screen now, sir.`;
         } else {
-          decidedText = reply(
-            `سر، ${desktopTask.label} کھولنے کا حکم دے کر اسکرین پر کھول دیا گیا ہے۔`,
-            `Launching ${desktopTask.label} now, sir.`
-          );
+          decidedText = desktopTask.isRetry
+            ? `معذرت سر! میں نے فوراً دوبارہ حکم جاری کر کے ${desktopTask.app.urdu} اسکرین پر کھول دیا ہے۔`
+            : `سر، ${desktopTask.app.urdu} اسکرین پر کھول دیا گیا ہے۔`;
         }
+
         isActionPlan = true;
         actions = desktopTask.actions;
       }
     }
 
     // Direct live roster queries
-    if (!decidedText) {
-      const isAskingNames = /نام|name|naam|کون کون|کون ہے|کون ہیں|لسٹ|list|تفصیل|چاروں|چار|باقی/i.test(cleanPrompt);
-      const isAskingOnline = /online|آن لائن|ان لائن|آنلائن|کون آن لائن/i.test(cleanPrompt);
-      const isAskingUsers = /user|users|لوگ|یوزر|کتنے|kitne|how many|total/i.test(cleanPrompt);
+    if (!decidedText && !isLanguageSwitchRequest) {
+      const isAskingNames = /نام|name|naam|کون کون|کون ہے|کون ہیں|لسٹ|list|تفصیل|أسماء|من هم|من متصل/i.test(cleanPrompt);
+      const isAskingOnline = /online|آن لائن|ان لائن|متصل|من اونلاين/i.test(cleanPrompt);
+      const isAskingUsers = /user|users|لوگ|یوزر|کتنے|kitne|كم عدد|مستخدمين/i.test(cleanPrompt);
 
-      if (isAskingNames && (/offline|آف لائن|اف لائن|چار|باقی|یوزر|لوگ/i.test(cleanPrompt) || offlineCount > 0)) {
-        decidedText = reply(
-          `سر، آپ کے سافٹ ویئر ہاؤس "${orgName}" میں اس وقت جو ${offlineCount} یوزرز آف لائن ہیں ان کے نام یہ ہیں: ${offlineNames}۔ اور آن لائن یوزر آپ خود (${onlineNames}) ہیں۔`,
-          `Sir, the ${offlineCount} offline users in "${orgName}" are: ${offlineNames}. Currently online is: ${onlineNames}.`
-        );
-      } else if (isAskingOnline || (isAskingUsers && (cleanLower.includes('online') || cleanLower.includes('کتنے') || cleanLower.includes('دیکھ')))) {
-        if (onlineCount === 1) {
-          decidedText = reply(
-            `سر، میں نے آپ کے سافٹ ویئر ہاؤس "${orgName}" کا لائیو جائزہ لیا ہے۔ سسٹم میں کل ${totalUsers} یوزرز رجسٹرڈ ہیں، اور اس وقت صرف آپ (${userName || onlineNames}) آن لائن ہیں جبکہ باقی ${offlineCount} یوزرز آف لائن ہیں۔`,
-            `Sir, in "${orgName}" there are ${totalUsers} registered users. Currently only you (${onlineNames}) are online, and ${offlineCount} are offline.`
-          );
+      if (isAskingNames && (/offline|آف لائن|اف لائن|غائب|غیر متصل|باقی/i.test(cleanPrompt) || offlineCount > 0)) {
+        if (promptLang === 'ar') {
+          decidedText = `سيدي، في شركتكم البرمجية "${orgName}"، المستخدمون غير المتصلين حالياً (${offlineCount}) هم: ${offlineNames}. والمتصل حالياً أنت فقط (${onlineNames}).`;
+        } else if (promptLang === 'en') {
+          decidedText = `Sir, in "${orgName}", the ${offlineCount} offline users are: ${offlineNames}. Currently online: ${onlineNames}.`;
         } else {
-          decidedText = reply(
-            `سر، میں نے آپ کے سافٹ ویئر ہاؤس "${orgName}" کا جائزہ لیا ہے۔ کل ${totalUsers} یوزرز ہیں جن میں سے ${onlineCount} یوزرز (${onlineNames}) آن لائن ہیں اور ${offlineCount} آف لائن ہیں۔`,
-            `Sir, in "${orgName}" there are ${totalUsers} users. Currently ${onlineCount} are online (${onlineNames}) and ${offlineCount} are offline.`
-          );
+          decidedText = `سر، آپ کے سافٹ ویئر ہاؤس "${orgName}" میں اس وقت جو ${offlineCount} یوزرز آف لائن ہیں ان کے نام یہ ہیں: ${offlineNames}۔ اور آن لائن یوزر آپ خود (${onlineNames}) ہیں۔`;
+        }
+      } else if (isAskingOnline || (isAskingUsers && (/online|آن لائن|متصل|کتنے|كم/i.test(cleanPrompt)))) {
+        if (promptLang === 'ar') {
+          decidedText = `سيدي، فحصت حالة النظام لشركة "${orgName}": إجمالي المسجلين ${totalUsers}، والمتصل حالياً هو (${onlineNames})، بينما (${offlineCount}) غير متصلين.`;
+        } else if (promptLang === 'en') {
+          decidedText = `Sir, in "${orgName}" there are ${totalUsers} users. Online: ${onlineCount} (${onlineNames}), offline: ${offlineCount}.`;
+        } else {
+          decidedText = `سر، میں نے آپ کے سافٹ ویئر ہاؤس "${orgName}" کا لائیو جائزہ لیا ہے۔ سسٹم میں کل ${totalUsers} یوزرز ہیں، جن میں سے ${onlineCount} آن لائن (${onlineNames}) اور ${offlineCount} آف لائن ہیں۔`;
         }
       }
     }
@@ -331,22 +399,27 @@ export async function POST(request) {
     if (!decidedText) {
       const provider = await getProviderConfig(organizationId, requestedProvider);
       if (!provider) {
-        decidedText = reply(
-          'سر، Jarvis کے لیے کوئی AI Provider کنیکٹ نہیں ہے۔ Settings میں Gemini، Groq یا OpenAI کی API Key محفوظ کریں۔',
-          'Jarvis does not have an active AI provider connected yet. Please configure an API key in Settings.'
-        );
+        decidedText = promptLang === 'ar'
+          ? 'سيدي، لا يوجد مزود ذكاء اصطناعي نشط. يرجى حفظ مفتاح API في الإعدادات.'
+          : (promptLang === 'en'
+            ? 'Sir, no active AI provider is connected. Please configure an API key in Settings.'
+            : 'سر، Jarvis کے لیے کوئی AI Provider کنیکٹ نہیں ہے۔ Settings میں API Key محفوظ کریں۔');
       } else {
         const rosterContext = `Current Software House: "${orgName}". Total Registered Members: ${totalUsers}. Online Members (${onlineCount}): ${onlineNames}. Offline Members (${offlineCount}): ${offlineNames}. Members List: ${profiles.map(p => `${p.full_name || p.username} (Role: ${p.role}, Status: ${p.is_locked ? 'Locked' : 'Active'})`).join('; ')}.`;
 
         const systemPrompt = [
-          'You are Jarvis, the authentic, highly intelligent, iconic AI assistant from Iron Man.',
-          `LIVE DATABASE STATE:\n${rosterContext}`,
-          'CRITICAL DATABASE RULES:',
+          'You are Jarvis, the authentic, highly intelligent, iconic, multi-lingual AI assistant from Iron Man.',
+          `LIVE DATABASE CONTEXT:\n${rosterContext}`,
+          'CRITICAL RULES:',
           `1. The software house "${orgName}" has strictly ${totalUsers} registered users. NEVER hallucinate 10 users or any fake numbers.`,
-          `2. If asked about user names or offline users, use the exact real names above: ${offlineNames}.`,
-          forceUrdu
-            ? '3. Always reply directly in pure, elegant Urdu script (اردو رسم الخط). Keep answers concise (1-2 sentences maximum).'
-            : '3. Reply concisely in the user\'s language (1-2 sentences maximum).',
+          `2. If asked about user names or offline users, use the exact real names: ${offlineNames}.`,
+          '3. UNIVERSAL MULTI-LINGUAL SUPPORT (AUTO-LANGUAGE DETECTION):',
+          '   - Automatically detect the exact language the user is speaking or requesting (e.g., Arabic, Urdu, English, Hindi, Pashto, French, Turkish, etc.).',
+          '   - ALWAYS reply in that exact same language naturally, fluently, and elegantly.',
+          '   - If the user speaks in Arabic or says "عربی میں بات کرو" or "تكلم بالعربية", IMMEDIATELY switch to fluent, polite, elegant Arabic (العربية الفصحى)! NEVER refuse or say you only speak Urdu or English.',
+          '   - If the user speaks Urdu, reply in natural Urdu script.',
+          '   - If the user speaks English, reply in English.',
+          '4. Keep answers concise, helpful, sharp, and respectful (1-2 sentences maximum).'
         ].join('\n');
 
         try {
@@ -365,15 +438,16 @@ export async function POST(request) {
           decidedText = result.text?.trim();
         } catch (providerError) {
           console.warn('Jarvis provider request error:', providerError.message);
-          decidedText = reply(
-            'جی سر، میں آپ کی بات سمجھ گیا ہوں۔ بتائیے آگے کیا حکم ہے؟',
-            'I am at your service, sir. How can I assist you further?'
-          );
+          decidedText = promptLang === 'ar'
+            ? 'نعم يا سيدي، أنا معك دائماً. كيف يمكنني خدمتك الآن؟'
+            : (promptLang === 'en'
+              ? 'Yes sir, I am here. How may I assist you further?'
+              : 'جی سر، میں حاضر ہوں۔ بتائیے آگے کیا حکم ہے؟');
         }
       }
     }
 
-    const finalText = decidedText || reply('جی سر، میں حاضر ہوں۔ بتائیے کیا خدمت کر سکتا ہوں؟', 'At your service, sir.');
+    const finalText = decidedText || (promptLang === 'ar' ? 'أنا في خدمتك يا سيدي، تفضل.' : 'جی سر، میں حاضر ہوں۔ بتائیے کیا خدمت کر سکتا ہوں؟');
 
     // Server-side instant neural voice synthesis (zero-latency audio)
     let audioBase64 = null;

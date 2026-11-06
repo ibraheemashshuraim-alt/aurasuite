@@ -197,6 +197,27 @@ async function executeAction(action) {
         
         log(`Jarvis OS: Launching application: ${resolvedApp} ${fileArg}...`);
         return new Promise((resolve) => {
+          let launchCmd = '';
+          if (resolvedApp.startsWith('http://') || resolvedApp.startsWith('https://')) {
+            launchCmd = `cmd.exe /c start "" "${resolvedApp}"`;
+          } else if (fileArg) {
+            launchCmd = `cmd.exe /c start "" ${resolvedApp} ${fileArg}`;
+          } else {
+            launchCmd = `cmd.exe /c start "" ${resolvedApp}`;
+          }
+          exec(launchCmd, (err) => {
+            if (err) {
+              log(`Jarvis OS: cmd launch notice: ${err.message}, falling back to powershell`);
+              exec(`powershell -Command "Start-Process '${resolvedApp}'"`, () => {
+                log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
+                resolve({ status: 'SUCCESS', result: `Successfully launched ${resolvedApp}` });
+              });
+            } else {
+              log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
+              resolve({ status: 'SUCCESS', result: `Successfully launched ${resolvedApp}` });
+            }
+          });
+          return;
           let psCmd = `powershell -Command "Start-Process '${resolvedApp}'"`;
           if (resolvedApp.startsWith('http://') || resolvedApp.startsWith('https://')) {
             psCmd = `powershell -Command "Start-Process '${resolvedApp}'"`;

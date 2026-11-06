@@ -15,20 +15,20 @@ export async function POST(request) {
     // 1. Launch local Windows application
     if (action === 'launch_app' || action === 'open_app') {
       const appMap = {
-        calc: 'start calc',
-        calculator: 'start calc',
-        notepad: 'start notepad',
-        paint: 'start mspaint',
-        mspaint: 'start mspaint',
-        chrome: 'start chrome',
-        browser: 'start chrome',
-        explorer: 'start explorer',
-        files: 'start explorer',
-        cmd: 'start cmd',
-        powershell: 'start powershell'
+        calc: 'cmd.exe /c start "" calc',
+        calculator: 'cmd.exe /c start "" calc',
+        notepad: 'cmd.exe /c start "" notepad',
+        paint: 'cmd.exe /c start "" mspaint',
+        mspaint: 'cmd.exe /c start "" mspaint',
+        chrome: 'cmd.exe /c start "" chrome',
+        browser: 'cmd.exe /c start "" chrome',
+        explorer: 'cmd.exe /c start "" explorer',
+        files: 'cmd.exe /c start "" explorer',
+        cmd: 'cmd.exe /c start "" cmd',
+        powershell: 'cmd.exe /c start "" powershell'
       };
 
-      const cmd = appMap[target?.toLowerCase()] || `start ${target}`;
+      const cmd = appMap[target?.toLowerCase()] || `cmd.exe /c start "" ${target}`;
       return new Promise((resolve) => {
         exec(cmd, (err) => {
           if (err) {

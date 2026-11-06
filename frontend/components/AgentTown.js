@@ -607,7 +607,7 @@ export default function AgentTown({ currentUser }) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = false;
-      recognition.lang = 'en-US';
+      recognition.lang = typeof navigator !== 'undefined' && navigator.language ? navigator.language : 'en-US';
 
       recognition.onstart = () => {
         setIsListening(true);
@@ -752,7 +752,7 @@ export default function AgentTown({ currentUser }) {
           voice: selectedVoiceName,
           gender: voiceGender,
           autoApprove,
-          language: 'ur',
+          language: 'auto',
           provider: activeAiProvider
         })
       });
