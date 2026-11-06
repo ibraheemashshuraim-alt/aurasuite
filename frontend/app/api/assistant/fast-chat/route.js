@@ -188,7 +188,52 @@ function safeDesktopAction(prompt) {
     }
   }
 
-  // 3. Web apps open check
+  // 3. Web search with query (e.g. "YouTube kholo aur usmein search karo Naat", "یوٹیوب پر نعت سرچ کرو", "google weather")
+  if (!isClose && (/youtube|یوٹیوب|يوتيوب|google|گوگل|جوجل/i.test(prompt))) {
+    let query = '';
+    const urduMatch = prompt.match(/(?:پر|پہ|میں)\s+([a-zA-Z0-9\u0600-\u06FF\s]+?)\s+(?:سرچ|تلاش|چلاؤ|ڈھونڈو)/i);
+    if (urduMatch && urduMatch[1]) {
+      query = urduMatch[1].trim();
+    }
+    if (!query) {
+      const romanMatch = prompt.match(/(?:search|سرچ|play|find)\s+(?:for|karo|karein|کرو|کریں|in|on)?\s*[:\-]?\s*([a-zA-Z0-9\u0600-\u06FF\s]+)/i);
+      if (romanMatch && romanMatch[1] && !/^(karo|karein|کرو|کریں)$/i.test(romanMatch[1].trim())) {
+        query = romanMatch[1].trim();
+      }
+    }
+    if (query) {
+      query = query.replace(/\b(karo|karein|کرو|کریں|chalao|چلاؤ|play|kholo|کھولو|dekhna|sunna|aur|usmein|اس|میں|پر|اور|ڈھونڈو)\b/gi, '').trim();
+    }
+
+    const isYt = /youtube|یوٹیوب|يوتيوب/i.test(prompt);
+    if (isYt) {
+      const searchUrl = query ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}` : 'https://www.youtube.com';
+      const label = query ? `یوٹیوب پر "${query}"` : 'یوٹیوب';
+      const labelEn = query ? `YouTube for "${query}"` : 'YouTube';
+      const labelAr = query ? `يوتيوب عن "${query}"` : 'يوتيوب';
+      return {
+        actions: [{ type: 'open_url', target: searchUrl }],
+        app: { urdu: label, english: labelEn, arabic: labelAr },
+        isClose: false,
+        isRetry: false,
+        isOpenUrl: true
+      };
+    } else {
+      const searchUrl = query ? `https://www.google.com/search?q=${encodeURIComponent(query)}` : 'https://www.google.com';
+      const label = query ? `گوگل پر "${query}"` : 'گوگل';
+      const labelEn = query ? `Google for "${query}"` : 'Google';
+      const labelAr = query ? `جوجل عن "${query}"` : 'جوجل';
+      return {
+        actions: [{ type: 'open_url', target: searchUrl }],
+        app: { urdu: label, english: labelEn, arabic: labelAr },
+        isClose: false,
+        isRetry: false,
+        isOpenUrl: true
+      };
+    }
+  }
+
+  // 4. Web apps open check (general)
   for (const web of webApps) {
     if (web.matches.some((match) => normalized.includes(match))) {
       return {
@@ -201,7 +246,7 @@ function safeDesktopAction(prompt) {
     }
   }
 
-  // 4. Desktop apps open check
+  // 5. Desktop apps open check
   for (const app of apps) {
     if (app.matches.some((match) => normalized.includes(match))) {
       return {
@@ -214,7 +259,7 @@ function safeDesktopAction(prompt) {
     }
   }
 
-  // 5. Raw URL in prompt
+  // 6. Raw URL in prompt
   const url = prompt.match(/https?:\/\/[^\s]+/i)?.[0];
   if (url && /(open|kholo|کھولو|کھول|browser|براؤزر|افتح)/i.test(prompt)) {
     return { 
@@ -232,24 +277,24 @@ function safeDesktopAction(prompt) {
 function executeDesktopActions(actions) {
   if (!Array.isArray(actions) || actions.length === 0) return;
   const appMap = {
-    calc: 'start "" calc',
-    calculator: 'start "" calc',
-    notepad: 'start "" notepad',
-    paint: 'start "" mspaint',
-    mspaint: 'start "" mspaint',
-    chrome: 'start "" chrome',
-    browser: 'start "" chrome',
-    explorer: 'start "" explorer',
-    files: 'start "" explorer',
-    cmd: 'start "" cmd',
-    powershell: 'start "" powershell'
+    calc: 'cmd.exe /c start "" calc',
+    calculator: 'cmd.exe /c start "" calc',
+    notepad: 'powershell -Command "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; Start-Process notepad"',
+    paint: 'cmd.exe /c start "" mspaint',
+    mspaint: 'cmd.exe /c start "" mspaint',
+    chrome: 'cmd.exe /c start "" chrome',
+    browser: 'cmd.exe /c start "" chrome',
+    explorer: 'cmd.exe /c start "" explorer',
+    files: 'cmd.exe /c start "" explorer',
+    cmd: 'cmd.exe /c start "" cmd',
+    powershell: 'cmd.exe /c start "" powershell'
   };
 
   for (const act of actions) {
     try {
       if (act.type === 'launch_app' || act.type === 'open_app') {
-        const cmd = appMap[act.target?.toLowerCase()] || `start "" ${act.target}`;
-        exec(`cmd.exe /c ${cmd}`, (err) => {
+        const cmd = appMap[act.target?.toLowerCase()] || `cmd.exe /c start "" ${act.target}`;
+        exec(cmd, (err) => {
           if (err) console.warn('Fast-chat direct execution error:', err.message);
         });
       } else if (act.type === 'close_app') {

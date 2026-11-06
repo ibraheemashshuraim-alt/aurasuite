@@ -246,6 +246,8 @@ async function executeAction(action) {
           let launchCmd = '';
           if (resolvedApp.startsWith('http://') || resolvedApp.startsWith('https://')) {
             launchCmd = `cmd.exe /c start "" "${resolvedApp}"`;
+          } else if (resolvedApp === 'notepad') {
+            launchCmd = `powershell -Command "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; Start-Process notepad"`;
           } else if (fileArg) {
             launchCmd = `cmd.exe /c start "" ${resolvedApp} ${fileArg}`;
           } else {
@@ -481,17 +483,11 @@ async function processTask(taskId, orgId, agentId) {
     // NOTE: Keep the browser OPEN so user can see it! 
     // Do NOT call browser.close() here!
 
-    log("Updating task to VERIFYING...");
-    await supabase.from('engine_tasks').update({ status: 'VERIFYING', result: resultStr }).eq('id', taskId);
-    
-    // Simulate verification delay then COMPLETE
-    setTimeout(async () => {
-      log("Updating task to COMPLETED...");
-      await supabase.from('engine_tasks').update({ status: 'COMPLETED' }).eq('id', taskId);
-      await supabase.from('engine_execution_logs').insert({
-        task_id: taskId, agent_id: agentId, organization_id: orgId, event: 'jarvis_completed', message: 'Jarvis finished execution.'
-      });
-    }, 1200);
+    log("Updating task to COMPLETED...");
+    await supabase.from('engine_tasks').update({ status: 'COMPLETED', result: resultStr, completed_at: new Date().toISOString() }).eq('id', taskId);
+    await supabase.from('engine_execution_logs').insert({
+      task_id: taskId, agent_id: agentId, organization_id: orgId, event: 'jarvis_completed', message: 'Jarvis finished execution.'
+    });
   }
 }
 
