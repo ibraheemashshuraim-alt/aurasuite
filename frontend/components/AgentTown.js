@@ -133,7 +133,7 @@ export default function AgentTown({ currentUser }) {
     claude: ''
   });
   const [providerModels, setProviderModels] = useState({
-    gemini: 'gemini-2.0-flash',
+    gemini: 'gemini-2.5-flash',
     openai: 'gpt-4o',
     groq: 'llama-3.3-70b-versatile',
     claude: 'claude-3-5-sonnet-20241022',
@@ -765,6 +765,17 @@ export default function AgentTown({ currentUser }) {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isActionPlan: isPlan
         };
+
+        // Guarantee desktop actions are triggered on the client machine
+        if (Array.isArray(data.actions) && data.actions.length > 0) {
+          for (const action of data.actions) {
+            fetch('/api/system/execute-action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(action)
+            }).catch(() => null);
+          }
+        }
 
         let revealed = false;
         const revealMessage = () => {
@@ -1815,9 +1826,9 @@ export default function AgentTown({ currentUser }) {
                       onChange={(e) => setProviderModels({...providerModels, gemini: e.target.value})}
                       className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-cyan-300 outline-none"
                     >
-                      <option value="gemini-2.0-flash">gemini-2.0-flash (Fastest)</option>
-                      <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                      <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                      <option value="gemini-2.5-flash">gemini-2.5-flash (Fastest & Active)</option>
+                      <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                      <option value="gemini-3.8-flash">gemini-3.8-flash</option>
                     </select>
                   </div>
                 </div>

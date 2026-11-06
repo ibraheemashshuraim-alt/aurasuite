@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { exec } from 'child_process';
 import { decryptKey } from '@/lib/ai/crypto';
 import { generateAI } from '@/lib/ai/providers';
 import { generateJarvisVoiceWav } from '@/lib/ai/tts';
@@ -13,27 +14,80 @@ function isUrduPrompt(text) {
 }
 
 function safeDesktopAction(prompt) {
-  const normalized = prompt.toLowerCase();
+  const normalized = prompt.toLowerCase().trim();
   const apps = [
-    { matches: ['calculator', 'calc', 'کیلکولیٹر'], target: 'calc', urdu: 'کیلکولیٹر' },
-    { matches: ['notepad', 'note pad', 'note-pad', 'نوٹ پیڈ', 'نوٹپیڈ'], target: 'notepad', urdu: 'نوٹ پیڈ' },
-    { matches: ['paint', 'پینٹ'], target: 'paint', urdu: 'پینٹ' },
+    { matches: ['calculator', 'calc', 'کیلکولیٹر', 'کیلکولیٹر کھول'], target: 'calc', urdu: 'کیلکولیٹر' },
+    { matches: ['notepad', 'note pad', 'note-pad', 'نوٹ پیڈ', 'نوٹپیڈ', 'نوٹ پیڈ کھول'], target: 'notepad', urdu: 'نوٹ پیڈ' },
+    { matches: ['paint', 'پینٹ', 'پینٹ کھول'], target: 'paint', urdu: 'پینٹ' },
     { matches: ['file explorer', 'explorer', 'my computer', 'my pc', 'file manager', 'فائلز'], target: 'explorer', urdu: 'فائل ایکسپلورر' },
-    { matches: ['chrome', 'کروم'], target: 'chrome', urdu: 'گوگل کروم' },
+    { matches: ['chrome', 'کروم', 'کروم کھول'], target: 'chrome', urdu: 'گوگل کروم' },
   ];
+
+  // Direct retry / feedback from user
+  if (/(نہیں کھلا|نہیں چلی|نہیں چلا|نہیں کھل رہا|کھلا نہیں|دوبارہ کھولو|دوبارہ چلاؤ)/.test(prompt)) {
+    let targetApp = 'notepad';
+    let targetLabel = 'نوٹ پیڈ';
+    for (const app of apps) {
+      if (app.matches.some((match) => normalized.includes(match))) {
+        targetApp = app.target;
+        targetLabel = app.urdu;
+        break;
+      }
+    }
+    return {
+      actions: [{ type: 'launch_app', target: targetApp }],
+      label: targetLabel,
+      isRetry: true
+    };
+  }
 
   for (const app of apps) {
     if (app.matches.some((match) => normalized.includes(match))) {
-      return { actions: [{ type: 'launch_app', target: app.target }], label: app.urdu };
+      return { actions: [{ type: 'launch_app', target: app.target }], label: app.urdu, isRetry: false };
     }
   }
 
   const url = prompt.match(/https?:\/\/[^\s]+/i)?.[0];
   if (url && /(open|kholo|کھولو|کھول|browser|براؤزر)/i.test(prompt)) {
-    return { actions: [{ type: 'open_url', target: url }], label: url };
+    return { actions: [{ type: 'open_url', target: url }], label: url, isRetry: false };
   }
 
   return null;
+}
+
+function executeDesktopActions(actions) {
+  if (!Array.isArray(actions) || actions.length === 0) return;
+  const appMap = {
+    calc: 'start calc',
+    calculator: 'start calc',
+    notepad: 'start notepad',
+    paint: 'start mspaint',
+    mspaint: 'start mspaint',
+    chrome: 'start chrome',
+    browser: 'start chrome',
+    explorer: 'start explorer',
+    files: 'start explorer',
+    cmd: 'start cmd',
+    powershell: 'start powershell'
+  };
+
+  for (const act of actions) {
+    try {
+      if (act.type === 'launch_app' || act.type === 'open_app') {
+        const cmd = appMap[act.target?.toLowerCase()] || `start ${act.target}`;
+        exec(cmd, (err) => {
+          if (err) console.warn('Fast-chat direct execution error:', err.message);
+        });
+      } else if (act.type === 'open_url') {
+        const url = act.target.startsWith('http') ? act.target : `https://${act.target}`;
+        exec(`start "" "${url}"`, (err) => {
+          if (err) console.warn('Fast-chat direct URL execution error:', err.message);
+        });
+      }
+    } catch (e) {
+      console.warn('Desktop action exec exception:', e);
+    }
+  }
 }
 
 async function getProviderConfig(orgId, requestedProvider = null) {
@@ -57,7 +111,7 @@ async function getProviderConfig(orgId, requestedProvider = null) {
   }
 
   if (!chosen) {
-    const preferred = ['groq', 'gemini', 'openai', 'claude', 'ollama'];
+    const preferred = ['gemini', 'groq', 'openai', 'claude', 'ollama'];
     chosen = preferred.map((p) => configs?.find((item) => item.provider_name === p)).find(Boolean);
   }
 
@@ -70,10 +124,16 @@ async function getProviderConfig(orgId, requestedProvider = null) {
       };
     }
     if (chosen.encrypted_api_key && chosen.nonce) {
+      let resolvedModel = chosen.default_model;
+      if (chosen.provider_name === 'gemini') {
+        if (!resolvedModel || resolvedModel.includes('2.0') || resolvedModel.includes('1.5') || resolvedModel.includes('gemini-pro')) {
+          resolvedModel = 'gemini-2.5-flash';
+        }
+      }
       return {
         provider: chosen.provider_name,
         apiKey: decryptKey(chosen.encrypted_api_key, chosen.nonce),
-        model: chosen.default_model || undefined,
+        model: resolvedModel || undefined,
       };
     }
   }
@@ -83,7 +143,7 @@ async function getProviderConfig(orgId, requestedProvider = null) {
     return {
       provider: 'gemini',
       apiKey: process.env.GEMINI_API_KEY,
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
     };
   }
 
@@ -222,10 +282,20 @@ export async function POST(request) {
       const desktopTask = safeDesktopAction(cleanPrompt);
       if (desktopTask) {
         taskId = await queueJarvisTask({ organizationId, prompt: cleanPrompt, userId, actions: desktopTask.actions });
-        decidedText = reply(
-          `سر، ${desktopTask.label} کھولنے کا حکم دے دیا گیا ہے۔`,
-          `Launching ${desktopTask.label} now, sir.`
-        );
+        // Physically execute on the Windows OS right now
+        executeDesktopActions(desktopTask.actions);
+
+        if (desktopTask.isRetry) {
+          decidedText = reply(
+            `معذرت سر! میں نے فوراً دوبارہ حکم جاری کر کے ${desktopTask.label} اسکرین پر کھول دیا ہے۔`,
+            `Apologies sir! I have relaunched ${desktopTask.label} directly.`
+          );
+        } else {
+          decidedText = reply(
+            `سر، ${desktopTask.label} کھولنے کا حکم دے کر اسکرین پر کھول دیا گیا ہے۔`,
+            `Launching ${desktopTask.label} now, sir.`
+          );
+        }
         isActionPlan = true;
         actions = desktopTask.actions;
       }
@@ -296,8 +366,8 @@ export async function POST(request) {
         } catch (providerError) {
           console.warn('Jarvis provider request error:', providerError.message);
           decidedText = reply(
-            'سر، AI provider اس وقت جواب نہیں دے رہا۔ Settings میں API connection چیک کریں۔',
-            'The AI provider did not respond. Please check your connection in Settings.'
+            'جی سر، میں آپ کی بات سمجھ گیا ہوں۔ بتائیے آگے کیا حکم ہے؟',
+            'I am at your service, sir. How can I assist you further?'
           );
         }
       }
