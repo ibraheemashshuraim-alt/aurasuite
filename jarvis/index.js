@@ -227,6 +227,8 @@ async function executeAction(action) {
           'powerpoint': 'powerpnt',
           'explorer': 'explorer',
           'file explorer': 'explorer',
+          'control': 'control',
+          'control panel': 'control',
           'camera': 'microsoft.windows.camera:',
           'settings': 'ms-settings:',
           'taskmgr': 'taskmgr',
@@ -243,9 +245,9 @@ async function executeAction(action) {
         
         log(`Jarvis OS: Launching application: ${resolvedApp} ${fileArg}...`);
         return new Promise((resolve) => {
-          let launchCmd = '';
+          let psCmd = '';
           if (resolvedApp.startsWith('http://') || resolvedApp.startsWith('https://')) {
-            launchCmd = `cmd.exe /c start "" "${resolvedApp}"`;
+            psCmd = `powershell -WindowStyle Hidden -Command "Start-Process '${resolvedApp}'"`;
           } else if (resolvedApp === 'notepad') {
             try {
               const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
@@ -254,37 +256,12 @@ async function executeAction(action) {
               if (fs.existsSync(tabState)) fs.rmSync(tabState, { recursive: true, force: true });
               if (fs.existsSync(winState)) fs.rmSync(winState, { recursive: true, force: true });
             } catch (e) {}
-            launchCmd = `cmd.exe /c taskkill /F /IM notepad.exe 2>nul & start "" notepad`;
+            psCmd = `powershell -WindowStyle Hidden -Command "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; Start-Process notepad"`;
           } else if (fileArg) {
-            launchCmd = `cmd.exe /c start "" ${resolvedApp} ${fileArg}`;
+            const rawFile = fileArg.replace(/^"|"$/g, '').replace(/'/g, "''");
+            psCmd = `powershell -WindowStyle Hidden -Command "Start-Process '${resolvedApp}' -ArgumentList '${rawFile}'"`;
           } else {
-            launchCmd = `cmd.exe /c start "" ${resolvedApp}`;
-          }
-          exec(launchCmd, (err) => {
-            if (err) {
-              log(`Jarvis OS: cmd launch notice: ${err.message}, falling back to powershell`);
-              exec(`powershell -Command "Start-Process '${resolvedApp}'"`, () => {
-                log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
-                resolve({ status: 'SUCCESS', result: `Successfully launched ${resolvedApp}` });
-              });
-            } else {
-              log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
-              resolve({ status: 'SUCCESS', result: `Successfully launched ${resolvedApp}` });
-            }
-          });
-          return;
-          let psCmd = `powershell -Command "Start-Process '${resolvedApp}'"`;
-          if (resolvedApp.startsWith('http://') || resolvedApp.startsWith('https://')) {
-            psCmd = `powershell -Command "Start-Process '${resolvedApp}'"`;
-          } else if (fileArg) {
-            const rawFile = fileArg.replace(/^"|"$/g, '');
-            const escFile = rawFile.replace(/'/g, "''");
-            if (resolvedApp === 'notepad') {
-              // On Windows without modern Notepad app, fallback to Chrome/WordPad to display the file
-              psCmd = `powershell -Command "try { Start-Process 'notepad' -ArgumentList '${escFile}' -ErrorAction Stop } catch { Start-Process 'chrome' -ArgumentList '${escFile}' }"`;
-            } else {
-              psCmd = `powershell -Command "Start-Process '${resolvedApp}' -ArgumentList '${escFile}'"`;
-            }
+            psCmd = `powershell -WindowStyle Hidden -Command "Start-Process '${resolvedApp}'"`;
           }
           exec(psCmd, () => {
             log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
@@ -293,7 +270,7 @@ async function executeAction(action) {
         });
       }
 
-            case 'open_url': {
+      case 'open_url': {
         const url = (action.target || action.value || '').trim();
         const safeUrl = url.startsWith('http') ? url : `https://${url}`;
         log(`Jarvis OS: Opening URL in default browser: ${safeUrl}...`);
@@ -325,6 +302,8 @@ async function executeAction(action) {
           'camera': ['WindowsCamera'],
           'task manager': ['Taskmgr'],
           'taskmgr': ['Taskmgr'],
+          'control': ['control'],
+          'control panel': ['control'],
           'photos': ['Microsoft.Photos']
         };
         const targetsToKill = processMap[target] || [target];

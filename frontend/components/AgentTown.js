@@ -138,7 +138,7 @@ export default function AgentTown({ currentUser }) {
     claude: ''
   });
   const [providerModels, setProviderModels] = useState({
-    gemini: 'gemini-2.5-flash',
+    gemini: 'gemini-3.5-flash',
     openai: 'gpt-4o',
     groq: 'llama-3.3-70b-versatile',
     claude: 'claude-3-5-sonnet-20241022',
@@ -1843,8 +1843,8 @@ export default function AgentTown({ currentUser }) {
                       onChange={(e) => setProviderModels({...providerModels, gemini: e.target.value})}
                       className="w-full bg-[#07080f] border border-cyan-500/30 rounded-lg p-2 text-xs text-cyan-300 outline-none"
                     >
-                      <option value="gemini-2.5-flash">gemini-2.5-flash (Fastest & Active)</option>
-                      <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                      <option value="gemini-3.5-flash">gemini-3.5-flash (Fastest & Active)</option>
+                      <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Ultra Fast)</option>
                       <option value="gemini-3.8-flash">gemini-3.8-flash</option>
                     </select>
                   </div>

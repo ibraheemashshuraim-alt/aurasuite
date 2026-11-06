@@ -78,6 +78,41 @@ function safeDesktopAction(prompt) {
       arabic: 'متصفح جوجل كروم',
       english: 'Google Chrome'
     },
+    { 
+      matches: ['control panel', 'control', 'کنٹرول پینل', 'کنٹرول پینل اوپن', 'کنٹرول پینل کھول', 'لوحة التحكم'], 
+      target: 'control', 
+      urdu: 'کنٹرول پینل',
+      arabic: 'لوحة التحكم (Control Panel)',
+      english: 'Control Panel'
+    },
+    { 
+      matches: ['settings', 'سیٹنگز', 'سیٹنگ', 'الإعدادات'], 
+      target: 'settings', 
+      urdu: 'سیٹنگز',
+      arabic: 'الإعدادات (Settings)',
+      english: 'Settings'
+    },
+    { 
+      matches: ['task manager', 'taskmgr', 'ٹاسک مینیجر', 'ٹاسک مینیجر کھول', 'مدير المهام'], 
+      target: 'taskmgr', 
+      urdu: 'ٹاسک مینیجر',
+      arabic: 'مدير المهام (Task Manager)',
+      english: 'Task Manager'
+    },
+    { 
+      matches: ['camera', 'کیمرہ', 'کیمرا', 'كاميرا'], 
+      target: 'camera', 
+      urdu: 'کیمرہ',
+      arabic: 'الكاميرا (Camera)',
+      english: 'Camera'
+    },
+    { 
+      matches: ['cmd', 'command prompt', 'terminal', 'ٹرمینل', 'کمانڈ پرامپٹ', 'موجه الأوامر'], 
+      target: 'cmd', 
+      urdu: 'کمانڈ پرامپٹ',
+      arabic: 'موجه الأوامر (CMD)',
+      english: 'Command Prompt'
+    },
   ];
 
   const webApps = [
@@ -297,36 +332,48 @@ function executeDesktopActions(actions) {
         const target = (act.target || '').toLowerCase().trim();
         if (target === 'notepad') {
           prepareNotepad();
-          exec('cmd.exe /c taskkill /F /IM notepad.exe 2>nul & start "" notepad');
+          exec('powershell -WindowStyle Hidden -Command "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; Start-Process notepad"');
         } else if (target === 'calc' || target === 'calculator') {
-          exec('cmd.exe /c start "" calc');
+          exec('powershell -WindowStyle Hidden -Command "Start-Process calc"');
+        } else if (target === 'control' || target === 'control panel') {
+          exec('powershell -WindowStyle Hidden -Command "Start-Process control"');
+        } else if (target === 'settings') {
+          exec('powershell -WindowStyle Hidden -Command "Start-Process ms-settings:"');
+        } else if (target === 'taskmgr' || target === 'task manager') {
+          exec('powershell -WindowStyle Hidden -Command "Start-Process taskmgr"');
+        } else if (target === 'camera') {
+          exec('powershell -WindowStyle Hidden -Command "Start-Process microsoft.windows.camera:"');
+        } else if (target === 'cmd' || target === 'terminal') {
+          exec('powershell -WindowStyle Hidden -Command "Start-Process cmd"');
         } else if (target === 'paint' || target === 'mspaint') {
-          exec('cmd.exe /c start "" mspaint');
+          exec('powershell -WindowStyle Hidden -Command "Start-Process mspaint"');
         } else if (target === 'chrome' || target === 'browser') {
-          exec('cmd.exe /c start "" chrome');
+          exec('powershell -WindowStyle Hidden -Command "Start-Process chrome"');
         } else if (target === 'explorer' || target === 'files') {
-          exec('cmd.exe /c start "" explorer');
+          exec('powershell -WindowStyle Hidden -Command "Start-Process explorer"');
         } else {
-          exec(`cmd.exe /c start "" ${act.target}`);
+          exec(`powershell -WindowStyle Hidden -Command "Start-Process '${act.target}'"`);
         }
       } else if (act.type === 'close_app') {
         const target = (act.target || '').toLowerCase().trim();
-        let killCmd = '';
+        let killNames = target;
         if (target === 'calc' || target === 'calculator') {
-          killCmd = 'taskkill /F /IM CalculatorApp.exe /IM calc.exe 2>nul';
+          killNames = 'CalculatorApp,calc';
         } else if (target === 'notepad') {
-          killCmd = 'taskkill /F /IM notepad.exe 2>nul';
+          killNames = 'notepad';
+        } else if (target === 'control' || target === 'control panel') {
+          killNames = 'control';
+        } else if (target === 'taskmgr' || target === 'task manager') {
+          killNames = 'Taskmgr';
         } else if (target === 'paint' || target === 'mspaint') {
-          killCmd = 'taskkill /F /IM mspaint.exe 2>nul';
+          killNames = 'mspaint';
         } else if (target === 'chrome' || target === 'browser') {
-          killCmd = 'taskkill /F /IM chrome.exe 2>nul';
-        } else {
-          killCmd = `taskkill /F /IM ${target}.exe 2>nul`;
+          killNames = 'chrome,msedge';
         }
-        exec(`cmd.exe /c ${killCmd}`);
+        exec(`powershell -WindowStyle Hidden -Command "Stop-Process -Name ${killNames} -Force -ErrorAction SilentlyContinue"`);
       } else if (act.type === 'open_url') {
         const url = act.target.startsWith('http') ? act.target : `https://${act.target}`;
-        exec(`cmd.exe /c start "" "${url}"`);
+        exec(`powershell -WindowStyle Hidden -Command "Start-Process '${url}'"`);
       }
     } catch (e) {
       console.warn('Desktop action exec exception:', e);
@@ -370,16 +417,27 @@ async function getProviderConfig(orgId, requestedProvider = null) {
     if (chosen.encrypted_api_key && chosen.nonce) {
       let resolvedModel = chosen.default_model;
       if (chosen.provider_name === 'gemini') {
-        if (!resolvedModel || resolvedModel.includes('2.0') || resolvedModel.includes('1.5') || resolvedModel.includes('gemini-pro')) {
-          resolvedModel = 'gemini-2.5-flash';
+        if (!resolvedModel || resolvedModel.includes('2.0') || resolvedModel.includes('1.5') || resolvedModel.includes('2.5') || resolvedModel.includes('gemini-pro')) {
+          resolvedModel = 'gemini-3.5-flash';
         }
       }
-      return {
-        provider: chosen.provider_name,
-        apiKey: decryptKey(chosen.encrypted_api_key, chosen.nonce),
-        model: resolvedModel || undefined,
-      };
+      try {
+        const decryptedKey = decryptKey(chosen.encrypted_api_key, chosen.nonce);
+        return {
+          provider: chosen.provider_name,
+          apiKey: decryptedKey,
+          model: resolvedModel || undefined,
+        };
+      } catch (decErr) {
+        console.warn('Decryption failed for org config, falling back to superadmin:', decErr.message);
+      }
     }
+  }
+
+  // Fallback to superadmin config if current org lacks decrypted key
+  if (orgId !== 'org-aurasuite-superadmin') {
+    const superadminConfig = await getProviderConfig('org-aurasuite-superadmin', requestedProvider);
+    if (superadminConfig) return superadminConfig;
   }
 
   // Final fallback to environment Gemini key
@@ -387,7 +445,7 @@ async function getProviderConfig(orgId, requestedProvider = null) {
     return {
       provider: 'gemini',
       apiKey: process.env.GEMINI_API_KEY,
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
     };
   }
 

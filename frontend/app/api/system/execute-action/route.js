@@ -46,6 +46,12 @@ export async function POST(request) {
         browser: 'cmd.exe /c start "" chrome',
         explorer: 'cmd.exe /c start "" explorer',
         files: 'cmd.exe /c start "" explorer',
+        control: 'cmd.exe /c start "" control',
+        'control panel': 'cmd.exe /c start "" control',
+        settings: 'cmd.exe /c start "" ms-settings:',
+        taskmgr: 'cmd.exe /c start "" taskmgr',
+        'task manager': 'cmd.exe /c start "" taskmgr',
+        camera: 'cmd.exe /c start "" microsoft.windows.camera:',
         cmd: 'cmd.exe /c start "" cmd',
         powershell: 'cmd.exe /c start "" powershell'
       };
@@ -73,7 +79,12 @@ export async function POST(request) {
         mspaint: ['mspaint.exe'],
         chrome: ['chrome.exe'],
         browser: ['chrome.exe', 'msedge.exe'],
-        explorer: ['explorer.exe']
+        explorer: ['explorer.exe'],
+        control: ['control.exe'],
+        'control panel': ['control.exe'],
+        taskmgr: ['Taskmgr.exe'],
+        'task manager': ['Taskmgr.exe'],
+        camera: ['WindowsCamera.exe']
       };
       const targets = processMap[target?.toLowerCase()] || [`${target}.exe`];
       const killCmd = targets.map(t => `taskkill /F /IM ${t} 2>nul`).join(' & ');
