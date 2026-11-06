@@ -1,3 +1,9 @@
+process.on('unhandledRejection', (reason) => {
+  console.warn('Jarvis Unhandled Rejection:', reason?.message || reason);
+});
+process.on('uncaughtException', (err) => {
+  console.warn('Jarvis Uncaught Exception:', err?.message || err);
+});
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { createClient } = require('@supabase/supabase-js');
@@ -33,6 +39,19 @@ let browser = null;
 let page = null;
 const activeTaskIds = new Set();
 
+function getSystemChromePath() {
+  const possiblePaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 async function ensureBrowser() {
   if (browser) {
     try {
@@ -51,7 +70,8 @@ async function ensureBrowser() {
 
   if (!browser) {
     log("Launching visible browser (Jarvis Mode)...");
-    browser = await puppeteer.launch({
+    const chromePath = getSystemChromePath();
+    const launchOpts = {
       headless: false,
       defaultViewport: null,
       args: [
@@ -60,13 +80,23 @@ async function ensureBrowser() {
         '--no-sandbox',
         '--disable-setuid-sandbox'
       ]
-    });
-    const pages = await browser.pages();
-    page = pages.length > 0 ? pages[0] : await browser.newPage();
-    try { 
-      await page.bringToFront(); 
-      exec('powershell -Command "$w = New-Object -ComObject WScript.Shell; $w.AppActivate(\'Chromium\'); $w.AppActivate(\'Chrome\')"');
-    } catch(e) {}
+    };
+    if (chromePath) {
+      launchOpts.executablePath = chromePath;
+    }
+    try {
+      browser = await puppeteer.launch(launchOpts);
+      const pages = await browser.pages();
+      page = pages.length > 0 ? pages[0] : await browser.newPage();
+      try { 
+        await page.bringToFront(); 
+        exec('powershell -Command "$w = New-Object -ComObject WScript.Shell; $w.AppActivate(\\"Chromium\\"); $w.AppActivate(\\"Chrome\\")"');
+      } catch(e) {}
+    } catch (err) {
+      log(`Jarvis browser launch warning: ${err.message}. Falling back to default system browser.`);
+      browser = null;
+      page = null;
+    }
   }
 }
 
@@ -97,18 +127,34 @@ async function executeAction(action) {
     try {
       switch (action.type) {
         case 'open_url':
-        case 'browser_navigation':
+        case 'browser_navigation': {
           log(`Jarvis Web: Navigating to ${action.target}...`);
-          try {
-            await page.goto(action.target, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          if (page) {
             try {
-              await page.bringToFront();
-              exec('powershell -Command "$w = New-Object -ComObject WScript.Shell; $w.AppActivate(\'Chromium\'); $w.AppActivate(\'Chrome\')"');
-            } catch(e) {}
-          } catch (navErr) {
-            if (!navErr.message.includes('ERR_ABORTED')) throw navErr;
+              await page.goto(action.target, { waitUntil: 'domcontentloaded', timeout: 30000 });
+              try {
+                await page.bringToFront();
+                exec('powershell -Command "$w = New-Object -ComObject WScript.Shell; $w.AppActivate(\'Chromium\'); $w.AppActivate(\'Chrome\')"');
+              } catch(e) {}
+              return { status: 'SUCCESS', result: `Navigated to ${page.url()}` };
+            } catch (navErr) {
+              if (!navErr.message.includes('ERR_ABORTED')) throw navErr;
+              return { status: 'SUCCESS', result: `Navigated to ${action.target}` };
+            }
+          } else {
+            const safeUrl = action.target.startsWith('http') ? action.target : `https://${action.target}`;
+            return new Promise((resolve) => {
+              exec(`cmd.exe /c start "" "${safeUrl}"`, (err) => {
+                if (err) {
+                  resolve({ status: 'FAILED', result: err.message });
+                } else {
+                  log(`Jarvis OS: Successfully opened URL in default browser: ${safeUrl}`);
+                  resolve({ status: 'SUCCESS', result: `Opened ${safeUrl}` });
+                }
+              });
+            });
           }
-          return { status: 'SUCCESS', result: `Navigated to ${page.url()}` };
+        }
           
         case 'click': {
           log(`Jarvis Web: Clicking on ${action.target}...`);
