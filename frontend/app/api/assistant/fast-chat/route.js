@@ -38,6 +38,34 @@ function detectPromptLanguage(text) {
 function safeDesktopAction(prompt) {
   const normalized = prompt.toLowerCase().trim();
 
+  // Deterministic desktop file task: "Desktop par Pakistan naam ka folder
+  // banao aur uske andar index file bana do". This must never fall through
+  // to a conversational model, because it has a concrete local outcome.
+  const wantsFolder = /\b(folder|directory)\b|فولڈر|ڈائریکٹری/i.test(prompt);
+  const wantsCreate = /\b(create|make|banao|bana|banado|bana do)\b|بناؤ|بنادو|بنائیں|کریئیٹ/i.test(prompt);
+  const wantsIndex = /\bindex(?:\s*(?:file|html))?\b|انڈیکس/i.test(prompt);
+  if (wantsFolder && wantsCreate && wantsIndex) {
+    const nameMatch = prompt.match(/(?:naam|name)\s*(?:rakho|rakhna|rakhein|رکھو|رکھنا)?\s+([a-zA-Z0-9_-]+)/i)
+      || prompt.match(/(?:folder|directory)\s+(?:ka|named?|naam\s+ka)?\s*([a-zA-Z0-9_-]+)/i);
+    const rawFolderName = nameMatch?.[1] || 'New-Project';
+    const folderName = rawFolderName.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'New-Project';
+    const target = `Desktop/${folderName}/index.html`;
+    const html = `<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n  <title>${folderName}</title>\n</head>\n<body>\n  <h1>${folderName}</h1>\n</body>\n</html>\n`;
+
+    return {
+      actions: [
+        { type: 'write_file', target, value: html },
+        { type: 'launch_app', target: 'explorer', value: `Desktop/${folderName}` },
+      ],
+      app: { urdu: `${rawFolderName} فولڈر اور index.html`, arabic: `${rawFolderName} ومِلَف index.html`, english: `${rawFolderName} folder and index.html` },
+      acknowledgement: `جی سر، Desktop پر ${rawFolderName} نام کا فولڈر اور اس کے اندر index.html بنا رہا ہوں۔ مکمل ہوتے ہی بتاتا ہوں۔`,
+      completionMessage: `جی سر، ${rawFolderName} فولڈر اور اس کے اندر index.html بنا دیا ہے۔ آپ کو نظر آ رہا ہے؟ کوئی اور کام ہو تو بتا دیں۔`,
+      isClose: false,
+      isRetry: false,
+      isOpenUrl: false,
+    };
+  }
+
   // Close verbs detection (Urdu, Roman Urdu, Arabic, English)
   const isClose = /(بند\s*(کر|کریں|کردو|کردیں|کرو|ہو|دیں|دو)?|بند$|\bbandh?\b|\bclose\b|\bexit\b|\bquit\b|\bstop\b|\bkill\b|\bshut\b|أغلق|اغلق|اقفل|سكر|قفل)/i.test(prompt);
 
@@ -391,14 +419,17 @@ async function getAgentId(orgId) {
   return data?.id || null;
 }
 
-async function queueJarvisTask({ organizationId, prompt, userId, actions }) {
+async function queueJarvisTask({ organizationId, prompt, userId, actions, completionMessage = null }) {
   const agentId = await getAgentId(organizationId);
+  const taskPrompt = completionMessage
+    ? `${prompt}\n\nJARVIS_DONE::${completionMessage}`
+    : prompt;
   const { data: task, error: taskError } = await supabase
     .from('engine_tasks')
     .insert({
       organization_id: organizationId,
       title: prompt.slice(0, 80),
-      prompt,
+      prompt: taskPrompt,
       created_by: userId || null,
       assigned_agent_id: agentId,
       priority: 'MEDIUM',
@@ -520,8 +551,20 @@ export async function POST(request) {
     if (!decidedText && !isLanguageSwitchRequest) {
       const desktopTask = safeDesktopAction(cleanPrompt);
       if (desktopTask) {
-        taskId = await queueJarvisTask({ organizationId, prompt: cleanPrompt, userId, actions: desktopTask.actions });
-        if (desktopTask.isClose) {
+        const defaultCompletion = desktopTask.isClose
+          ? `جی سر، ${desktopTask.app.urdu} بند کر دیا ہے۔ آپ کو نظر آ رہا ہے؟ کوئی اور کام ہو تو بتا دیں۔`
+          : `جی سر، ${desktopTask.app.urdu} کا کام مکمل کر دیا ہے۔ آپ کو نظر آ رہا ہے؟ کوئی اور کام ہو تو بتا دیں۔`;
+        taskId = await queueJarvisTask({
+          organizationId,
+          prompt: cleanPrompt,
+          userId,
+          actions: desktopTask.actions,
+          completionMessage: desktopTask.completionMessage || defaultCompletion,
+        });
+        if (desktopTask.acknowledgement) {
+          decidedText = desktopTask.acknowledgement;
+        }
+        if (!decidedText && desktopTask.isClose) {
           if (promptLang === 'ar') {
             decidedText = `حاضر يا سيدي، أقوم بإغلاق ${desktopTask.app.arabic}.`;
           } else if (promptLang === 'en') {
@@ -529,7 +572,7 @@ export async function POST(request) {
           } else {
             decidedText = `جی سر، ${desktopTask.app.urdu} بند کر رہا ہوں۔`;
           }
-        } else if (desktopTask.isOpenUrl) {
+        } else if (!decidedText && desktopTask.isOpenUrl) {
           if (promptLang === 'ar') {
             decidedText = desktopTask.isRetry
               ? `حاضر يا سيدي، أعيد فتح ${desktopTask.app.arabic}.`
@@ -543,7 +586,7 @@ export async function POST(request) {
               ? `جی سر، ${desktopTask.app.urdu} دوبارہ کھول رہا ہوں۔`
               : `جی سر، ${desktopTask.app.urdu} کھول رہا ہوں۔`;
           }
-        } else {
+        } else if (!decidedText) {
           if (promptLang === 'ar') {
             decidedText = desktopTask.isRetry
               ? `حاضر يا سيدي، أعيد فتح ${desktopTask.app.arabic}.`
@@ -607,6 +650,8 @@ export async function POST(request) {
           'CRITICAL RULES:',
           `1. The software house "${orgName}" has strictly ${totalUsers} registered users. NEVER hallucinate 10 users or any fake numbers.`,
           `2. If asked about user names or offline users, use the exact real names: ${offlineNames}.`,
+          '   - Never volunteer roster, user-count, presence, or database information unless the user explicitly asks about it.',
+          '   - If the user requests a practical desktop task such as creating, editing, opening, closing, or organizing a file/folder, focus only on that task. Never answer with an unrelated roster summary.',
           '3. UNIVERSAL MULTI-LINGUAL SUPPORT (AUTO-LANGUAGE DETECTION):',
           '   - Automatically detect the exact language the user is speaking or requesting (e.g., Arabic, Urdu, English, Hindi, Pashto, French, Turkish, etc.).',
           '   - ALWAYS reply in that exact same language naturally, fluently, and elegantly.',

@@ -180,6 +180,7 @@ export default function AgentTown({ currentUser }) {
   const continuousMicActiveRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const chatBottomRef = useRef(null);
+  const completedJarvisTaskIdsRef = useRef(new Set());
 
   useEffect(() => {
     isDispatchingRef.current = isDispatching;
@@ -594,6 +595,35 @@ export default function AgentTown({ currentUser }) {
     }
   };
 
+  // The local Windows worker updates the task after it has actually finished.
+  // Show and speak that result once, instead of claiming success at dispatch time.
+  useEffect(() => {
+    engineTasks.forEach((task) => {
+      const completionPrefix = 'JARVIS_DONE::';
+      const completionIndex = task.prompt?.lastIndexOf(completionPrefix) ?? -1;
+      const completionMessage = completionIndex >= 0
+        ? task.prompt.slice(completionIndex + completionPrefix.length).trim()
+        : null;
+      if (
+        task.status !== 'COMPLETED' ||
+        !completionMessage ||
+        completedJarvisTaskIdsRef.current.has(task.id)
+      ) return;
+
+      completedJarvisTaskIdsRef.current.add(task.id);
+      setChatMessages((previous) => [...previous, {
+        id: `ast-complete-${task.id}`,
+        sender: 'assistant',
+        text: completionMessage,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isActionPlan: true,
+      }]);
+      setLastAssistantResponse(completionMessage);
+      setActiveTaskBanner(completionMessage.slice(0, 60));
+      speakText(completionMessage.slice(0, 220));
+    });
+  }, [engineTasks]);
+
   // ==========================================
   // 4. CONTINUOUS HANDS-FREE MICROPHONE (AUTO-DETECT LANGUAGE)
   // ==========================================
@@ -782,17 +812,6 @@ export default function AgentTown({ currentUser }) {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isActionPlan: isPlan
         };
-
-        // Guarantee desktop actions are triggered on the client machine
-        if (Array.isArray(data.actions) && data.actions.length > 0) {
-          for (const action of data.actions) {
-            fetch('/api/system/execute-action', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(action)
-            }).catch(() => null);
-          }
-        }
 
         let revealed = false;
         const revealMessage = () => {
