@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { exec } from 'child_process';
 import { decryptKey } from '@/lib/ai/crypto';
 import { generateAI } from '@/lib/ai/providers';
 import { generateJarvisVoiceWav } from '@/lib/ai/tts';
@@ -309,78 +308,6 @@ function safeDesktopAction(prompt) {
   return null;
 }
 
-function prepareNotepad() {
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const localAppData = process.env.LOCALAPPDATA || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, 'AppData', 'Local') : null);
-    if (localAppData) {
-      const tabState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'TabState');
-      const winState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'WindowState');
-      if (fs.existsSync(tabState)) fs.rmSync(tabState, { recursive: true, force: true });
-      if (fs.existsSync(winState)) fs.rmSync(winState, { recursive: true, force: true });
-    }
-  } catch (e) {}
-}
-
-function executeDesktopActions(actions) {
-  if (!Array.isArray(actions) || actions.length === 0) return;
-
-  for (const act of actions) {
-    try {
-      if (act.type === 'launch_app' || act.type === 'open_app') {
-        const target = (act.target || '').toLowerCase().trim();
-        if (target === 'notepad') {
-          prepareNotepad();
-          exec('powershell -WindowStyle Hidden -Command "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; Start-Process notepad"');
-        } else if (target === 'calc' || target === 'calculator') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process calc"');
-        } else if (target === 'control' || target === 'control panel') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process control"');
-        } else if (target === 'settings') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process ms-settings:"');
-        } else if (target === 'taskmgr' || target === 'task manager') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process taskmgr"');
-        } else if (target === 'camera') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process microsoft.windows.camera:"');
-        } else if (target === 'cmd' || target === 'terminal') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process cmd"');
-        } else if (target === 'paint' || target === 'mspaint') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process mspaint"');
-        } else if (target === 'chrome' || target === 'browser') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process chrome"');
-        } else if (target === 'explorer' || target === 'files') {
-          exec('powershell -WindowStyle Hidden -Command "Start-Process explorer"');
-        } else {
-          exec(`powershell -WindowStyle Hidden -Command "Start-Process '${act.target}'"`);
-        }
-      } else if (act.type === 'close_app') {
-        const target = (act.target || '').toLowerCase().trim();
-        let killNames = target;
-        if (target === 'calc' || target === 'calculator') {
-          killNames = 'CalculatorApp,calc';
-        } else if (target === 'notepad') {
-          killNames = 'notepad';
-        } else if (target === 'control' || target === 'control panel') {
-          killNames = 'control';
-        } else if (target === 'taskmgr' || target === 'task manager') {
-          killNames = 'Taskmgr';
-        } else if (target === 'paint' || target === 'mspaint') {
-          killNames = 'mspaint';
-        } else if (target === 'chrome' || target === 'browser') {
-          killNames = 'chrome,msedge';
-        }
-        exec(`powershell -WindowStyle Hidden -Command "Stop-Process -Name ${killNames} -Force -ErrorAction SilentlyContinue"`);
-      } else if (act.type === 'open_url') {
-        const url = act.target.startsWith('http') ? act.target : `https://${act.target}`;
-        exec(`powershell -WindowStyle Hidden -Command "Start-Process '${url}'"`);
-      }
-    } catch (e) {
-      console.warn('Desktop action exec exception:', e);
-    }
-  }
-}
-
 async function getProviderConfig(orgId, requestedProvider = null) {
   const { data: configs, error } = await supabase
     .from('ai_provider_configs')
@@ -593,9 +520,6 @@ export async function POST(request) {
       const desktopTask = safeDesktopAction(cleanPrompt);
       if (desktopTask) {
         taskId = await queueJarvisTask({ organizationId, prompt: cleanPrompt, userId, actions: desktopTask.actions });
-        // Execute on the local system
-        executeDesktopActions(desktopTask.actions);
-
         if (desktopTask.isClose) {
           if (promptLang === 'ar') {
             decidedText = `تم إغلاق ${desktopTask.app.arabic} بنجاح يا سيدي.`;
@@ -622,15 +546,15 @@ export async function POST(request) {
           if (promptLang === 'ar') {
             decidedText = desktopTask.isRetry
               ? `معذرة يا سيدي! تم إعادة فتح ${desktopTask.app.arabic} على شاشتك فوراً.`
-              : `تم فتح ${desktopTask.app.arabic} على شاشتك بنجاح يا سيدي.`;
+              : `تم إرسال أمر فتح ${desktopTask.app.arabic} إلى جارفيس المحلي يا سيدي.`;
           } else if (promptLang === 'en') {
             decidedText = desktopTask.isRetry
               ? `My apologies sir! I have immediately relaunched ${desktopTask.app.english} on your screen.`
-              : `Launching ${desktopTask.app.english} on your screen now, sir.`;
+              : `The command to open ${desktopTask.app.english} has been sent to your local Jarvis, sir.`;
           } else {
             decidedText = desktopTask.isRetry
               ? `معذرت سر! میں نے فوراً دوبارہ حکم جاری کر کے ${desktopTask.app.urdu} اسکرین پر کھول دیا ہے۔`
-              : `سر، ${desktopTask.app.urdu} اسکرین پر کھول دیا گیا ہے۔`;
+              : `سر، ${desktopTask.app.urdu} کھولنے کا حکم آپ کے local Jarvis کو بھیج دیا گیا ہے۔`;
           }
         }
 

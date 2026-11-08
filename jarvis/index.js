@@ -24,6 +24,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Log to file so background daemon execution can be inspected
 const logFile = path.join(__dirname, 'jarvis_daemon.log');
+const lockFile = path.join(__dirname, 'jarvis_daemon.lock');
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   try {
@@ -31,6 +32,38 @@ function log(msg) {
   } catch (e) {}
   console.log(msg);
 }
+
+function acquireWorkerLock() {
+  try {
+    if (fs.existsSync(lockFile)) {
+      const existingPid = Number(fs.readFileSync(lockFile, 'utf8').trim());
+      if (existingPid) {
+        try {
+          process.kill(existingPid, 0);
+          console.log(`Jarvis worker already running (PID ${existingPid}).`);
+          return false;
+        } catch (e) {
+          // The prior worker ended without removing its lock.
+        }
+      }
+      fs.rmSync(lockFile, { force: true });
+    }
+    fs.writeFileSync(lockFile, String(process.pid), 'utf8');
+    return true;
+  } catch (err) {
+    console.error(`Unable to acquire Jarvis worker lock: ${err.message}`);
+    return false;
+  }
+}
+
+if (!acquireWorkerLock()) process.exit(0);
+process.on('exit', () => {
+  try {
+    if (fs.existsSync(lockFile) && fs.readFileSync(lockFile, 'utf8').trim() === String(process.pid)) {
+      fs.rmSync(lockFile, { force: true });
+    }
+  } catch (e) {}
+});
 
 log("=========================================");
 log("Jarvis Full OS & Web Daemon starting up...");
@@ -249,21 +282,20 @@ async function executeAction(action) {
           if (resolvedApp.startsWith('http://') || resolvedApp.startsWith('https://')) {
             psCmd = `powershell -WindowStyle Hidden -Command "Start-Process '${resolvedApp}'"`;
           } else if (resolvedApp === 'notepad') {
-            try {
-              const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-              const tabState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'TabState');
-              const winState = path.join(localAppData, 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'WindowState');
-              if (fs.existsSync(tabState)) fs.rmSync(tabState, { recursive: true, force: true });
-              if (fs.existsSync(winState)) fs.rmSync(winState, { recursive: true, force: true });
-            } catch (e) {}
-            psCmd = `powershell -WindowStyle Hidden -Command "Stop-Process -Name notepad -Force -ErrorAction SilentlyContinue; Start-Process notepad"`;
+            // Do not kill/reset a running Notepad instance: that made valid requests appear successful while no window opened.
+            psCmd = `powershell -WindowStyle Hidden -Command "Start-Process 'notepad.exe' -ErrorAction Stop"`;
           } else if (fileArg) {
             const rawFile = fileArg.replace(/^"|"$/g, '').replace(/'/g, "''");
             psCmd = `powershell -WindowStyle Hidden -Command "Start-Process '${resolvedApp}' -ArgumentList '${rawFile}'"`;
           } else {
             psCmd = `powershell -WindowStyle Hidden -Command "Start-Process '${resolvedApp}'"`;
           }
-          exec(psCmd, () => {
+          exec(psCmd, (err) => {
+            if (err) {
+              log(`Jarvis Error launching ${resolvedApp}: ${err.message}`);
+              resolve({ status: 'FAILED', result: err.message });
+              return;
+            }
             log(`Jarvis OS: Successfully launched application: ${resolvedApp}`);
             resolve({ status: 'SUCCESS', result: `Successfully launched ${resolvedApp}` });
           });
@@ -421,6 +453,7 @@ async function processTask(taskId, orgId, agentId) {
     .maybeSingle();
   if (claimError || !claimedTask) {
     log(`Task ${taskId} was already claimed or could not be claimed.`);
+    activeTaskIds.delete(taskId);
     return;
   }
   
@@ -437,6 +470,7 @@ async function processTask(taskId, orgId, agentId) {
 
   if (!planRecord || !planRecord.actions) {
     log("No action plan found for task.");
+    activeTaskIds.delete(taskId);
     return;
   }
 
@@ -475,6 +509,8 @@ async function processTask(taskId, orgId, agentId) {
       task_id: taskId, agent_id: agentId, organization_id: orgId, event: 'jarvis_completed', message: 'Jarvis finished execution.'
     });
   }
+
+  activeTaskIds.delete(taskId);
 }
 
 // Subscribe to Supabase Realtime
@@ -510,3 +546,33 @@ const channel = supabase.channel('jarvis-channel')
       }
     }
   });
+
+// Realtime can briefly disconnect without the Node process exiting. Polling is the
+// recovery path, so an instruction is never stranded waiting for a missed event.
+async function collectPendingTasks() {
+  try {
+    // A PC restart can interrupt a task after it has been claimed. Return only
+    // stale claims to the queue; recently claimed tasks are left untouched.
+    const staleBefore = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const { error: recoveryError } = await supabase
+      .from('engine_tasks')
+      .update({ status: 'EXECUTING' })
+      .eq('status', 'RUNNING')
+      .lt('started_at', staleBefore);
+    if (recoveryError) throw recoveryError;
+
+    const { data: pendingTasks, error } = await supabase
+      .from('engine_tasks')
+      .select('id, organization_id, assigned_agent_id')
+      .eq('status', 'EXECUTING')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    for (const task of pendingTasks || []) {
+      processTask(task.id, task.organization_id, task.assigned_agent_id);
+    }
+  } catch (err) {
+    log(`Jarvis task polling error: ${err.message}`);
+  }
+}
+
+setInterval(collectPendingTasks, 5000);
