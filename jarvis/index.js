@@ -148,12 +148,12 @@ function resolveFilePath(targetPath) {
   return path.join(os.homedir(), 'Desktop', targetPath);
 }
 
-const BROWSER_ACTIONS = ['browser_navigation', 'click', 'type', 'press_key', 'scroll', 'read_screen', 'screenshot', 'wait'];
+const BROWSER_ACTIONS = ['open_url', 'close_url', 'browser_navigation', 'click', 'type', 'press_key', 'scroll', 'read_screen', 'screenshot', 'wait'];
 
 async function executeAction(action) {
   // 1. WEB & BROWSER ACTIONS
   if (BROWSER_ACTIONS.includes(action.type)) {
-    if (action.type !== 'wait') {
+    if (action.type !== 'wait' && action.type !== 'close_url') {
       await ensureBrowser();
     }
 
@@ -187,6 +187,28 @@ async function executeAction(action) {
               });
             });
           }
+        }
+
+        case 'close_url': {
+          if (!browser) {
+            return { status: 'FAILED', result: 'No Jarvis-controlled browser session is open.' };
+          }
+          const targetUrl = new URL(action.target).hostname.replace(/^www\./, '');
+          const pages = await browser.pages();
+          const matchingPages = pages.filter((browserPage) => {
+            try {
+              return new URL(browserPage.url()).hostname.replace(/^www\./, '') === targetUrl;
+            } catch (e) {
+              return false;
+            }
+          });
+          if (matchingPages.length === 0) {
+            return { status: 'FAILED', result: `No open Jarvis browser tab found for ${targetUrl}.` };
+          }
+          for (const browserPage of matchingPages) {
+            await browserPage.close();
+          }
+          return { status: 'SUCCESS', result: `Closed ${matchingPages.length} tab(s) for ${targetUrl}` };
         }
           
         case 'click': {

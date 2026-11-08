@@ -23,7 +23,7 @@ function detectPromptLanguage(text) {
   }
 
   // Urdu detection
-  if (hasUrduSpecific || /\b(assalam|salam|salaam|kya|kaise|kese|mujhe|aap|ap|karo|karna|kholo|chalao|batao|shukriya|meherbani|sir|janab|نہیں|کھولو|کھولنا|کرو|بتائیں|کیسے)\b/i.test(t)) {
+  if (hasUrduSpecific || /\b(assalam|salam|salaam|kya|kaise|kese|mujhe|aap|ap|karo|karna|kholo|chalao|batao|shukriya|meherbani|sir|janab|band|bandh|dobara|pehle|khuli|kholi|nahi|nahin|نہیں|کھولو|کھولنا|کرو|بتائیں|کیسے)\b/i.test(t)) {
     return 'ur';
   }
 
@@ -38,8 +38,8 @@ function detectPromptLanguage(text) {
 function safeDesktopAction(prompt) {
   const normalized = prompt.toLowerCase().trim();
 
-  // Close verbs detection (Urdu, Arabic, English)
-  const isClose = /(بند\s*(کر|کریں|کردو|کردیں|کرو|ہو|دیں|دو)?|بند$|close|exit|quit|stop|kill|shut|أغلق|اغلق|اقفل|سكر|قفل)/i.test(prompt);
+  // Close verbs detection (Urdu, Roman Urdu, Arabic, English)
+  const isClose = /(بند\s*(کر|کریں|کردو|کردیں|کرو|ہو|دیں|دو)?|بند$|\bbandh?\b|\bclose\b|\bexit\b|\bquit\b|\bstop\b|\bkill\b|\bshut\b|أغلق|اغلق|اقفل|سكر|قفل)/i.test(prompt);
 
   const apps = [
     { 
@@ -196,7 +196,8 @@ function safeDesktopAction(prompt) {
     };
   }
 
-  // 2. Close command check (close app or close browser for web apps)
+  // 2. Close command check. Websites are closed as their own controlled tab,
+  // never by opening them again or killing every browser window.
   if (isClose) {
     for (const app of apps) {
       if (app.matches.some((match) => normalized.includes(match))) {
@@ -212,7 +213,7 @@ function safeDesktopAction(prompt) {
     for (const web of webApps) {
       if (web.matches.some((match) => normalized.includes(match))) {
         return {
-          actions: [{ type: 'close_app', target: 'chrome' }],
+          actions: [{ type: 'close_url', target: web.url }],
           app: web,
           isClose: true,
           isRetry: false,
@@ -522,39 +523,39 @@ export async function POST(request) {
         taskId = await queueJarvisTask({ organizationId, prompt: cleanPrompt, userId, actions: desktopTask.actions });
         if (desktopTask.isClose) {
           if (promptLang === 'ar') {
-            decidedText = `تم إغلاق ${desktopTask.app.arabic} بنجاح يا سيدي.`;
+            decidedText = `حاضر يا سيدي، أقوم بإغلاق ${desktopTask.app.arabic}.`;
           } else if (promptLang === 'en') {
-            decidedText = `Sir, ${desktopTask.app.english} has been closed.`;
+            decidedText = `Certainly, sir. I am closing ${desktopTask.app.english}.`;
           } else {
-            decidedText = `سر، ${desktopTask.app.urdu} بند کر دیا گیا ہے۔`;
+            decidedText = `جی سر، ${desktopTask.app.urdu} بند کر رہا ہوں۔`;
           }
         } else if (desktopTask.isOpenUrl) {
           if (promptLang === 'ar') {
             decidedText = desktopTask.isRetry
-              ? `معذرة يا سيدي! تم إعادة فتح ${desktopTask.app.arabic} في متصفحك فوراً.`
-              : `تم فتح ${desktopTask.app.arabic} فوراً يا سيدي.`;
+              ? `حاضر يا سيدي، أعيد فتح ${desktopTask.app.arabic}.`
+              : `حاضر يا سيدي، أفتح ${desktopTask.app.arabic}.`;
           } else if (promptLang === 'en') {
             decidedText = desktopTask.isRetry
-              ? `My apologies sir! I have relaunched ${desktopTask.app.english} in your browser.`
-              : `Opening ${desktopTask.app.english} in your browser now, sir.`;
+              ? `Certainly, sir. I am reopening ${desktopTask.app.english}.`
+              : `Certainly, sir. I am opening ${desktopTask.app.english}.`;
           } else {
             decidedText = desktopTask.isRetry
-              ? `معذرت سر! میں نے دوبارہ براؤزر میں ${desktopTask.app.urdu} کھول دی ہے۔`
-              : `سر، ${desktopTask.app.urdu} کھول دی گئی ہے۔`;
+              ? `جی سر، ${desktopTask.app.urdu} دوبارہ کھول رہا ہوں۔`
+              : `جی سر، ${desktopTask.app.urdu} کھول رہا ہوں۔`;
           }
         } else {
           if (promptLang === 'ar') {
             decidedText = desktopTask.isRetry
-              ? `معذرة يا سيدي! تم إعادة فتح ${desktopTask.app.arabic} على شاشتك فوراً.`
-              : `تم إرسال أمر فتح ${desktopTask.app.arabic} إلى جارفيس المحلي يا سيدي.`;
+              ? `حاضر يا سيدي، أعيد فتح ${desktopTask.app.arabic}.`
+              : `حاضر يا سيدي، أفتح ${desktopTask.app.arabic}.`;
           } else if (promptLang === 'en') {
             decidedText = desktopTask.isRetry
-              ? `My apologies sir! I have immediately relaunched ${desktopTask.app.english} on your screen.`
-              : `The command to open ${desktopTask.app.english} has been sent to your local Jarvis, sir.`;
+              ? `Certainly, sir. I am reopening ${desktopTask.app.english}.`
+              : `Certainly, sir. I am opening ${desktopTask.app.english}.`;
           } else {
             decidedText = desktopTask.isRetry
-              ? `معذرت سر! میں نے فوراً دوبارہ حکم جاری کر کے ${desktopTask.app.urdu} اسکرین پر کھول دیا ہے۔`
-              : `سر، ${desktopTask.app.urdu} کھولنے کا حکم آپ کے local Jarvis کو بھیج دیا گیا ہے۔`;
+              ? `جی سر، ${desktopTask.app.urdu} دوبارہ کھول رہا ہوں۔`
+              : `جی سر، ${desktopTask.app.urdu} کھول رہا ہوں۔`;
           }
         }
 
@@ -611,12 +612,14 @@ export async function POST(request) {
           '   - ALWAYS reply in that exact same language naturally, fluently, and elegantly.',
           '   - If the user speaks in Arabic or says "عربی میں بات کرو" or "تكلم بالعربية", IMMEDIATELY switch to fluent, polite, elegant Arabic (العربية الفصحى)! NEVER refuse or say you only speak Urdu or English.',
           '   - If the user speaks Urdu, reply in natural Urdu script.',
+          '   - Treat Roman Urdu (for example: "youtube band karo", "notepad kholo") as Urdu and reply in Urdu script.',
           '   - If the user speaks English, reply in English.',
           '4. OS INTEGRATION & COMMAND EXECUTION (CRITICAL):',
           '   - You are directly connected to the user\'s Windows system via the Jarvis OS engine.',
           '   - You CAN and DO open websites (YouTube, Google, WhatsApp, Facebook, etc.), launch desktop applications (Calculator, Notepad, Paint, Chrome, etc.), and close applications on command.',
           '   - NEVER give disclaimers like "I am an AI and cannot open websites/YouTube/apps" or "I do not have access to your system".',
-          '   - If the user asks you to open or close any app or website, confirm with concise elegance that the action has been executed.',
+          '   - Never mention queues, a local worker, APIs, technical routing, or internal system components to the user.',
+          '   - For an app or website command, answer naturally and briefly in the user\'s language, e.g. "جی سر، یوٹیوب بند کر رہا ہوں۔" Do not claim an action is already complete before its execution result arrives.',
           '5. Keep answers concise, sharp, helpful, and respectful (1-2 sentences maximum).'
         ].join('\n');
 
