@@ -181,6 +181,8 @@ export default function AgentTown({ currentUser }) {
   const isSpeakingRef = useRef(false);
   const chatBottomRef = useRef(null);
   const completedJarvisTaskIdsRef = useRef(new Set());
+  const activeJarvisTaskIdsRef = useRef(new Set());
+  const activeAudioRef = useRef(null);
 
   useEffect(() => {
     isDispatchingRef.current = isDispatching;
@@ -503,6 +505,16 @@ export default function AgentTown({ currentUser }) {
       return;
     }
 
+    // Jarvis has one voice channel. Stop an earlier acknowledgement before a
+    // completion update can begin, so two responses never overlap.
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+      } catch (e) {}
+      activeAudioRef.current = null;
+    }
+
     // Completely cancel any browser robotic synthesis
     if (window.speechSynthesis) {
       try { window.speechSynthesis.cancel(); } catch (e) {}
@@ -537,6 +549,7 @@ export default function AgentTown({ currentUser }) {
         const blob = await res.blob();
         const audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
+        activeAudioRef.current = audio;
 
         audio.onplay = () => {
           setIsSpeaking(true);
@@ -545,6 +558,8 @@ export default function AgentTown({ currentUser }) {
         };
         
         audio.onended = () => {
+          if (activeAudioRef.current !== audio) return;
+          activeAudioRef.current = null;
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl);
@@ -558,6 +573,8 @@ export default function AgentTown({ currentUser }) {
         };
 
         audio.onerror = () => {
+          if (activeAudioRef.current !== audio) return;
+          activeAudioRef.current = null;
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl);
@@ -580,6 +597,7 @@ export default function AgentTown({ currentUser }) {
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl);
+          if (activeAudioRef.current === audio) activeAudioRef.current = null;
           return;
         }
       } else {
@@ -607,10 +625,12 @@ export default function AgentTown({ currentUser }) {
       if (
         task.status !== 'COMPLETED' ||
         !completionMessage ||
+        !activeJarvisTaskIdsRef.current.has(task.id) ||
         completedJarvisTaskIdsRef.current.has(task.id)
       ) return;
 
       completedJarvisTaskIdsRef.current.add(task.id);
+      activeJarvisTaskIdsRef.current.delete(task.id);
       setChatMessages((previous) => [...previous, {
         id: `ast-complete-${task.id}`,
         sender: 'assistant',
@@ -795,6 +815,13 @@ export default function AgentTown({ currentUser }) {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
 
+      if (data.taskId) {
+        activeJarvisTaskIdsRef.current.add(data.taskId);
+        // The local worker can finish before TTS has returned. Refresh after
+        // registration so that fast task completion is still delivered live.
+        loadTasks();
+      }
+
       if (data.text) {
         let cleanAnswer = data.text;
         let isPlan = data.isActionPlan;
@@ -829,6 +856,13 @@ export default function AgentTown({ currentUser }) {
           try {
             const audioUrl = 'data:audio/wav;base64,' + data.audioBase64;
             const audio = new Audio(audioUrl);
+            if (activeAudioRef.current) {
+              try {
+                activeAudioRef.current.pause();
+                activeAudioRef.current.currentTime = 0;
+              } catch (e) {}
+            }
+            activeAudioRef.current = audio;
 
             // Pause microphone while speaking to avoid echo loop
             if (recognitionRef.current && continuousMicActiveRef.current) {
@@ -842,6 +876,8 @@ export default function AgentTown({ currentUser }) {
             };
 
             audio.onended = () => {
+              if (activeAudioRef.current !== audio) return;
+              activeAudioRef.current = null;
               setIsSpeaking(false);
               isSpeakingRef.current = false;
               if (continuousMicActiveRef.current) {
@@ -854,6 +890,8 @@ export default function AgentTown({ currentUser }) {
             };
 
             audio.onerror = () => {
+              if (activeAudioRef.current !== audio) return;
+              activeAudioRef.current = null;
               setIsSpeaking(false);
               isSpeakingRef.current = false;
               revealMessage();
@@ -862,6 +900,7 @@ export default function AgentTown({ currentUser }) {
             await audio.play();
           } catch (audioErr) {
             console.warn('Direct audio play rejected:', audioErr);
+            if (activeAudioRef.current === audio) activeAudioRef.current = null;
             revealMessage();
             speakText(finalMsgText.slice(0, 220));
           }

@@ -36,6 +36,11 @@ function log(msg) {
 function acquireWorkerLock() {
   try {
     if (fs.existsSync(lockFile)) {
+      if (process.env.JARVIS_FORCE_START === '1') {
+        fs.rmSync(lockFile, { force: true });
+      }
+    }
+    if (fs.existsSync(lockFile)) {
       const existingPid = Number(fs.readFileSync(lockFile, 'utf8').trim());
       if (existingPid) {
         try {
@@ -133,6 +138,17 @@ async function ensureBrowser() {
   }
 }
 
+async function focusControlledBrowser() {
+  const browserPid = browser?.process?.()?.pid;
+  if (!browserPid) return;
+  await new Promise((resolve) => {
+    exec(
+      `powershell -WindowStyle Hidden -Command "$shell = New-Object -ComObject WScript.Shell; [void]$shell.AppActivate(${browserPid})"`,
+      () => resolve()
+    );
+  });
+}
+
 // Helper to resolve desktop and document paths
 function resolveFilePath(targetPath) {
   if (!targetPath) return path.join(os.homedir(), 'Desktop', `jarvis_file_${Date.now()}.txt`);
@@ -153,7 +169,8 @@ const BROWSER_ACTIONS = ['open_url', 'close_url', 'browser_navigation', 'click',
 async function executeAction(action) {
   // 1. WEB & BROWSER ACTIONS
   if (BROWSER_ACTIONS.includes(action.type)) {
-    if (action.type !== 'wait' && action.type !== 'close_url') {
+    const isDirectVisibleLaunch = action.type === 'open_url' && /(^|\.)google\.com$/i.test(new URL(action.target).hostname);
+    if (action.type !== 'wait' && action.type !== 'close_url' && !isDirectVisibleLaunch) {
       await ensureBrowser();
     }
 
@@ -162,12 +179,24 @@ async function executeAction(action) {
         case 'open_url':
         case 'browser_navigation': {
           log(`Jarvis Web: Navigating to ${action.target}...`);
+          const safeUrl = action.target.startsWith('http') ? action.target : `https://${action.target}`;
+          // Google is a user-facing lookup. Open it through Windows' registered
+          // browser so it cannot be hidden behind the automation browser.
+          if (isDirectVisibleLaunch) {
+            return new Promise((resolve) => {
+              exec(`powershell -WindowStyle Hidden -Command "Start-Process '${safeUrl}'"`, (err) => {
+                if (err) return resolve({ status: 'FAILED', result: err.message });
+                log(`Jarvis OS: Opened visible browser window for ${safeUrl}`);
+                resolve({ status: 'SUCCESS', result: `Opened visible browser for ${safeUrl}` });
+              });
+            });
+          }
           if (page) {
             try {
               await page.goto(action.target, { waitUntil: 'domcontentloaded', timeout: 30000 });
               try {
                 await page.bringToFront();
-                exec('powershell -Command "$w = New-Object -ComObject WScript.Shell; $w.AppActivate(\'Chromium\'); $w.AppActivate(\'Chrome\')"');
+                await focusControlledBrowser();
               } catch(e) {}
               return { status: 'SUCCESS', result: `Navigated to ${page.url()}` };
             } catch (navErr) {
@@ -175,7 +204,6 @@ async function executeAction(action) {
               return { status: 'SUCCESS', result: `Navigated to ${action.target}` };
             }
           } else {
-            const safeUrl = action.target.startsWith('http') ? action.target : `https://${action.target}`;
             return new Promise((resolve) => {
               exec(`cmd.exe /c start "" "${safeUrl}"`, (err) => {
                 if (err) {
