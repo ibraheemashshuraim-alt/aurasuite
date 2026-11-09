@@ -337,6 +337,117 @@ function safeDesktopAction(prompt) {
   return null;
 }
 
+function likelyDesktopInstruction(prompt) {
+  return /(\b(open|close|create|make|write|save|delete|rename|move|copy|search|find|download|upload|folder|file|notepad|calculator|chrome|google|youtube|desktop|documents|khol|band|bana|likh|save|search)\b|کھولو|بند|بناؤ|بنادو|بنائیں|لکھو|لکھیں|محفوظ|فولڈر|فائل|ڈیسک ٹاپ|سرچ|تلاش)/i.test(prompt);
+}
+
+function extractPlanJson(text) {
+  const trimmed = (text || '').trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start < 0 || end < start) return null;
+  try {
+    return JSON.parse(trimmed.slice(start, end + 1));
+  } catch (e) {
+    return null;
+  }
+}
+
+function validatePlannerActions(actions) {
+  if (!Array.isArray(actions) || actions.length < 1 || actions.length > 6) return null;
+  const allowedTypes = new Set(['launch_app', 'close_app', 'open_url', 'close_url', 'write_file', 'open_file', 'read_file']);
+  const allowedApps = new Set(['notepad', 'calc', 'paint', 'mspaint', 'explorer', 'chrome', 'control', 'settings', 'taskmgr', 'camera', 'cmd']);
+
+  const cleanActions = [];
+  for (const action of actions) {
+    if (!action || !allowedTypes.has(action.type) || typeof action.target !== 'string') return null;
+    const target = action.target.trim();
+    if (!target || target.includes('..')) return null;
+
+    if (action.type === 'launch_app' || action.type === 'close_app') {
+      if (!allowedApps.has(target.toLowerCase())) return null;
+      cleanActions.push({ type: action.type, target: target.toLowerCase(), ...(action.value ? { value: String(action.value).slice(0, 260) } : {}) });
+      continue;
+    }
+
+    if (action.type === 'open_url' || action.type === 'close_url') {
+      try {
+        const url = new URL(target);
+        if (!['http:', 'https:'].includes(url.protocol)) return null;
+        cleanActions.push({ type: action.type, target: url.toString() });
+      } catch (e) {
+        return null;
+      }
+      continue;
+    }
+
+    // File operations stay within user-controlled Desktop or Documents folders.
+    if (!/^(Desktop|Documents)[\\/]/i.test(target)) return null;
+    if (action.type === 'write_file') {
+      if (typeof action.value !== 'string' || action.value.length > 24000) return null;
+      cleanActions.push({ type: action.type, target, value: action.value });
+    } else {
+      cleanActions.push({ type: action.type, target });
+    }
+  }
+  return cleanActions;
+}
+
+async function planDesktopTaskWithAI({ prompt, provider, recentContext = [] }) {
+  if (!provider || !likelyDesktopInstruction(prompt)) return null;
+
+  const plannerPrompt = [
+    'You are a careful Windows task planner for a personal assistant.',
+    'Interpret Urdu, Roman Urdu, and English naturally. Decide whether the request is a concrete computer task.',
+    'Return ONLY one JSON object, with no markdown and no commentary:',
+    '{"is_task":true,"summary_ur":"short Urdu task summary","actions":[{"type":"write_file","target":"Desktop/Project/index.html","value":"..."}]}',
+    'If it is not a computer task, return {"is_task":false}.',
+    'Allowed action types only: launch_app, close_app, open_url, close_url, write_file, open_file, read_file.',
+    'Allowed apps only: notepad, calc, paint, explorer, chrome, control, settings, taskmgr, camera, cmd.',
+    'For files, only Desktop/... or Documents/... paths are allowed. Never use shell commands, registry edits, deletion, credentials, or external uploads.',
+    'For a folder request, create a file inside the folder; the worker creates missing folders automatically.',
+    'For a requested HTML index file, produce a complete small HTML document.',
+    'Do not invent actions. If a name, location, or content is essential but missing, return is_task:false.'
+  ].join('\n');
+  const contextText = recentContext.length > 0
+    ? `\n\nRecent conversation context:\n${recentContext.map((message) => `${message.sender}: ${message.text}`).join('\n')}`
+    : '';
+
+  try {
+    const result = await generateAI(provider.provider, {
+      apiKey: provider.apiKey,
+      model: provider.model,
+      systemPrompt: plannerPrompt,
+      prompt: `${prompt}${contextText}`,
+      temperature: 0.1,
+      maxTokens: 900,
+      ...(provider.provider === 'ollama' ? { baseURL: provider.baseURL } : {}),
+    });
+    const plan = extractPlanJson(result.text);
+    if (!plan?.is_task) return null;
+    const actions = validatePlannerActions(plan.actions);
+    if (!actions) return null;
+    const summary = typeof plan.summary_ur === 'string' && plan.summary_ur.trim()
+      ? plan.summary_ur.trim().slice(0, 120)
+      : 'درخواست کردہ کام';
+
+    return {
+      actions,
+      app: { urdu: summary, arabic: summary, english: summary },
+      acknowledgement: `جی سر، ${summary} کر رہا ہوں۔ مکمل ہوتے ہی بتاتا ہوں۔`,
+      completionMessage: `جی سر، ${summary} مکمل کر دیا ہے۔ آپ کو نظر آ رہا ہے؟ کوئی اور کام ہو تو بتا دیں۔`,
+      isClose: actions.every((action) => action.type === 'close_app' || action.type === 'close_url'),
+      isRetry: false,
+      isOpenUrl: actions.every((action) => action.type === 'open_url'),
+    };
+  } catch (err) {
+    console.warn('Jarvis task planner failed:', err.message);
+    return null;
+  }
+}
+
 async function getProviderConfig(orgId, requestedProvider = null) {
   const { data: configs, error } = await supabase
     .from('ai_provider_configs')
@@ -477,7 +588,7 @@ async function persistConversation({ organizationId, prompt, userId, result }) {
 export async function POST(request) {
   const startedAt = Date.now();
   try {
-    const { prompt, orgId, userId, userName, provider: requestedProvider, voice, gender } = await request.json();
+    const { prompt, orgId, userId, userName, provider: requestedProvider, voice, gender, recentMessages = [] } = await request.json();
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
@@ -549,7 +660,20 @@ export async function POST(request) {
     let actions = [];
     let taskId = null;
     if (!decidedText && !isLanguageSwitchRequest) {
-      const desktopTask = safeDesktopAction(cleanPrompt);
+      let desktopTask = safeDesktopAction(cleanPrompt);
+      if (!desktopTask) {
+        const plannerProvider = await getProviderConfig(organizationId, requestedProvider);
+        const recentContext = Array.isArray(recentMessages)
+          ? recentMessages
+              .filter((message) => message && typeof message.text === 'string')
+              .slice(-6)
+              .map((message) => ({
+                sender: message.sender === 'assistant' ? 'Jarvis' : 'User',
+                text: message.text.slice(0, 500),
+              }))
+          : [];
+        desktopTask = await planDesktopTaskWithAI({ prompt: cleanPrompt, provider: plannerProvider, recentContext });
+      }
       if (desktopTask) {
         const defaultCompletion = desktopTask.isClose
           ? `جی سر، ${desktopTask.app.urdu} بند کر دیا ہے۔ آپ کو نظر آ رہا ہے؟ کوئی اور کام ہو تو بتا دیں۔`
@@ -647,6 +771,9 @@ export async function POST(request) {
         const systemPrompt = [
           'You are Jarvis, the authentic, highly intelligent, iconic, multi-lingual AI assistant from Iron Man.',
           `LIVE DATABASE CONTEXT:\n${rosterContext}`,
+          Array.isArray(recentMessages) && recentMessages.length > 0
+            ? `RECENT CONVERSATION:\n${recentMessages.slice(-6).map((message) => `${message.sender === 'assistant' ? 'Jarvis' : 'User'}: ${String(message.text || '').slice(0, 500)}`).join('\n')}`
+            : '',
           'CRITICAL RULES:',
           `1. The software house "${orgName}" has strictly ${totalUsers} registered users. NEVER hallucinate 10 users or any fake numbers.`,
           `2. If asked about user names or offline users, use the exact real names: ${offlineNames}.`,

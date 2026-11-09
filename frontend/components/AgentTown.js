@@ -808,7 +808,11 @@ export default function AgentTown({ currentUser }) {
           gender: voiceGender,
           autoApprove,
           language: 'auto',
-          provider: activeAiProvider
+          provider: activeAiProvider,
+          recentMessages: chatMessages.slice(-6).map((message) => ({
+            sender: message.sender,
+            text: message.text,
+          })),
         })
       });
 
