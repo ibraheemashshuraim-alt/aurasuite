@@ -260,6 +260,7 @@ export default function AgentTown({ currentUser }) {
       const res = await fetch(`/api/providers/config?organization_id=${encodeURIComponent(orgId)}`);
       if (!res.ok) return;
       const data = await res.json();
+
       if (Array.isArray(data.providers)) {
         const hints = {};
         const models = { ...providerModels };
@@ -818,6 +819,10 @@ export default function AgentTown({ currentUser }) {
 
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
+
+      if (data.uiAction === 'open_team_chat') {
+        window.dispatchEvent(new CustomEvent('aurasuite:open-team-chat'));
+      }
 
       if (data.taskId) {
         activeJarvisTaskIdsRef.current.add(data.taskId);

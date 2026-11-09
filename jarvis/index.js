@@ -166,7 +166,7 @@ function resolveFilePath(targetPath) {
 
 const BROWSER_ACTIONS = ['open_url', 'close_url', 'browser_navigation', 'click', 'type', 'press_key', 'scroll', 'read_screen', 'screenshot', 'wait'];
 
-async function executeAction(action) {
+async function executeAction(action, taskContext = {}) {
   // 1. WEB & BROWSER ACTIONS
   if (BROWSER_ACTIONS.includes(action.type)) {
     const isDirectVisibleLaunch = action.type === 'open_url' && /(^|\.)google\.com$/i.test(new URL(action.target).hostname);
@@ -414,6 +414,36 @@ async function executeAction(action) {
         return { status: 'SUCCESS', result: `Successfully wrote file: ${filePath}` };
       }
 
+      case 'send_team_message': {
+        const text = String(action.value || '').trim();
+        const organizationId = taskContext.organizationId;
+        // The worker obtains the sender from the claimed task, rather than
+        // trusting a value embedded in an action plan.
+        const fromId = taskContext.userId || action.actorId;
+        const fromName = String(action.actorName || 'Admin').trim().slice(0, 120);
+        if (!organizationId || !fromId || !text || text.length > 1500) {
+          return { status: 'FAILED', result: 'Invalid Team Chat message details.' };
+        }
+        const messageId = `msg-jarvis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const { error } = await supabase.from('group_messages').insert({
+          id: messageId,
+          organization_id: organizationId,
+          from_id: fromId,
+          from_name: fromName,
+          text,
+          msg_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          type: 'chat',
+          audio_url: null,
+          attachment_url: null,
+        });
+        if (error) {
+          log(`Jarvis Team Chat send error: ${error.message}`);
+          return { status: 'FAILED', result: error.message };
+        }
+        log(`Jarvis Team Chat: Sent group message as ${fromName}.`);
+        return { status: 'SUCCESS', result: 'Sent message to Team General' };
+      }
+
       case 'read_file': {
         const filePath = resolveFilePath(action.target || action.value);
         log(`Jarvis OS: Reading file: ${filePath}...`);
@@ -499,7 +529,7 @@ async function processTask(taskId, orgId, agentId) {
     .update({ status: 'RUNNING', started_at: new Date().toISOString() })
     .eq('id', taskId)
     .eq('status', 'EXECUTING')
-    .select('id')
+    .select('id, organization_id, created_by')
     .maybeSingle();
   if (claimError || !claimedTask) {
     log(`Task ${taskId} was already claimed or could not be claimed.`);
@@ -532,7 +562,10 @@ async function processTask(taskId, orgId, agentId) {
 
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
-    const res = await executeAction(action);
+    const res = await executeAction(action, {
+      organizationId: claimedTask.organization_id,
+      userId: claimedTask.created_by,
+    });
     results.push({ action, result: res });
     if (res.status === 'FAILED') {
       failed = true;

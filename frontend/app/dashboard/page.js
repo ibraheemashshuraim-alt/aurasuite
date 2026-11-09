@@ -552,6 +552,18 @@ export default function AppContainer() {
 
   useEffect(() => { const saved = localStorage.getItem('aura_admin_tab'); if (saved) setActiveTab(saved); }, []);
   useEffect(() => {
+    const openTeamChatFromJarvis = () => {
+      setActiveTab('chat');
+      setActiveChat('group');
+      setActiveDmUser(null);
+      setIsChatClosed(false);
+      localStorage.setItem('aura_chat_state', JSON.stringify({ type: 'group' }));
+      setChatUnreadCounts(prev => ({ ...prev, group: 0 }));
+    };
+    window.addEventListener('aurasuite:open-team-chat', openTeamChatFromJarvis);
+    return () => window.removeEventListener('aurasuite:open-team-chat', openTeamChatFromJarvis);
+  }, []);
+  useEffect(() => {
     const savedChat = localStorage.getItem('aura_chat_state');
     if (savedChat) {
       try {

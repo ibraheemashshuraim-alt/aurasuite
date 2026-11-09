@@ -341,6 +341,30 @@ function likelyDesktopInstruction(prompt) {
   return /(\b(open|close|create|make|write|save|delete|rename|move|copy|search|find|download|upload|folder|file|notepad|calculator|chrome|google|youtube|desktop|documents|khol|band|bana|likh|save|search)\b|کھولو|بند|بناؤ|بنادو|بنائیں|لکھو|لکھیں|محفوظ|فولڈر|فائل|ڈیسک ٹاپ|سرچ|تلاش)/i.test(prompt);
 }
 
+function parseTeamChatInstruction(prompt) {
+  const wantsTeamChat = /\b(?:team|teen)\s*(?:chat|general)\b|ٹیم\s*(?:چیٹ|جنرل)/i.test(prompt);
+  if (!wantsTeamChat) return null;
+
+  // Keep the message after the *send* instruction intact.  It can itself be
+  // a greeting (for example, "... Team Chat mein message send karein Assalam
+  // Walaikum"), so it must never be handled by the conversational greeting
+  // shortcut below.
+  const sendMatch = prompt.match(/(?:message|msg|میسج|پیغام)\s*(?:send|bhej(?:o|en)?|karo|karain|karen|بھیجو|بھیجیں|کریں|کرو)\s*(?:karo|karain|karen|کریں|کرو)?\s*[:\-]?\s*(.+)$/i);
+  const message = sendMatch?.[1]?.trim().replace(/^[:\-"']+|["']+$/g, '');
+  if (!message || message.length > 1500) return null;
+
+  return {
+    actions: [{ type: 'send_team_message', target: 'team_general', value: message }],
+    app: { urdu: 'ٹیم چیٹ میں پیغام', arabic: 'رسالة في دردشة الفريق', english: 'Team Chat message' },
+    acknowledgement: `جی سر، Team General میں یہ پیغام بھیج رہا ہوں: ${message}`,
+    completionMessage: `جی سر، Team General میں پیغام بھیج دیا ہے۔ آپ کو نظر آ رہا ہے؟ کوئی اور کام ہو تو بتا دیں۔`,
+    isClose: false,
+    isRetry: false,
+    isOpenUrl: false,
+    uiAction: 'open_team_chat',
+  };
+}
+
 function extractPlanJson(text) {
   const trimmed = (text || '').trim()
     .replace(/^```(?:json)?\s*/i, '')
@@ -357,7 +381,7 @@ function extractPlanJson(text) {
 
 function validatePlannerActions(actions) {
   if (!Array.isArray(actions) || actions.length < 1 || actions.length > 6) return null;
-  const allowedTypes = new Set(['launch_app', 'close_app', 'open_url', 'close_url', 'write_file', 'open_file', 'read_file']);
+  const allowedTypes = new Set(['launch_app', 'close_app', 'open_url', 'close_url', 'write_file', 'open_file', 'read_file', 'send_team_message']);
   const allowedApps = new Set(['notepad', 'calc', 'paint', 'mspaint', 'explorer', 'chrome', 'control', 'settings', 'taskmgr', 'camera', 'cmd']);
 
   const cleanActions = [];
@@ -365,6 +389,12 @@ function validatePlannerActions(actions) {
     if (!action || !allowedTypes.has(action.type) || typeof action.target !== 'string') return null;
     const target = action.target.trim();
     if (!target || target.includes('..')) return null;
+
+    if (action.type === 'send_team_message') {
+      if (target !== 'team_general' || typeof action.value !== 'string' || !action.value.trim() || action.value.trim().length > 1500) return null;
+      cleanActions.push({ type: action.type, target, value: action.value.trim() });
+      continue;
+    }
 
     if (action.type === 'launch_app' || action.type === 'close_app') {
       if (!allowedApps.has(target.toLowerCase())) return null;
@@ -636,12 +666,14 @@ export async function POST(request) {
     const offlineNames = offlineProfiles.map((p) => p.full_name || p.username || 'User').join('، ');
 
     let decidedText = null;
+    const teamChatTask = parseTeamChatInstruction(cleanPrompt);
+    const hasActionIntent = Boolean(teamChatTask) || likelyDesktopInstruction(cleanPrompt);
 
     // Language switch requests (e.g. "عربی میں بات کرو", "speak Arabic", "talk in English") -> Pass directly to AI
     const isLanguageSwitchRequest = /(عربی میں|عربی بولو|تكلم بالعربية|تكلم عربي|باللغة العربية|speak in arabic|speak english|talk in)/i.test(cleanPrompt);
 
     // Instant greetings (only if not an explicit language request)
-    if (!isLanguageSwitchRequest) {
+    if (!isLanguageSwitchRequest && !hasActionIntent) {
       if (/مرحبا|أهلا|اهلا|صباح الخير|مساء الخير/i.test(cleanPrompt)) {
         decidedText = 'أهلاً وسهلاً بك يا سيدي! أنا جارفيس في خدمتك، كيف يمكنني مساعدتك؟';
       } else if (/\b(assalam|salam|salaam)\b|سلام|ہیلو/i.test(cleanPrompt)) {
@@ -659,8 +691,9 @@ export async function POST(request) {
     let isActionPlan = false;
     let actions = [];
     let taskId = null;
+    let uiAction = null;
     if (!decidedText && !isLanguageSwitchRequest) {
-      let desktopTask = safeDesktopAction(cleanPrompt);
+      let desktopTask = teamChatTask || safeDesktopAction(cleanPrompt);
       if (!desktopTask) {
         const plannerProvider = await getProviderConfig(organizationId, requestedProvider);
         const recentContext = Array.isArray(recentMessages)
@@ -678,11 +711,14 @@ export async function POST(request) {
         const defaultCompletion = desktopTask.isClose
           ? `جی سر، ${desktopTask.app.urdu} بند کر دیا ہے۔ آپ کو نظر آ رہا ہے؟ کوئی اور کام ہو تو بتا دیں۔`
           : `جی سر، ${desktopTask.app.urdu} کا کام مکمل کر دیا ہے۔ آپ کو نظر آ رہا ہے؟ کوئی اور کام ہو تو بتا دیں۔`;
+        const taskActions = desktopTask.actions.map((action) => action.type === 'send_team_message'
+          ? { ...action, actorId: userId || null, actorName: userName || 'Admin' }
+          : action);
         taskId = await queueJarvisTask({
           organizationId,
           prompt: cleanPrompt,
           userId,
-          actions: desktopTask.actions,
+          actions: taskActions,
           completionMessage: desktopTask.completionMessage || defaultCompletion,
         });
         if (desktopTask.acknowledgement) {
@@ -727,7 +763,8 @@ export async function POST(request) {
         }
 
         isActionPlan = true;
-        actions = desktopTask.actions;
+        actions = taskActions;
+        uiAction = desktopTask.uiAction || null;
       }
     }
 
@@ -842,6 +879,7 @@ export async function POST(request) {
       isActionPlan,
       actions,
       taskId,
+      uiAction: typeof uiAction === 'string' ? uiAction : null,
       elapsedMs: Date.now() - startedAt,
     });
   } catch (error) {
